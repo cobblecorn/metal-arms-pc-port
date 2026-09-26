@@ -94,7 +94,7 @@ static FResLoadReg_t _ResLoadRegistration;
 
 static FMeshCullDir_e _nCurrentCullDir;
 
-static const _aD3DVertexBlendFlags[_D3D_VTX_BLEND_FLAG_COUNT] = 
+static const DWORD _aD3DVertexBlendFlags[_D3D_VTX_BLEND_FLAG_COUNT] = 
 {
 	D3DVBF_DISABLE,		// 0 segment matrices
 	D3DVBF_DISABLE,		// 1 segment matrix
@@ -303,7 +303,7 @@ void CFMeshInst::SetColorStreams( u32 nStreamCount, ColorStream_t *paStreams )
 		}
 
 		u8 *pData;
-		((IDirect3DVertexBuffer8 **)m_papColorStreams)[i]->Lock( 0, 0, &pData, 0 );
+		((IDirect3DVertexBuffer8 **)m_papColorStreams)[i]->Lock( 0, 0, (void **)&pData, 0 );
 		if ( !pData )
 		{
 			DEVPRINTF( "CFMeshInst::SetColorStreams() - Mesh %s : Unable to lock DX VB for color streams.  Color streams ignored.\n", m_pMesh->szName );

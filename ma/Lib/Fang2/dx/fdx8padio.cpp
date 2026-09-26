@@ -20,7 +20,7 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 #include <stdio.h>
-#include <afxwin.h>
+#include <windows.h>
 #include <dinput.h>
 
 #include "fang.h"

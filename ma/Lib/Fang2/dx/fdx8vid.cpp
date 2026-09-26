@@ -1635,7 +1635,7 @@ static void _Enumerate( void )
 		FASSERT( FANG_PLATFORM_XB==0 || FANG_PLATFORM_XB==1 );
 		for( bScanningFullscreen=FANG_PLATFORM_XB; bScanningFullscreen<2; bScanningFullscreen++ ) 
 		{
-			if( !bScanningFullscreen && !(DeviceCaps.Caps2 & D3DCAPS2_CANRENDERWINDOWED) ) 
+			if( FALSE && !bScanningFullscreen && !(DeviceCaps.Caps2 & D3DCAPS2_CANRENDERWINDOWED) ) 
 			{
 				// This adapter cannot render to a window, so don't enumerate window modes...
 				continue;

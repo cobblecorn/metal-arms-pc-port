@@ -178,7 +178,7 @@ FMesh_t *fdx8load_Create( FMesh_t *pLoadMesh, cchar *pszResName )
 				return NULL;
 			}
 
-			if ( pActualIB->Lock( 0, 0, &pData, 0 ) != D3D_OK )
+			if ( pActualIB->Lock( 0, 0, (void **)&pData, 0 ) != D3D_OK )
 			{
 				fres_ReleaseFrame( Frame );
 				return NULL;
@@ -209,7 +209,7 @@ FMesh_t *fdx8load_Create( FMesh_t *pLoadMesh, cchar *pszResName )
 				return NULL;
 			}
 
-			pSTBuffer->Lock( 0, 0, &pData, 0 );
+			pSTBuffer->Lock( 0, 0, (void **)&pData, 0 );
 			if ( !pData )
 			{
 				fres_ReleaseFrame( Frame );
@@ -235,7 +235,7 @@ FMesh_t *fdx8load_Create( FMesh_t *pLoadMesh, cchar *pszResName )
 				return NULL;
 			}
 
-			pBasisBuffer->Lock( 0, 0, &pData, 0 );
+			pBasisBuffer->Lock( 0, 0, (void **)&pData, 0 );
 			if ( !pData )
 			{
 				fres_ReleaseFrame( Frame );

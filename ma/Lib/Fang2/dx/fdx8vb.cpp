@@ -426,10 +426,10 @@ void *fdx8vb_Lock( FDX8VB_t *pVB, u32 nStartVtxIndex, u32 nVtxCount ) {
 	pVB->nLockBytes = nVtxBytes * nVtxCount;
 
 	if( !pVB->bDynamic ) {
-		pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, &pnLockedDestBuf, 0 );
+		pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, (void **)&pnLockedDestBuf, 0 );
 	} else {
 		#if FANG_PLATFORM_WIN
-			pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, &pnLockedDestBuf, nStartVtxIndex ? D3DLOCK_NOOVERWRITE : D3DLOCK_DISCARD );
+			pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, (void **)&pnLockedDestBuf, nStartVtxIndex ? D3DLOCK_NOOVERWRITE : D3DLOCK_DISCARD );
 		#else
 			pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, &pnLockedDestBuf, D3DLOCK_NOOVERWRITE );
 		#endif
@@ -637,7 +637,7 @@ static void _PostReset( void ) {
 
 			// Re-lock the VB...
 			if( pVB->bLocked ) {
-				pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, (BYTE **)&pVB->pLockBuf, D3DLOCK_NOOVERWRITE );
+				pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, (void **)&pVB->pLockBuf, D3DLOCK_NOOVERWRITE );
 			}
 		}
 	}

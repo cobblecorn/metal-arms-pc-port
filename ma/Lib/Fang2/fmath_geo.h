@@ -214,13 +214,7 @@ class CFSphere
 	public:
 		f32 m_fRadius;			// Radius of sphere
 
-		union 
-		{
-			struct 
-			{
-				CFVec3 m_Pos;	// Position of sphere
-			};
-		};
+		CFVec3 m_Pos;	// Position of sphere
 
 		CFSphere();
 		CFSphere( const CFVec3& rCenter, const f32 fRadius );
@@ -255,13 +249,7 @@ class CFSphere
 FCLASS_ALIGN_PREFIX class CFSphereA 
 {
 	public:
-		union 
-		{
-			struct 
-			{
-				CFVec3A m_Pos;	// Position of sphere
-			};
-		};
+		CFVec3A m_Pos;	// Position of sphere
 
 		f32 m_fRadius;			// Radius of sphere
 
@@ -382,6 +370,8 @@ public:
 
 	CFRect2D();
 	CFRect2D( const CFVec2 &UpperLeftVec, const CFVec2 &LowerRightVec );
+	CFRect2D( const CFRect2D &r ) : UpperLeft( r.UpperLeft ), LowerRight( r.LowerRight ) {}
+	CFRect2D &operator = ( const CFRect2D &r ) { UpperLeft = r.UpperLeft; LowerRight = r.LowerRight; return *this; }
 
 	CFRect2D &Zero( void );
 

@@ -2022,7 +2022,7 @@ FTexDef_t *ftex_CreateTexture( const FTexInfo_t *pTexInfo, const void *pSrcImage
 	{
 		D3DSURFACE_DESC Desc;
 		pTexData->pD3DTexture->GetLevelDesc( i, &Desc );
-		nAlloc += Desc.Size;
+		nAlloc += D3D8Compat_SurfaceSize( &Desc );
 	}
 
 	if ( Fheap_nTexPoolCount < FHEAP_TEX_MEM_TRACKERS_POOL_SIZE )

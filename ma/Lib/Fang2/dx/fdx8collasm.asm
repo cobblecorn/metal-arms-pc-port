@@ -239,7 +239,7 @@ fdx8collasm_SetSphereList PROC C pSrcMasterSphere:dword, pSrcSphereList:dword, n
 
 _ExpandSphereLoop:
 
-				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
 				movaps	[edi], xmm0
 
@@ -262,7 +262,7 @@ _ExpandMasterSphere:
 
 _ExpandMasterSphereLoop:
 
-				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
 				movaps	[edi], xmm0
 
@@ -802,9 +802,9 @@ fdx8collasm_CollideWithLineSeg PROC C pCollPacketArray:dword, nCollPacketCount:d
 				mov		ecx, (SIZE(_Vec3_s) / SIZE(dword))				; ecx = number of dwords in source pStartPoint to expand...
 				mov		esi, pStartPoint								; esi points to source vector
 				mov		edi, OFFSET _XStartPoint						; edi points to destination vector
-@@:				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+@@:				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
-				movaps	[edi], xmm0
+				movaps	xmmword ptr [edi], xmm0
 				add		esi, SIZE(dword)								; Point esi to next source dword
 				add		edi, (SIZE(dword) * 4)							; Point edi to next destination quad-dword
 				loop	@B												; Do it until done
@@ -816,9 +816,9 @@ fdx8collasm_CollideWithLineSeg PROC C pCollPacketArray:dword, nCollPacketCount:d
 				mov		ecx, (SIZE(_Vec3_s) / SIZE(dword))				; ecx = number of dwords in source pStartPoint to expand...
 				mov		esi, pEndPoint									; esi points to source vector
 				mov		edi, OFFSET _XEndPoint							; edi points to destination vector
-@@:				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+@@:				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
-				movaps	[edi], xmm0
+				movaps	xmmword ptr [edi], xmm0
 				add		esi, SIZE(dword)								; Point esi to next source dword
 				add		edi, (SIZE(dword) * 4)							; Point edi to next destination quad-dword
 				loop	@B												; Do it until done
@@ -830,9 +830,9 @@ fdx8collasm_CollideWithLineSeg PROC C pCollPacketArray:dword, nCollPacketCount:d
 				mov		ecx, (SIZE(_Vec3_s) / SIZE(dword))				; ecx = number of dwords in source pStartPoint to expand...
 				mov		esi, pUnitDir									; esi points to source vector
 				mov		edi, OFFSET _XUnitDir							; edi points to destination vector
-@@:				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+@@:				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
-				movaps	[edi], xmm0
+				movaps	xmmword ptr [edi], xmm0
 				add		esi, SIZE(dword)								; Point esi to next source dword
 				add		edi, (SIZE(dword) * 4)							; Point edi to next destination quad-dword
 				loop	@B												; Do it until done
@@ -1276,7 +1276,7 @@ fdx8collasm_BuildShadowReceiverList PROC C pCollPacketArray:dword, nCollPacketCo
 				mov		ecx, (SIZE(_Vec3_s) / SIZE(dword))				; ecx = number of dwords in source pStartPoint to expand...
 				mov		esi, pStartPoint								; esi points to source vector
 				mov		edi, OFFSET _XStartPoint						; edi points to destination vector
-@@:				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+@@:				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
 				movaps	[edi], xmm0
 				add		esi, SIZE(dword)								; Point esi to next source dword
@@ -1290,7 +1290,7 @@ fdx8collasm_BuildShadowReceiverList PROC C pCollPacketArray:dword, nCollPacketCo
 				mov		ecx, (SIZE(_Vec3_s) / SIZE(dword))				; ecx = number of dwords in source pStartPoint to expand...
 				mov		esi, pEndPoint									; esi points to source vector
 				mov		edi, OFFSET _XEndPoint							; edi points to destination vector
-@@:				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+@@:				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
 				movaps	[edi], xmm0
 				add		esi, SIZE(dword)								; Point esi to next source dword
@@ -1304,7 +1304,7 @@ fdx8collasm_BuildShadowReceiverList PROC C pCollPacketArray:dword, nCollPacketCo
 				mov		ecx, (SIZE(_Vec3_s) / SIZE(dword))				; ecx = number of dwords in source pStartPoint to expand...
 				mov		esi, pUnitDir									; esi points to source vector
 				mov		edi, OFFSET _XUnitDir							; edi points to destination vector
-@@:				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+@@:				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
 				movaps	[edi], xmm0
 				add		esi, SIZE(dword)								; Point esi to next source dword
@@ -1318,7 +1318,7 @@ fdx8collasm_BuildShadowReceiverList PROC C pCollPacketArray:dword, nCollPacketCo
 				mov		ecx, (SIZE(_Sphere_s) / SIZE(dword))			; ecx = number of dwords in sphere to expand
 				mov		esi, OFFSET _Sphere								; esi points to source master sphere (unless...)
 				mov		edi, OFFSET _XMasterSphere						; edi points to destination master sphere
-@@:				movlps	xmm0, [esi]										; Expand one dword into 4 copies...
+@@:				movlps	xmm0, qword ptr [esi]										; Expand one dword into 4 copies...
 				shufps	xmm0, xmm0, 00h
 				movaps	[edi], xmm0
 

@@ -20,7 +20,8 @@
 #include "fang.h"
 
 #if FANG_PLATFORM_WIN		 //pgm. If you need to include mfc files, it is best to do it nearest the top of the file if possible.
-	#include <Afxwin.h>
+	#include <windows.h>
+	#include <process.h>
 #else
 	#include <xtl.h>
 #endif
@@ -89,35 +90,38 @@ BOOL FLoop_bGamePaused;
 #if FANG_PLATFORM_WIN
 	#define _SETUP_LOOP_EXIT	( WM_USER + 300 )
 
-	class CGameThread : public CWinThread
+	// Port note: the original derived from MFC's CWinThread. This is a minimal Win32
+	// replacement with the same lifecycle: InitInstance() -> Run() -> ExitInstance(),
+	// a per-thread message queue for control messages, and auto-delete on exit.
+	class CGameThread
 	{
-		DECLARE_DYNCREATE(CGameThread)
-
 	public:
 		CGameThread();
-		virtual ~CGameThread();
+		~CGameThread();
+
+		BOOL CreateThread( void );
+		BOOL PostThreadMsg( UINT nMsg, WPARAM wParam, LPARAM lParam );	// (named to avoid the PostThreadMessage macro)
 
 	protected:
-		
-		afx_msg void OnSetupLoopExit( WPARAM wParam, LPARAM lParam );
-		DECLARE_MESSAGE_MAP()
-		
-		virtual BOOL InitInstance();
-		virtual int ExitInstance();
-		virtual int Run();
+		void OnSetupLoopExit( WPARAM wParam, LPARAM lParam );
+
+		BOOL InitInstance();
+		int ExitInstance();
+		int Run();
 
 		BOOL _ExecOneLoop( void );
+
+		static unsigned __stdcall _ThreadEntry( void *pArg );
+
+		HANDLE m_hThread;
+		HANDLE m_hReadyEvent;		// signaled once the thread's message queue exists
+		DWORD m_nThreadId;
+		BOOL m_bAutoDelete;
 
 #if _USE_BOXFILTER
 		FBoxFilterHandle_t m_fltFrameTime;
 #endif
 	};
-
-IMPLEMENT_DYNCREATE(CGameThread, CWinThread)
-
-BEGIN_MESSAGE_MAP(CGameThread, CWinThread)
-	ON_THREAD_MESSAGE( _SETUP_LOOP_EXIT, OnSetupLoopExit )
-END_MESSAGE_MAP()
 
 #endif// FANG_PLATFORM_WIN
 
@@ -471,7 +475,7 @@ void floop_UninstallGameloop( void ) {
 			// instead of just changing the state vars, post a message to do so,
 			// this will ensure that the thread is not somewhere inside of the 
 			// gameloop
-			_pGameloopThread->PostThreadMessage( _SETUP_LOOP_EXIT, 0, 0 );
+			_pGameloopThread->PostThreadMsg( _SETUP_LOOP_EXIT, 0, 0 );
 
 			while( _bGameThreadRunning ) {
 				// no need to poll too often
@@ -558,6 +562,9 @@ BOOL floop_SingleStepGameloop( void ) {
 // Constructor.
 CGameThread::CGameThread() {
 	m_bAutoDelete = TRUE;
+	m_hThread = NULL;
+	m_hReadyEvent = NULL;
+	m_nThreadId = 0;
 
 	#if _USE_BOXFILTER
 		m_fltFrameTime = fboxfilter_Create_f32(16);
@@ -566,6 +573,10 @@ CGameThread::CGameThread() {
 
 // Destructor.
 CGameThread::~CGameThread() {
+	if( m_hThread ) {
+		CloseHandle( m_hThread );
+		m_hThread = NULL;
+	}
 	#if _USE_BOXFILTER
 		fboxfilter_Delete_f32(m_fltFrameTime);
 	#endif
@@ -580,9 +591,17 @@ int CGameThread::Run() {
 		if( PeekMessage( &Msg, NULL, 0, 0, PM_NOREMOVE) ) {
 			// There is a message waiting...
 
-			if( !PumpMessage() ) {
-				// WM_QUIT...
+			GetMessage( &Msg, NULL, 0, 0 );
+
+			if( Msg.message == WM_QUIT ) {
 				break;
+			}
+
+			if( Msg.hwnd == NULL && Msg.message == _SETUP_LOOP_EXIT ) {
+				OnSetupLoopExit( Msg.wParam, Msg.lParam );
+			} else {
+				TranslateMessage( &Msg );
+				DispatchMessage( &Msg );
 			}
 		} else {
 			// No message waiting. Execute one game loop...
@@ -604,7 +623,7 @@ BOOL CGameThread::_ExecOneLoop( void ) {
 	CFTimer WaitTimer;
 
 	if( _bGameThreadLoopExited ) {
-		this->PostThreadMessage(WM_QUIT, 0, 0);
+		this->PostThreadMsg(WM_QUIT, 0, 0);
 		return FALSE;
 	}
 
@@ -762,11 +781,58 @@ BOOL CGameThread::_ExecOneLoop( void ) {
 	_bGameThreadStep = FALSE;
 
 	if( _bGameThreadLoopExited ) {
-		this->PostThreadMessage(WM_QUIT, 0, 0);
+		this->PostThreadMsg(WM_QUIT, 0, 0);
 		return FALSE;		
 	}
 
 	return TRUE;
+}
+
+unsigned __stdcall CGameThread::_ThreadEntry( void *pArg ) {
+	CGameThread *pThread = (CGameThread *)pArg;
+	MSG Msg;
+
+	// Touching the message API creates this thread's message queue, so that
+	// PostThreadMessage() from the parent can never fail for lack of a queue.
+	PeekMessage( &Msg, NULL, WM_USER, WM_USER, PM_NOREMOVE );
+	SetEvent( pThread->m_hReadyEvent );
+
+	int nExitCode = 0;
+	if( pThread->InitInstance() ) {
+		nExitCode = pThread->Run();
+	} else {
+		nExitCode = pThread->ExitInstance();
+	}
+
+	if( pThread->m_bAutoDelete ) {
+		delete pThread;
+	}
+
+	return (unsigned)nExitCode;
+}
+
+BOOL CGameThread::CreateThread( void ) {
+	m_hReadyEvent = CreateEvent( NULL, TRUE, FALSE, NULL );
+	if( m_hReadyEvent == NULL ) {
+		return FALSE;
+	}
+
+	m_hThread = (HANDLE)_beginthreadex( NULL, 0, _ThreadEntry, this, 0, (unsigned *)&m_nThreadId );
+	if( m_hThread == NULL ) {
+		CloseHandle( m_hReadyEvent );
+		m_hReadyEvent = NULL;
+		return FALSE;
+	}
+
+	WaitForSingleObject( m_hReadyEvent, INFINITE );
+	CloseHandle( m_hReadyEvent );
+	m_hReadyEvent = NULL;
+
+	return TRUE;
+}
+
+BOOL CGameThread::PostThreadMsg( UINT nMsg, WPARAM wParam, LPARAM lParam ) {
+	return PostThreadMessage( m_nThreadId, nMsg, wParam, lParam );
 }
 
 BOOL CGameThread::InitInstance() {
@@ -792,7 +858,7 @@ BOOL CGameThread::InitInstance() {
 int CGameThread::ExitInstance() {
 	_bGameThreadRunning = FALSE;
 
-	return CWinThread::ExitInstance();
+	return 0;
 }
 
 void CGameThread::OnSetupLoopExit( WPARAM wParam, LPARAM lParam ) {
