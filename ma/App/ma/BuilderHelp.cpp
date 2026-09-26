@@ -71,10 +71,18 @@ void BuilderHelp_InterpretTable(InterpretTableDataSpec *paItableDataSpec, u32 uN
 				{
 					if ( !fclib_stricmp( CEntityParser::m_pszTableName, paItableDataSpec[i].pszTag ) )
 					{	
-						cchar *pszValue;
-						CEntityParser::Interpret_String(&pszValue);
-
-						if(!fclib_stricmp(pszValue, "TRUE") || !fclib_stricmp(pszValue, "ON") || !fclib_stricmp(pszValue, "YES") || !fclib_stricmp(pszValue, "1"))
+						cchar *pszValue = NULL;
+						u32 nNumber;
+						if( !CEntityParser::Interpret_String(&pszValue) || !pszValue )
+						{
+							// Not a string (Interpret_String logs it): accept a number, or keep the default.
+							pszValue = NULL;
+							if( CEntityParser::Interpret_U32( &nNumber ) )
+							{
+								*(paItableDataSpec[i].data.pBool) = ( nNumber != 0 );
+							}
+						}
+						else if(!fclib_stricmp(pszValue, "TRUE") || !fclib_stricmp(pszValue, "ON") || !fclib_stricmp(pszValue, "YES") || !fclib_stricmp(pszValue, "1"))
 						{
 							*(paItableDataSpec[i].data.pBool) = TRUE;
 						}
@@ -94,10 +102,28 @@ void BuilderHelp_InterpretTable(InterpretTableDataSpec *paItableDataSpec, u32 uN
 				{
 					if ( !fclib_stricmp( CEntityParser::m_pszTableName, paItableDataSpec[i].pszTag ) )
 					{
-						cchar *pszValue;
+						cchar *pszValue = NULL;
 						BOOL bValidEnum = FALSE;
-						CEntityParser::Interpret_String(&pszValue);
 						FASSERT(paItableDataSpec[i].uNumEnumTags > 0);
+						if( !CEntityParser::Interpret_String(&pszValue) || !pszValue )
+						{
+							// Not a string (Interpret_String logs it): accept a number naming one of the
+							// enum's values, or keep the default.
+							u32 nNumber;
+							if( CEntityParser::Interpret_U32( &nNumber ) )
+							{
+								for (j = 0; j < (u32)(paItableDataSpec[i].uNumEnumTags-1) && !bValidEnum; j++)
+								{
+									if( (u32)paItableDataSpec[i].paBuilderHelp_EnumTagSpec[j].nValue == nNumber )
+									{
+										*(paItableDataSpec[i].data.pEnum) = paItableDataSpec[i].paBuilderHelp_EnumTagSpec[j].nValue;
+										bValidEnum = TRUE;
+									}
+								}
+							}
+							bDidInterpret = TRUE;
+							break;
+						}
 						for (j = 0; j < (u32)(paItableDataSpec[i].uNumEnumTags-1) && !bValidEnum; j++)
 						{
 							if(!fclib_stricmp(pszValue, paItableDataSpec[i].paBuilderHelp_EnumTagSpec[j].pszEnumTag))

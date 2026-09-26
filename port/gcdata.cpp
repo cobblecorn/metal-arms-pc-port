@@ -2,6 +2,7 @@
 
 #include "fdata.h"
 #include "fanim.h"
+#include "fcamanim.h"
 #include "fparticle.h"
 #include "fres.h"
 #include "fvis.h"
@@ -402,6 +403,46 @@ static BOOL _ConvertSfb( void *pData, u32 nBytes, cchar *pszResName )
 			((FData_SFxBank_PlayCmd_t *)(pBytes + (u32)paCmds[j].pCmdData))->ChangeEndian();
 		}
 	}
+	return TRUE;
+}
+
+// Camera animations (.cam): an FCamAnim_t header, then key times, per-channel time indexes and the
+// FOV, translation and orientation keys, all big-endian with file-relative offsets (fcamanim turns
+// the offsets into pointers). Every array and time index is checked before anything is swapped.
+static BOOL _ConvertCam( void *pData, u32 nBytes, cchar *pszResName )
+{
+	FASSERT( sizeof(FCamAnim_t) == 64 && sizeof(FCamAnimTKey_t) == 12 && sizeof(FCamAnimOKey_t) == 16 );
+	u8 *pBytes = (u8 *)pData;
+	if( !pData || nBytes < sizeof(FCamAnim_t) ) return FALSE;
+
+	const u32 nFKeys = _ReadBE16( pBytes + 26 ), nTKeys = _ReadBE16( pBytes + 28 ), nOKeys = _ReadBE16( pBytes + 30 );
+	const u32 nKeyTimes = _ReadBE16( pBytes + 32 );
+	u32 anOffset[7];
+	for( u32 i = 0; i < 7; i++ ) anOffset[i] = _ReadBE32( pBytes + 36 + i * 4 );
+	const u32 anCount[7] = { nKeyTimes, nFKeys, nTKeys, nOKeys, nFKeys, nTKeys, nOKeys };
+	const u32 anStride[7] = { sizeof(FCamAnimKeyTime_t), sizeof(FCamAnimKeyTimeIdx_t), sizeof(FCamAnimKeyTimeIdx_t),
+		sizeof(FCamAnimKeyTimeIdx_t), sizeof(FCamAnimFKey_t), sizeof(FCamAnimTKey_t), sizeof(FCamAnimOKey_t) };
+	BOOL bValid = nFKeys && nTKeys && nOKeys && nKeyTimes;
+	for( u32 i = 0; bValid && i < 7; i++ )
+	{
+		bValid = _IsArrayRangeValid( anOffset[i], anCount[i], anStride[i], nBytes ) && ( anOffset[i] & (i == 6 ? 15 : 1) ) == 0;
+	}
+	for( u32 i = 1; bValid && i <= 3; i++ )
+	{
+		for( u32 j = 0; bValid && j < anCount[i]; j++ ) bValid = _ReadBE16( pBytes + anOffset[i] + j * 2 ) < nKeyTimes;
+	}
+	if( !bValid )
+	{
+		DEVPRINTF( "gcdata: '%s' is not a GameCube camera animation this port understands.\n", pszResName ? pszResName : "(unnamed)" );
+		return FALSE;
+	}
+
+	((FCamAnim_t *)pBytes)->ChangeEndian();
+	_ConvertBE32Array( pBytes + anOffset[0], nKeyTimes );
+	for( u32 i = 1; i <= 3; i++ ) _ConvertBE16Array( pBytes + anOffset[i], anCount[i] );
+	_ConvertBE32Array( pBytes + anOffset[4], nFKeys );
+	_ConvertBE32Array( pBytes + anOffset[5], nTKeys * 3 );
+	_ConvertBE32Array( pBytes + anOffset[6], nOKeys * 4 );
 	return TRUE;
 }
 
@@ -1067,6 +1108,10 @@ BOOL gcdata_Convert( cchar *pszExtension, cchar *pszResName, void *pData, u32 nB
 	else if( pszExtension && strcmp( pszExtension, "sfb" ) == 0 )
 	{
 		if( !_ConvertSfb( pData, nBytes, pszResName ) ) return FALSE;
+	}
+	else if( pszExtension && strcmp( pszExtension, "cam" ) == 0 )
+	{
+		if( !_ConvertCam( pData, nBytes, pszResName ) ) return FALSE;
 	}
 #else
 	pszExtension; pszResName; pData; nBytes;
