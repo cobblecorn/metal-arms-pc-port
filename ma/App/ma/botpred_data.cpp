@@ -373,9 +373,10 @@ const u8 CBotPred::m_aBoneEnableIndices_UserAnim_LeftArm[] = {
 	BONE_ARM_UPPER_L1,		
 	BONE_ARM_LOWER_L1,		
 	BONE_GUN_L1,				
-	BONE_GUN_BARREL_L1,		
+	BONE_GUN_BARREL_L1,
 
-	BONE_PRIMARY_FIRE_2,		
+	BONE_PRIMARY_FIRE_2,
+	255		// Bone-mask lists end with 255; without it the reader ran into the next table
 };
 
 

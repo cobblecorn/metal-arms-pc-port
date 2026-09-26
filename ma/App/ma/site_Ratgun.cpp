@@ -309,10 +309,12 @@ const u8 CRatGun::m_aBoneEnableIndices_FullBody[] =
 	BONE_ATTACHPOINT_GUNNER,
 	BONE_BALLTURRETRIBS,
 	BONE_SHELL_EJECT,
+	255		// Bone-mask lists end with 255; without it the reader ran into the next table
 };
-const u8 CRatGun::m_aBoneEnableIndices_OpenClose[] = 
+const u8 CRatGun::m_aBoneEnableIndices_OpenClose[] =
 {
 	BONE_BALLTURRETRIBS,
+	255
 };
 const u8 CRatGun::m_anTagPointBoneNameIndexArray[TAG_POINT_COUNT] =
 {

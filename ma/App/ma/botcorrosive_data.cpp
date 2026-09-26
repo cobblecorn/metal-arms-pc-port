@@ -479,6 +479,7 @@ const u8 CBotCorrosive::m_anEnableBoneNameIndexTableForSummer_Normal[] = {
 	BONE_CHEST_DOORE,
 	//BONE_PRIMARY_FIRE,
 	BONE_WAISTD,
+	255		// Bone-mask lists end with 255; without it the reader ran into the next table
 };
 
 

@@ -1267,6 +1267,7 @@ const u8 CBotGlitch::m_aBoneEnableIndices_TapFire1_Lower[] = {
 	BONE_LEFT_TOE,
 	BONE_LEFT_FOOT_BACK,
 	BONE_LEFT_HEEL,
+	255		// Bone-mask lists end with 255; without it the reader ran into the next table
 };
 
 
