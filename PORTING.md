@@ -76,22 +76,27 @@ originals are left in place. In-level checkpoints are memory-only, as on the con
 | F1 | Turn automatic mouse look off (free cursor) / back on |
 | Mouse / arrow keys | Look / turn |
 | Space | Jump |
-| E | Weapons menu (observed in current run; adapter intends action) |
+| E | Action (traced in source; one run was reported to open the weapons menu, see below) |
 | F | Melee |
 | Left / right mouse button | Primary / secondary fire (requires a supported weapon) |
-| Q | Throwables menu (observed in current run) |
-| R | Adapter maps secondary selection; active menu mapping needs reconciliation |
+| Q | Hold for the primary weapons list (traced; one run was reported to open throwables) |
+| R | Hold for the secondary (throwables) list (traced) |
 | 1 / 2 / 3 / 4 | Quick-select up / right / down / left |
 | Escape / Enter | Pause; Escape also releases the mouse |
 | Alt-Tab | Releases the mouse; moving it over the game again recaptures it |
 | Alt-F4 | Close the game |
 
 The user confirmed responsive mouse look and reported that some weapons appear to work.
-The observed Q/E menus differ from the adapter/default action table; keep this discrepancy
-open until the active input path is traced. With a throwable equipped and ammo available,
-right mouse maps to secondary fire and starts the throw. The HUD selection code accepts W/S
-to scroll while a selection menu is held open; releasing the menu button equips the selection.
-Throwable behavior has not yet been confirmed interactively.
+Traced in source (keys → Fang pad inputs in `port/pc_input.cpp` → the single `MAIN1` control map
+in `gamepad.cpp`, used for both the Xbox and GameCube layouts → `Hud2.cpp`): Space → `CROSS_BOTTOM` →
+jump; E → `CROSS_TOP` → action; Q → `CROSS_RIGHT` → select primary (the HUD opens hand 0, weapons);
+R → `CROSS_LEFT` → select secondary (hand 1, throwables); F → GameCube Z → melee. No other control map is
+compiled (`Main2`-`Main4` are commented out and `player.cpp` clamps the profile's controller config to
+`MAIN1`). An earlier run was reported as Q = throwables and E = weapons, which this trace can't explain:
+please re-check by holding Q, then R, then E, and note which list appears. With a throwable equipped
+and ammo available, right mouse maps to secondary fire and starts the throw. The HUD selection code
+accepts W/S to scroll while a selection menu is held open; releasing the menu button equips the
+selection. Throwable behavior has not yet been confirmed interactively.
 
 Mouse look uses raw relative motion, applied as angular displacement without the controller's
 acceleration curve or turn-speed cap. `-mouse-sensitivity 0.1` is the default, in degrees per
@@ -111,7 +116,7 @@ and controller 1 on port 1 and controllers 2-4 on ports 2-4. `-input-layout sepa
 keyboard/mouse alone on port 1 and puts controllers 1-3 on ports 2-4, so a keyboard player and pad
 players are separate players (local co-op). `MA_PORT_INPUT_LAYOUT` is the environment equivalent.
 The adapter intends A for jump, Y for action, B/X for weapon selection, triggers for fire,
-and RB/right-stick click for melee. Menu-button behavior needs the reconciliation noted above. Controller mapping has automated coverage; physical controller
+and RB/right-stick click for melee (the same control map as the keys above). Controller mapping has automated coverage; physical controller
 behavior and rumble still need verification. Legacy DirectInput-only pads are not supported by
 the new desktop adapter.
 

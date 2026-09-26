@@ -118,7 +118,9 @@ Changed from a cloud session, **not yet verified in a run** (details and checks 
 3. `CFQuatTang3::Calculate` NaN (scripted carts in `WEDTtown_01`, `wessstatn02`): a zero XZ tangent is
    unitized. Check the path tangent input.
 4. User confirmations pending: chase-level AI driver (probably fixed by the XZ math fix), RAT controls,
-   vehicle reticle, dialog balance, throwables, the Q/E menu mapping vs the adapter's intent.
+   vehicle reticle, dialog balance, throwables. Keys: the source traces to Q = weapons list,
+   R = throwables list, E = action (`PORTING.md` controls); an earlier run was reported as
+   Q = throwables, E = weapons, so hold each once and note what opens.
 5. Mouse-driven menus: follow `docs/mouse-menus-design.md` (clickable button prompts first).
 6. Remaining black scenery surfaces.
 7. Failed-load teardown beyond what `CLOUD_SESSION_LOG.md` entries 5 and 10 cover: systems

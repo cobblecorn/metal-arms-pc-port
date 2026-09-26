@@ -248,3 +248,16 @@ the calls do what `game_UnloadLevel()` already did at that point.
 
 **Checked.** Syntax check. **Verify in a run:** a level that fails inside `level_Load()` (a missing or
 unconvertible world, or a failing level load function) exits cleanly.
+
+## 11. Keyboard mapping traced (`PORTING.md` controls; no code changes)
+
+The notes said Q opened throwables and E opened weapons, contrary to the adapter's intent, and asked
+for the active path to be traced before changing keys. Traced in source:
+`port/pc_input.cpp` key → Fang pad input → `gamepad.cpp` `_aaInputMap_Main1` (the only map compiled;
+`player.cpp` clamps the profile's controller config to it; the Xbox and GameCube columns agree on face
+buttons) → `Hud2.cpp` (`SELECT_PRIMARY` → `JINPUT_WSRIGHT` → `auActivateButton[0]`, hand 0).
+
+Result: Space = jump, E = action, Q = primary (weapons) list, R = secondary (throwables) list,
+F = melee (GameCube Z). The XInput path uses the same map by Xbox positions. Nothing found explains the
+reported Q/E behaviour, so `PORTING.md` now lists the traced mapping and asks for a quick re-check
+rather than changing keys.
