@@ -455,8 +455,15 @@ extern const void *fgamedata_GetPtrToFieldData( FGameDataTableHandle_t hTableHan
 
 // Call this function to retrive a particular field from a table.
 // Returns TRUE if pDest was updated ok, FALSE if there was a problem (there are many DEVPRINTFs that report all errors)
-extern BOOL fgamedata_GetFieldFromTable( FGameDataTableHandle_t hTableHandle, u32 nFieldIndex, 
+extern BOOL fgamedata_GetFieldFromTable( FGameDataTableHandle_t hTableHandle, u32 nFieldIndex,
 										 const FGameData_TableEntry_t *pTableEntry, void *pDest );
+
+// Fills pDest like fgamedata_GetTableData(), but reads vocabulary entry i from table field
+// panFieldIndex[i]. Entries mapped to -1 are skipped and their destination bytes are left
+// unchanged. For newer data tables whose fields were inserted or removed relative to the
+// vocabulary. The map must have one index per entry and the entries must fill nNumDestBytes.
+extern BOOL fgamedata_GetTableDataRemapped( FGameDataTableHandle_t hTableHandle, const FGameData_TableEntry_t *paTableEntries,
+											const s8 *panFieldIndex, u32 nFieldIndexCount, void *pDest, u32 nNumDestBytes );
 
 // Call this function to obtain a const ptr to a field's data.  rnDataType will be filled in 
 // with the field's FGameData_VarType_e so the caller will know how to cast the returned ptr.

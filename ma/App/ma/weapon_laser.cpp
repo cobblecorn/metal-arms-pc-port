@@ -359,20 +359,8 @@ BOOL CWeaponLaser::_ReadRetailProperties( void ) {
 		}
 
 		_UserProps_t *pProps = &m_aUserProps[nLevel];
-		u8 *pDest = (u8 *)pProps;
-		u32 nOffset = 0, nEntry = 0;
-		for( ; bOK && m_aUserPropVocab[nEntry].GetDataType() != FGAMEDATA_VAR_TYPE_COUNT; ++nEntry ) {
-			const FGameData_TableEntry_t *pEntry = &m_aUserPropVocab[nEntry];
-			if( nEntry >= sizeof(anRetailField) / sizeof(anRetailField[0]) || nOffset + pEntry->nBytesForData > sizeof(_UserProps_t) ) {
-				bOK = FALSE;
-				break;
-			}
-			if( anRetailField[nEntry] >= 0 ) {
-				bOK = fgamedata_GetFieldFromTable( hTable, anRetailField[nEntry], pEntry, pDest + nOffset );
-			}
-			nOffset += pEntry->nBytesForData;
-		}
-		if( !bOK || nEntry != sizeof(anRetailField) / sizeof(anRetailField[0]) || nOffset != sizeof(_UserProps_t) ) {
+		if( !fgamedata_GetTableDataRemapped( hTable, m_aUserPropVocab, anRetailField, sizeof(anRetailField) / sizeof(anRetailField[0]),
+											 pProps, sizeof(_UserProps_t) ) ) {
 			bOK = FALSE;
 			break;
 		}

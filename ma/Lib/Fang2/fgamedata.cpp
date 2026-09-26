@@ -499,7 +499,31 @@ const void *fgamedata_GetPtrToFieldData( FGameDataTableHandle_t hTableHandle, u3
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-BOOL fgamedata_GetFieldFromTable( FGameDataTableHandle_t hTableHandle, u32 nFieldIndex, 
+BOOL fgamedata_GetTableDataRemapped( FGameDataTableHandle_t hTableHandle, const FGameData_TableEntry_t *paTableEntries,
+									 const s8 *panFieldIndex, u32 nFieldIndexCount, void *pDest, u32 nNumDestBytes ) {
+	u8 *pnDest = (u8 *)pDest;
+	u32 i, nOffset = 0;
+
+	for( i=0; paTableEntries[i].GetDataType() != FGAMEDATA_VAR_TYPE_COUNT; ++i ) {
+		if( i >= nFieldIndexCount || nOffset + paTableEntries[i].nBytesForData > nNumDestBytes ) {
+			DEVPRINTF( "fgamedata_GetTableDataRemapped(): The field map does not match the vocabulary at entry %d.\n", i );
+			return FALSE;
+		}
+		if( panFieldIndex[i] >= 0 && !fgamedata_GetFieldFromTable( hTableHandle, panFieldIndex[i], &paTableEntries[i], pnDest + nOffset ) ) {
+			return FALSE;
+		}
+		nOffset += paTableEntries[i].nBytesForData;
+	}
+
+	if( i != nFieldIndexCount || nOffset != nNumDestBytes ) {
+		DEVPRINTF( "fgamedata_GetTableDataRemapped(): The field map (%d entries) or destination (%d bytes) does not match the vocabulary (%d entries, %d bytes).\n", nFieldIndexCount, nNumDestBytes, i, nOffset );
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+BOOL fgamedata_GetFieldFromTable( FGameDataTableHandle_t hTableHandle, u32 nFieldIndex,
 								  const FGameData_TableEntry_t *pTableEntry, void *pDest ) {
 	FDataGamFile_Table_t *pTable = _TH_2_TP( hTableHandle );
 		
