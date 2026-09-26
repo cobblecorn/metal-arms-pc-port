@@ -29,6 +29,7 @@
 #include "fvis.h"
 #include "fheap.h"
 #include "ftimer.h"
+#include "gcdata.h"
 
 
 #if FANG_PLATFORM_PS2 || FANG_PLATFORM_GC
@@ -853,6 +854,12 @@ static void *_LoadResourceFromFile( cchar *pszPathName, const FResLoadReg_t *pRe
 	// Close the file...
 	ffile_Close( hFile );
 	hFile = -1;
+
+	// Convert GameCube byte order before platform resource handlers inspect data.
+	if( !gcdata_Convert( pRegistration->pszFileExtension, pszResName, pLoadedData, (u32)nFileBytes ) ) {
+		_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_DATA_ERROR );
+		goto _LoadResourceExitWithError;
+	}
 
 	// Call handler...
 	if( pRegistration->pFcnCreate ) {

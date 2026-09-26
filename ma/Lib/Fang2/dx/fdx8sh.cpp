@@ -322,7 +322,7 @@ static CFColorMotif _Default_GReg_Motif11;	// Default register value for global 
 static BOOL _bVBChanged=FALSE;
 
 //Pixel Shader Info
-u32 _nNumPixelShaders=64;
+u32 _nNumPixelShaders=(u32)(sizeof(_apPShaderFunc) / sizeof(_apPShaderFunc[0]) - 1);
 u32 _anPShader_Handle[136];
 //Vertex Shader Info.
 u32 _nNumVertexShaders=76;

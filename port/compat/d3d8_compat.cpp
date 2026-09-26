@@ -76,9 +76,8 @@ static BOOL _VsdTypeInfo( DWORD nVsdType, BYTE *pnDeclType, UINT *pnBytes )
 	return FALSE;
 }
 
-static HRESULT _CreateDeclFromD3D8Tokens( IDirect3DDevice9 *pDev, const DWORD *pTokens, IDirect3DVertexDeclaration9 **ppDecl )
+static HRESULT _TranslateD3D8Decl( const DWORD *pTokens, D3DVERTEXELEMENT9 *aElem, BYTE *aInputReg, UINT *pnElem )
 {
-	D3DVERTEXELEMENT9 aElem[MAXD3DDECLLENGTH + 1];
 	UINT nElem = 0;
 	WORD nStream = 0;
 	UINT nOffset = 0;
@@ -117,13 +116,15 @@ static HRESULT _CreateDeclFromD3D8Tokens( IDirect3DDevice9 *pDev, const DWORD *p
 					return D3DERR_INVALIDCALL;
 				}
 
-				D3DVERTEXELEMENT9 &e = aElem[nElem++];
+				D3DVERTEXELEMENT9 &e = aElem[nElem];
 				e.Stream = nStream;
 				e.Offset = (WORD)nOffset;
 				e.Type = nDeclType;
 				e.Method = D3DDECLMETHOD_DEFAULT;
 				e.Usage = nUsage;
 				e.UsageIndex = nUsageIndex;
+				aInputReg[nElem] = (BYTE)nReg;
+				nElem++;
 				nOffset += nBytes;
 			}
 			break;
@@ -138,9 +139,8 @@ static HRESULT _CreateDeclFromD3D8Tokens( IDirect3DDevice9 *pDev, const DWORD *p
 		}
 	}
 
-	D3DVERTEXELEMENT9 end = D3DDECL_END();
-	aElem[nElem] = end;
-	return pDev->CreateVertexDeclaration( aElem, ppDecl );
+	*pnElem = nElem;
+	return D3D_OK;
 }
 
 // ===========================================================================
@@ -368,25 +368,69 @@ HRESULT IDirect3DDevice8::SetTextureStageState( DWORD nStage, DWORD nType, DWORD
 
 HRESULT IDirect3DDevice8::CreateVertexShader( CONST DWORD *pDecl, CONST DWORD *pFunc, DWORD *pHandle, DWORD /*nUsage*/ )
 {
+	D3DVERTEXELEMENT9 aElem[MAXD3DDECLLENGTH + 1];
+	BYTE aInputReg[MAXD3DDECLLENGTH];
+	UINT nElem = 0;
 	IDirect3DVertexDeclaration9 *pVDecl = NULL;
 	IDirect3DVertexShader9 *pVS = NULL;
 
-	HRESULT hr = _CreateDeclFromD3D8Tokens( m_pDev, pDecl, &pVDecl );
+	HRESULT hr = _TranslateD3D8Decl( pDecl, aElem, aInputReg, &nElem );
 	if( FAILED( hr ) )
 	{
 		_CompatLog( "d3d8compat: vertex declaration translation/creation failed (hr=0x%08x)\n", (unsigned)hr );
 		return hr;
 	}
+	D3DVERTEXELEMENT9 End = D3DDECL_END();
+	aElem[nElem] = End;
+	hr = m_pDev->CreateVertexDeclaration( aElem, &pVDecl );
+	if( FAILED( hr ) )
+	{
+		_CompatLog( "d3d8compat: vertex declaration creation failed (hr=0x%08x)\n", (unsigned)hr );
+		return hr;
+	}
 
 	if( pFunc )
 	{
-		hr = m_pDev->CreateVertexShader( pFunc, &pVS );
+		// D3D8 attached input semantics to the shader at CreateVertexShader time.
+		// D3D9 needs equivalent dcl_usage tokens inside the vs_1_x function stream.
+		const DWORD *pEnd = pFunc + 1;
+		UINT nCodeWords = 1;
+		while( nCodeWords < 65536 && *pEnd != 0x0000ffffu )
+		{
+			pEnd++;
+			nCodeWords++;
+		}
+		if( nCodeWords >= 65536 )
+		{
+			pVDecl->Release();
+			return D3DERR_INVALIDCALL;
+		}
+		++nCodeWords; // include D3DSIO_END
+
+		DWORD *pD3D9Func = (DWORD *)malloc( (nCodeWords + nElem * 3) * sizeof(DWORD) );
+		if( !pD3D9Func )
+		{
+			pVDecl->Release();
+			return E_OUTOFMEMORY;
+		}
+		UINT nOut = 0;
+		pD3D9Func[nOut++] = pFunc[0];
+		for( UINT i=0; i<nElem; i++ )
+		{
+			pD3D9Func[nOut++] = 31u; // D3DSIO_DCL
+			pD3D9Func[nOut++] = 0x80000000u | ((DWORD)aElem[i].Usage << 16) | (DWORD)aElem[i].UsageIndex;
+			pD3D9Func[nOut++] = 0x900f0000u | (DWORD)aInputReg[i]; // D3DSPR_INPUT, xyzw
+		}
+		memcpy( pD3D9Func + nOut, pFunc + 1, (nCodeWords - 1) * sizeof(DWORD) );
+		hr = m_pDev->CreateVertexShader( pD3D9Func, &pVS );
 		if( FAILED( hr ) )
 		{
 			_CompatLog( "d3d8compat: CreateVertexShader failed (hr=0x%08x, version token 0x%08x)\n", (unsigned)hr, (unsigned)pFunc[0] );
+			free( pD3D9Func );
 			pVDecl->Release();
 			return hr;
 		}
+		free( pD3D9Func );
 	}
 
 	if( m_nVShaderCount == m_nVShaderCap )
@@ -446,6 +490,7 @@ HRESULT IDirect3DDevice8::SetVertexShaderConstant( DWORD nReg, CONST void *pData
 
 HRESULT IDirect3DDevice8::CreatePixelShader( CONST DWORD *pFunc, DWORD *pHandle )
 {
+	if( !pFunc || !pHandle ) return D3DERR_INVALIDCALL;
 	IDirect3DPixelShader9 *pPS = NULL;
 	HRESULT hr = m_pDev->CreatePixelShader( pFunc, &pPS );
 	if( FAILED( hr ) )

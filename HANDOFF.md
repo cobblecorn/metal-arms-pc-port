@@ -168,3 +168,46 @@ before the handler runs: `gcdata_Convert(resType, buf, nBytes)`. Per type:
 - The harness collapses backslash escapes in tool inputs: a Python string `"\n"` became a real newline inside C literals. For C string edits use the
   Edit tool, or build backslashes with `chr(92)`. Python `open(p,"w")` on Windows writes CRLF; read/write with `newline=""` to control it.
 - Editing CRLF files with the Edit tool can leave mixed endings: normalize afterwards (read bytes, `\r\n`->`\n`->`\r\n`).
+
+## 9. ADDENDUM (session 2, 2026-09-26)
+
+Work is still on local branch `x86-port`. This session advanced startup through master-file reading,
+texture creation, CSV table loading, and sound-group setup. The current blocking point is the first
+GC mesh (`gpdmwpnunkn.ape`): `fdx8mesh.cpp` passes its GC-format payload to `fdx8load_Create`, which
+expects an `FDX8Mesh_t` and crashes while reading `pMeshIS`.
+
+**Changes made in this session:**
+- `port/compat/d3d8_compat.cpp` synthesizes D3D9 `dcl` tokens from D3D8 vertex declarations so
+  shader inputs validate. `fdx8sh.cpp` derives the pixel-shader count from the table sentinel,
+  avoiding the out-of-range NULL shader entry.
+- `port/main_win.cpp` initializes Fang's asset log (`ma_port_asset_log.txt`) and leaves audio
+  installation disabled until the GC audio path exists.
+- `fdx8padio.cpp` skips controller-emulation matching if its optional device name or map is absent.
+- `port/gcdata.cpp` converts GameCube CSV tables, validates their offset tables, byte-swaps wide
+  strings, and decodes GX tiled TGA data to linear ARGB for D3D. `fgamedata_LoadFileToFMem` calls
+  the CSV converter too because several tables (including `sounds.csv`) bypass `fresload`.
+- `fdx8tex.cpp` routes WINGC texture loads through that decoder.
+
+**Verified run result:**
+- `ma_port` builds successfully as Win32 Debug and opens a responsive window on the RTX 5070 Ti.
+- The retail `.mst` is accepted. `tfh2hudall1.tga` and `tfp1smoke01.tga` decode and create D3D
+  textures. Sound and damage CSV tables load, and the engine builds 355 sound groups.
+- Boot then crashes at `fdx8load_Create` for `gpdmwpnunkn.ape`. This is the next port milestone:
+  adapt the GC mesh representation and display lists to the DX mesh/VB/IB representation. Useful
+  references are `gc/fGCload.cpp`, `gc/fGCmesh.h`, `gc/fGCdisplaylist.cpp`, `dx/fdx8load.cpp`,
+  and `dx/fdx8mesh.cpp`.
+- `.fpr` particle files still fail the current source-version check. Audio remains disabled.
+
+Temporary boot/input trace prints were removed after finding the blockers. `PORTING.md` reflects
+the current status. In PowerShell, rebuild and launch with:
+
+```powershell
+cmake --build build --config Debug --target ma_port -- /nologo /verbosity:minimal
+build/Debug/ma_port.exe -log build/logs/run.log
+```
+
+**Git remote search:** the checkout has no configured remote or upstream. The authenticated
+`cobblecorn` GitHub account has no matching Metal Arms repository/fork. Do not add an unrelated
+public project or push: this is a private source/data port and the earlier handoff explicitly says
+never to push. Continue with local commits on `x86-port`; ask the user for the intended fork URL if
+they want remote synchronization.

@@ -312,6 +312,12 @@ int main( int argc, char **argv )
 		_Log( "Fang engine failed to start.\n" );
 		return 1;
 	}
+	if( !ffile_LogSetFilename( "ma_port_asset_log.txt" ) )
+	{
+		_Log( "Could not create the Fang resource log.\n" );
+		fang_Shutdown();
+		return 1;
+	}
 
 	//////////////////////////////////////////////////////////////////////
 	// Game loop parameters
@@ -334,7 +340,7 @@ int main( int argc, char **argv )
 	_GameInitParms.pszMemCardDir = NULL;
 	_GameInitParms.pauInputEmulationMap = NULL;
 	_GameInitParms.pszInputEmulationDevName = NULL;
-	_GameInitParms.bInstallAudio = TRUE;
+	_GameInitParms.bInstallAudio = FALSE;
 	_GameInitParms.bGovernFrameRate = FALSE;
 	_GameInitParms.bDemoLaunched = FALSE;
 	_GameInitParms.uTimeoutInterval = 0;

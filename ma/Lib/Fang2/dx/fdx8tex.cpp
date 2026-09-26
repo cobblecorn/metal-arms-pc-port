@@ -18,6 +18,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "fang.h"
+#include "gcdata.h"
 
 #include "fdx8tex.h"
 #include "fdx8vid.h"
@@ -3353,13 +3354,32 @@ static BOOL _ResLoadCreate( FResHandle_t hRes, void *pLoadedBase, u32 nLoadedByt
 
 	FASSERT( _bWindowCreated );
 
+	FASSERT( strlen( pszResName ) <= FDATA_TEXNAME_LEN );
+#if FANG_PLATFORM_WIN && FANG_WINGC
+	FTexInfo_t oDecodedTexInfo;
+	void *pDecodedImage = NULL;
+	u32 nDecodedImageBytes = 0;
+	FMemFrame_t hDecodeFrame = fmem_GetFrame();
+	if( !gcdata_DecodeTga( pLoadedBase, nLoadedBytes, &oDecodedTexInfo, &pDecodedImage, &nDecodedImageBytes ) )
+	{
+		fmem_ReleaseFrame( hDecodeFrame );
+		return FALSE;
+	}
+	fclib_strcpy( oDecodedTexInfo.szName, pszResName );
+	static u32 nLoggedDecodedTextures = 0;
+	if( nLoggedDecodedTextures < 8 )
+	{
+		DEVPRINTF( "gcdata: decoded GameCube texture '%s' (%u bytes to %u bytes).\n", pszResName, nLoadedBytes, nDecodedImageBytes );
+		++nLoggedDecodedTextures;
+	}
+	pTexDef = ftex_CreateTexture( &oDecodedTexInfo, pDecodedImage, NULL, hRes );
+	fmem_ReleaseFrame( hDecodeFrame );
+#else
 	pTexInfo = (FTexInfo_t *)pLoadedBase;
 	pSrcImage = (u8 *)pLoadedBase + FMATH_BYTE_ALIGN_UP( sizeof(FTexInfo_t), 128 );
-
-	FASSERT( strlen( pszResName ) <= FDATA_TEXNAME_LEN );
 	strcpy( pTexInfo->szName, pszResName );
-
 	pTexDef = ftex_CreateTexture( pTexInfo, pSrcImage, NULL, hRes );
+#endif
 	if( pTexDef == NULL ) 
 	{
 		// Texture could not be created...

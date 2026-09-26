@@ -42,6 +42,7 @@ function(ma_common_settings tgt)
     )
     target_include_directories(${tgt} PRIVATE
         ${CMAKE_SOURCE_DIR}/port/compat            # d3d8/d3dx8 shims (D3D9 backend)
+        ${CMAKE_SOURCE_DIR}/port
         ${MA_ROOT}/Lib/SmallAMX
         ${MA_ROOT}/Lib/Fang2
         ${MA_ROOT}/Lib/Fang2/dx
@@ -78,7 +79,7 @@ add_custom_command(
     VERBATIM)
 add_custom_target(ma_shaders DEPENDS ${MA_SHADER_DIR}/shaders.stamp)
 
-add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp)
+add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcdata.cpp)
 add_dependencies(fang2 ma_shaders)
 ma_common_settings(fang2)
 target_link_libraries(fang2 PUBLIC smallamx)

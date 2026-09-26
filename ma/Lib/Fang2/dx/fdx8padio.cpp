@@ -535,6 +535,9 @@ FPadio_Error_e fpadio_Install( const FPadio_Init_t *poInit /* = NULL */ )
 	{
 		if( ( _aoDevices[ uIndex ].bAcquired ) &&
 			( FPADIO_INPUT_EMULATION_PLATFORM_NONE != poInit->DX8ONLY_uInputEmulationPlatform ) &&
+			poInit->DX8ONLY_pauInputEmulationMap &&
+			poInit->DX8ONLY_pszInputEmulationDevName &&
+			*( poInit->DX8ONLY_pszInputEmulationDevName ) &&
 			( strstr( _aoDevices[ uIndex ].oInfo.szName, (char *)poInit->DX8ONLY_pszInputEmulationDevName ) ) )
 		{
 			FASSERT_MSG( poInit->DX8ONLY_pauInputEmulationMap,          "[ FPADIO ] Error: NULL pointer !!!" );

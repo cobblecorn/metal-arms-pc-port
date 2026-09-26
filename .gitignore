@@ -10,6 +10,7 @@
 *.pdb
 *.ilk
 *.exp
+ma_port_asset_log.txt
 
 # Machine-generated IDE caches in the original drop
 *.ncb

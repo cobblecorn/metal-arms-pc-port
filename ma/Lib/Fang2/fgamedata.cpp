@@ -34,6 +34,7 @@
 #include "fexplosion.h"
 #include "fsndfx.h"
 #include "fdecal.h"
+#include "gcdata.h"
 
 
 
@@ -268,6 +269,13 @@ FGameDataFileHandle_t fgamedata_LoadFileToFMem( cchar *pszFileName ) {
 		return FGAMEDATA_INVALID_FILE_HANDLE;
 	}
 	if( ffile_Close( hFile ) < 0 ) {
+		fmem_ReleaseFrame( Frame );
+		return FGAMEDATA_INVALID_FILE_HANDLE;
+	}
+	const char *pExt = strrchr( _szFilename, '.' );
+	if( pExt && fclib_stricmp( pExt + 1, "csv" ) == 0 &&
+		!gcdata_Convert( "csv", _szFilename, pHeader, nFilesize ) )
+	{
 		fmem_ReleaseFrame( Frame );
 		return FGAMEDATA_INVALID_FILE_HANDLE;
 	}

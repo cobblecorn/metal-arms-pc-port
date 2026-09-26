@@ -41,12 +41,19 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
 
 - [x] Engine (Fang2), scripting VM, game logic and AI compile and link.
 - [x] Executable starts; engine boots; D3D device/mode enumeration works on a real GPU.
-- [ ] **Load the GameCube master file.** The runtime rejects it (big-endian header, GC
-      platform flag). Every asset type inside is GC-format and needs a loader/converter:
-      textures (GX tiled/CMPR), meshes (GX display lists -> vertex buffers), animations
-      (`.mtx`), world files (`.wld`), tables (`.csv`/`.gt`), scripts (`.sma`), fonts, particles.
+- [x] Load the retail GameCube master file. The runtime swaps its big-endian header and
+      directory, accepts the GC platform version, and warns about newer asset compiler versions.
+- [x] Convert GameCube CSV tables to host byte order, including pointer offsets and UTF-16 strings.
+- [x] Decode GameCube TGA textures from GX tiled formats, including CMPR and split S3TCx2,
+      into linear ARGB pixels for the D3D texture path.
+- [ ] Convert GameCube meshes and worlds. Startup currently reaches `gpdmwpnunkn.ape`, then
+      crashes when the DX loader interprets its GC mesh payload as `FDX8Mesh_t`; GC display
+      lists and vertex arrays need an adapter to D3D vertex/index buffers.
+- [ ] Convert remaining data formats: animations (`.mtx`), world files (`.wld`), tables
+      (`.gt`), scripts (`.sma`), fonts, particles (`.fpr`), and other runtime resources.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
-- [ ] Input: keyboard/mouse and XInput mapping onto the game's pad layer.
+- [ ] Input: keyboard/mouse and XInput mapping onto the game's pad layer. DirectInput gamepad
+      enumeration works; remapping is disabled when no device/map is configured.
 - [ ] Save games (memory-card layer -> files).
 - [ ] Screenshot capture (currently a stub, `port/screenshot_port.cpp`).
 
@@ -56,6 +63,8 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
   (`d3d8_compat.cpp`); decals/coplanar geometry may z-fight until tuned.
 - `D3DXLoadSurfaceFromMemory` supports only same-format (and 32-bit interchange) copies.
 - D3D8-only render states with no D3D9 equivalent are silently ignored.
+- The launcher writes Fang's resource load log to `ma_port_asset_log.txt`; the `-log` option
+  remains the engine/debug log.
 - Retail data was built with newer tool versions than this source snapshot (e.g. mesh
   compiler 0x39 vs 0x37 in `fdata.h`); the runtime doesn't enforce these, but layouts
   may differ slightly.
