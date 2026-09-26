@@ -365,7 +365,9 @@ private:
 
 		BOOL bIgnoreFlatObjectFlag;
 		BOOL bRotationalMotion;
-		BOOL bRandomOrientation;
+#if !FANG_WINGC
+		BOOL bRandomOrientation;			// Not in the retail GameCube data
+#endif
 
 		f32 fUnitDustKickUp;
 		f32 fUnitHitpointDamage;

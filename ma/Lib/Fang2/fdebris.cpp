@@ -1088,7 +1088,11 @@ const FGameData_TableEntry_t CFDebrisGroup::m_aGameDataVocab[] = {
 	FGAMEDATA_FLAGS_CONVERT_TO_U32 | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO,
 	sizeof( u32 ),
 	F32_DATATABLE_0,
+#if FANG_WINGC
+	F32_DATATABLE_5,	// retail clamps priority to [0, 4] and uses 3 (this float table has no 4.0)
+#else
 	F32_DATATABLE_2,
+#endif
 
 	// bIgnoreFlatObjectFlag:
 	FGAMEDATA_VAR_TYPE_FLOAT|
@@ -1104,12 +1108,16 @@ const FGameData_TableEntry_t CFDebrisGroup::m_aGameDataVocab[] = {
 	F32_DATATABLE_0,
 	F32_DATATABLE_1,
 
-	// bRandomOrientation:
+#if !FANG_WINGC
+	// bRandomOrientation: absent from the retail GameCube deb_group.csv (24 fields). Its
+	// retail loader stores priority and the two flags above at the same CFDebrisGroup
+	// offsets as this source and never writes m_bRandomOrientation.
 	FGAMEDATA_VAR_TYPE_FLOAT|
 	FGAMEDATA_FLAGS_CONVERT_TO_U32 | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO,
 	sizeof( BOOL ),
 	F32_DATATABLE_0,
 	F32_DATATABLE_1,
+#endif
 
 	// fUnitDustKickUp:
 	FGAMEDATA_VAR_TYPE_FLOAT|
@@ -1369,7 +1377,11 @@ CFDebrisGroup *CFDebrisGroup::LoadFromGameData( FGameDataTableHandle_t hTable, c
 	pMeshGroup->m_nPriority = UserProps.nPriority;
 	pMeshGroup->m_bIgnoreFlatObjectFlag = UserProps.bIgnoreFlatObjectFlag;
 	pMeshGroup->m_bRotationalMotion = UserProps.bRotationalMotion;
+#if FANG_WINGC
+	pMeshGroup->m_bRandomOrientation = FALSE;
+#else
 	pMeshGroup->m_bRandomOrientation = UserProps.bRandomOrientation;
+#endif
 	pMeshGroup->m_pSoundGroupImpact = UserProps.pSoundGroupImpact;
 	pMeshGroup->m_pSoundGroupFlaming = UserProps.pSoundGroupFlaming;
 
