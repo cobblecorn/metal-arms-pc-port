@@ -262,6 +262,9 @@ void CFMeshInst::SetColorStreams( u32 nStreamCount, ColorStream_t *paStreams )
 	if ( nStreamCount != m_pMesh->pMeshIS->nVBCount )
 	{
 		DEVPRINTF( "CFMeshInst::SetColorStreams() - Mesh %s : Color stream data assumes %d VB's, mesh data has %d.  Color streams ignored.\n", m_pMesh->szName, nStreamCount, m_pMesh->pMeshIS->nVBCount );
+		// As below and as the GameCube code does: without its baked lighting the mesh must be lit
+		// normally, or instances flagged for static lighting render black.
+		m_nFlags &= ~(FMESHINST_FLAG_NOLIGHT_AMBIENT|FMESHINST_FLAG_NOLIGHT_DYNAMIC|FMESHINST_FLAG_LM|FMESHINST_FLAG_VERT_RADIOSITY);
 		return;
 	}
 
