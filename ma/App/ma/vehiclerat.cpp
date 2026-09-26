@@ -39,6 +39,9 @@
 #include "meshentity.h"
 #include "site_ratgun.h"
 #include "eboomer.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 #include "protrack.h"
 
@@ -3182,7 +3185,13 @@ void CVehicleRat::UpdateGunnerCamera( void )
 	}
 
 	u32 nControlIndex = Player_aPlayer[m_GunnerCameraTrans.GetPlayerIndex()].m_nControllerIndex;
+#if defined(MA_PC_INPUT)
+	// Mouse look pitches the gun, not the stick, so the camera follows the gun's pitch (as it does
+	// when the RAT is not driveable) and the reticle stays on the gun's aim.
+	if( IsDriveable() && !pcinput_IsMouseAiming( nControlIndex ) )
+#else
 	if( IsDriveable() )
+#endif
 	{
 		m_GunnerCamera.SetHeightFromXZPlane( Gamepad_aapSample[nControlIndex][GAMEPAD_MAIN_LOOK_UP_DOWN]->fCurrentState );
 	}

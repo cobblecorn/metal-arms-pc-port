@@ -45,3 +45,5 @@ float pcinput_TakeMouseAxis(u32 controller, bool pitch);
 enum PcAimAssistMode { PCINPUT_AIM_ASSIST_AUTO, PCINPUT_AIM_ASSIST_ON, PCINPUT_AIM_ASSIST_OFF };
 bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode);
 bool pcinput_AimAssistAllowed(u32 controller);
+// True while the controller's port is aiming with captured mouse look (the mouse moved last).
+bool pcinput_IsMouseAiming(u32 controller);

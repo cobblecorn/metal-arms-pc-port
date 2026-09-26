@@ -323,6 +323,10 @@ bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode) {
 	return true;
 }
 
+bool pcinput_IsMouseAiming(u32 controller) {
+	return controller == pcinput_KeyboardPort() && MouseLook() && InterlockedCompareExchange(&s_mouseAiming, 0, 0);
+}
+
 bool pcinput_AimAssistAllowed(u32 controller) {
 	if (s_aimAssistMode == PCINPUT_AIM_ASSIST_ON) return true;
 	if (s_aimAssistMode == PCINPUT_AIM_ASSIST_OFF) return false;
