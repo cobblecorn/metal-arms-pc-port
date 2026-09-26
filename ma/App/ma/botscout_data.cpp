@@ -176,7 +176,14 @@ const FGameData_TableEntry_t CBotScout::m_aBotInfoVocab_Scout[] = {
 	FGAMEDATA_VOCAB_SOUND_GROUP,	// pSoundGroupTreads
 	FGAMEDATA_VOCAB_SOUND_GROUP,	// pSoundGroupAlarmZap
 	FGAMEDATA_VOCAB_SOUND_GROUP,	// pSoundGroupTick
+#if FANG_WINGC
+	// Retail vocabulary (main.dol): a siren sound before the damage profile and a debris group after it.
+	FGAMEDATA_VOCAB_SOUND_GROUP,	// pSoundGroupSiren
 	FGAMEDATA_VOCAB_DAMAGE,			// pScoutDetDamageProfile:
+	FGAMEDATA_VOCAB_DEBRIS_GROUP,	// pDebrisGroupGuts
+#else
+	FGAMEDATA_VOCAB_DAMAGE,			// pScoutDetDamageProfile:
+#endif
 
 	// End of table:
 	FGAMEDATA_VAR_TYPE_COUNT| 0, 0, F32_DATATABLE_0, F32_DATATABLE_0

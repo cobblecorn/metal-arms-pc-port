@@ -542,7 +542,11 @@ BOOL CFloorSentry::InitSystem( void )
 		}
 	}
 
-	if( !fgamedata_ReadFileUsingMap( m_aGameDataMap, _FLOORSENTRYINFO_FILENAME ) ) 
+#if FANG_WINGC
+	if( !CBotSiteWeapon::ReadRetailGunTables( m_aGameDataMap, m_aSpewPropVocab, _FLOORSENTRYINFO_FILENAME ) )
+#else
+	if( !fgamedata_ReadFileUsingMap( m_aGameDataMap, _FLOORSENTRYINFO_FILENAME ) )
+#endif
 	{
 		DEVPRINTF( "CFloorSentryRocket::Create(): Could not create .\n" );
 		goto _ExitWithError;

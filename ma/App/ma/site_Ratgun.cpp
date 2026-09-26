@@ -412,7 +412,11 @@ BOOL CRatGun::InitSystem( void )
 			goto _ExitWithError;
 		}
 	}
+#if FANG_WINGC
+	if( !CBotSiteWeapon::ReadRetailGunTables( m_aGameDataMap, m_aSpewPropVocab, _apszRatGunInfo_Filename ) )
+#else
 	if( !fgamedata_ReadFileUsingMap( m_aGameDataMap, _apszRatGunInfo_Filename) )
+#endif
 	{
 		DEVPRINTF( "CRatGunRocket::Create(): Could not create .\n" );
 		goto _ExitWithError;

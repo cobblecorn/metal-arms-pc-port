@@ -438,6 +438,12 @@ public:
 	static void UninitSystem( void );
 	
 	static CFSoundGroup* GetSiteWeaponSndHandle(SiteSound_e eSound){return m_pSounds[eSound];}
+#if FANG_WINGC
+	// Reads a site weapon's game data file (paMap) whose gun tables (those using pGunVocab) have the
+	// retail 31-field layout: this source's 22 leading fields, four inserted smoke fields, then the
+	// damage profile, sound radius, two camera-shake values and the decal. Other tables load as-is.
+	static BOOL ReadRetailGunTables( const FGameDataMap_t *paMap, const FGameData_TableEntry_t *pGunVocab, cchar *pszFileName );
+#endif
 	static BOOL GetRandomPointOnMeshSurface(CFVec3A& rPoint, CFVec3A& rNormal, const CFWorldMesh* pMesh);
 
 	virtual BOOL ActionNearby( CEntity *pEntity );

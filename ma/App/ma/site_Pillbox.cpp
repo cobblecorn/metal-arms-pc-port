@@ -416,7 +416,11 @@ BOOL CPillbox::InitSystem( void )
 		}
 	}
 
+#if FANG_WINGC
+	if( !CBotSiteWeapon::ReadRetailGunTables( m_aGameDataMap, m_aSpewPropVocab, _apszPillboxInfo_Filename ) )
+#else
 	if( !fgamedata_ReadFileUsingMap( m_aGameDataMap, _apszPillboxInfo_Filename) )
+#endif
 	{
 		DEVPRINTF( "CPillboxRocket::Create(): Could not create .\n" );
 		goto _ExitWithError;

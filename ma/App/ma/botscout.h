@@ -175,7 +175,13 @@ private:
 		CFSoundGroup *pSoundGroupTreads;
 		CFSoundGroup *pSoundGroupAlarmZap;
 		CFSoundGroup *pSoundGroupTick;					//ticking sound for when scout is in blow up state
+#if FANG_WINGC
+		CFSoundGroup *pSoundGroupSiren;					// Retail addition (ScoutSiren); not played yet
+#endif
 		CDamageProfile* pScoutDetDamageProfile;
+#if FANG_WINGC
+		CFDebrisGroup *pDebrisGroupGuts;				// Retail addition (ScoutGuts); not spawned yet
+#endif
 	} BotInfo_Scout_t;
 
 

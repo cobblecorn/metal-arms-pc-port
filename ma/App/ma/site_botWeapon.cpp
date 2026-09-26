@@ -517,6 +517,43 @@ static cchar* _pszSoundGroupTable[CBotSiteWeapon::SITESND_COUNT] =
 	"SRMSPlight",
 };
 
+#if FANG_WINGC
+// Retail sw_floor, sw_pillbox and sw_ratgun gun tables (GunPropsMil, GunPropsPossessed) have 31
+// fields. Per the retail vocabulary in main.dol, fields 0-21 match this source and four smoke fields
+// (particle, two rates, intensity) are inserted before the damage profile. Read with the source
+// vocabulary, the smoke particle name ("SpewSmoke") became the damage profile, so those guns did no
+// damage. The smoke itself is not implemented.
+BOOL CBotSiteWeapon::ReadRetailGunTables( const FGameDataMap_t *paMap, const FGameData_TableEntry_t *pGunVocab, cchar *pszFileName ) {
+	static const s8 anRetailGunField[] = {
+		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+		26, 27, 28, 29, 30,
+	};
+
+	FMemFrame_t Frame = fmem_GetFrame();
+	FGameDataFileHandle_t hFile = fgamedata_LoadFileToFMem( pszFileName );
+	BOOL bOK = hFile != FGAMEDATA_INVALID_FILE_HANDLE;
+	for( u32 i = 0; bOK && paMap[i].pszTableName; ++i ) {
+		const FGameDataMap_t &rMap = paMap[i];
+		FGameDataTableHandle_t hTable = fgamedata_GetFirstTableHandle( hFile, rMap.pszTableName );
+		if( hTable == FGAMEDATA_INVALID_TABLE_HANDLE ) {
+			DEVPRINTF( "CBotSiteWeapon::ReadRetailGunTables(): Table '%s' is missing from '%s'.\n", rMap.pszTableName, pszFileName );
+			bOK = FALSE;
+		} else if( rMap.pVocabTable == pGunVocab ) {
+			bOK = fgamedata_GetNumFields( hTable ) == 31 &&
+				fgamedata_GetTableDataRemapped( hTable, pGunVocab, anRetailGunField, sizeof(anRetailGunField) / sizeof(anRetailGunField[0]),
+												rMap.pDestTableData, rMap.nDestTableBytes );
+			if( !bOK ) {
+				DEVPRINTF( "CBotSiteWeapon::ReadRetailGunTables(): Table '%s' in '%s' is not the retail gun layout.\n", rMap.pszTableName, pszFileName );
+			}
+		} else {
+			bOK = fgamedata_GetTableData( hTable, rMap.pVocabTable, rMap.pDestTableData, rMap.nDestTableBytes );
+		}
+	}
+	fmem_ReleaseFrame( Frame );
+	return bOK;
+}
+#endif
+
 BOOL CBotSiteWeapon::InitSystem( void )
 {
 	FASSERT( !m_bSystemInitialized );
