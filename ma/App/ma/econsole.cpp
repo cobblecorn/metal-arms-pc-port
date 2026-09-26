@@ -1448,7 +1448,7 @@ BOOL CEConsole::_OperatorBoxAction( CEntity *pActionerEntity, CEntity *pOperator
 		return FALSE;
 	}
 
-	if( pConsole->WasUsedOnce() ) {
+	if( pConsole->WasUsedOnce() || pConsole->IsScriptDisabled() ) {
 		return FALSE;
 	}
 
@@ -2094,7 +2094,7 @@ void CEConsole::DrawText( CBotGlitch *pBotGlitch  )
 				FASSERT( uRemainingChips <= pConsole->NumSockets() );	// detect unsigned overflow
 				FMATH_CLAMPMAX( uRemainingChips, pConsole->NumSockets() );
 				if( uRemainingChips == 0 ) {
-					if( pConsole->WasUsedOnce() ||
+					if( pConsole->WasUsedOnce() || pConsole->IsScriptDisabled() ||
 						((pConsole->m_pControlBot == NULL || pConsole->m_pControlBot->IsDeadOrDying()) && pConsole->m_pBotDispenser == NULL) ) {
 						ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_CONSOLE_OUT_OF_ORDER ] );
 					} else {

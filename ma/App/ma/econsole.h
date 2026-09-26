@@ -100,6 +100,7 @@ private:
 		_CONSOLE_FLAG_PLAYED_SHIELD		= 0x00000008,		// TRUE if shield sound was played during activation
 		_CONSOLE_FLAG_USE_ONCE			= 0x00000010,		// TRUE if console should only be used once
 		_CONSOLE_FLAG_USED_IT_ONCE		= 0x00000020,		// TRUE if console was used once and is now unusable
+		_CONSOLE_FLAG_SCRIPT_DISABLED	= 0x00000040,		// TRUE if a script switched the console off (retail Console_Enable)
 
 		_CONSOLE_FLAG_NONE				= 0x00000000
 	};
@@ -239,6 +240,9 @@ public:
 	FINLINE u32 NumInsertedChips( void ) const { FASSERT( IsCreated() ); return m_nInsertedChipCount; };
 	FINLINE u32 NumSockets( void ) const { FASSERT( IsCreated() ); return m_nSocketCount; };
 	FINLINE BOOL WasUsedOnce( void ) const { FASSERT( IsCreated() ); return !!(m_nConsoleFlags & _CONSOLE_FLAG_USED_IT_ONCE); };
+	// Retail scripts can switch a console off and on; a disabled console behaves as out of order.
+	FINLINE BOOL IsScriptDisabled( void ) const { FASSERT( IsCreated() ); return !!(m_nConsoleFlags & _CONSOLE_FLAG_SCRIPT_DISABLED); };
+	FINLINE void SetScriptEnabled( BOOL bEnabled ) { FASSERT( IsCreated() ); if( bEnabled ) m_nConsoleFlags &= ~_CONSOLE_FLAG_SCRIPT_DISABLED; else m_nConsoleFlags |= _CONSOLE_FLAG_SCRIPT_DISABLED; };
 
 
 

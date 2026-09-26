@@ -61,6 +61,9 @@
 #include "Collectable.h"
 #include "edebris.h"
 #include "gstring.h"
+#include "econsole.h"
+#include "difficulty.h"
+#include "fxshockwave.h"
 
 cell AMX_NATIVE_CALL Bot_SetBuddyCtrl(AMX *pAMX, cell *aParams);
 extern BOOL AIBrain_TalkModeCB( u32 uTalkModeCBControl, void *pvData1, void *pvData2 );
@@ -133,6 +136,9 @@ AMX_NATIVE_INFO MAScriptTypes_aMAEventNatives[] =
 	"Bot_RemoveFromWorld",				&CMAST_BotWrapper::Bot_RemoveFromWorld,
 	"Bot_IsDeadOrDying",				&CMAST_BotWrapper::Bot_IsDeadOrDying,
 	"Bot_IsDead",						&CMAST_BotWrapper::Bot_IsDead,
+	"Bot_IsPosessed",					&CMAST_BotWrapper::Bot_IsPosessed,		// retail spelling
+	"Bot_IsRecruited",					&CMAST_BotWrapper::Bot_IsRecruited,
+	"Bot_Recruit",						&CMAST_BotWrapper::Bot_Recruit,
 
 	"Bot_JobWander",					&CMAST_BotWrapper::Bot_JobWander,
 	"Bot_GetPlayer",					&CMAST_BotWrapper::Bot_GetPlayer,
@@ -289,6 +295,7 @@ AMX_NATIVE_INFO MAScriptTypes_aMAEventNatives[] =
 	"Audio_PlayAmbient",				&CMAST_Audio::Audio_PlayAmbient,
 	"Audio_StopAmbient",				&CMAST_Audio::Audio_StopAmbient,
 	"Audio_Play2DSound",				&CMAST_Audio::Audio_Play2DSound,
+	"Audio_Play2DSoundEx",				&CMAST_Audio::Audio_Play2DSoundEx,
 
 	"Movie_GetHandle",					&CMAST_Movie::Movie_GetHandle,
 	"Movie_Play",						&CMAST_Movie::Movie_Play,
@@ -300,6 +307,7 @@ AMX_NATIVE_INFO MAScriptTypes_aMAEventNatives[] =
 	"Particle_Stop",					&CMAST_Particle::Particle_Stop,
 
 	"Checkpoint_Save",					&CMAST_Checkpoint::Checkpoint_Save,
+	"Checkpoint_Save2",					&CMAST_Checkpoint::Checkpoint_Save2,
 
 //	"DE_StartDestruct",					&CMAST_DestructEntityWrapper::DE_StartDestruct,
 
@@ -307,6 +315,10 @@ AMX_NATIVE_INFO MAScriptTypes_aMAEventNatives[] =
 	"Game_EndCutScene",					&CMAST_GameWrapper::Game_EndCutScene,
 	"Game_WinLevel",					&CMAST_GameWrapper::Game_WinLevel,
 	"Game_DoPauseMode",					&CMAST_GameWrapper::Game_DoPauseMode,
+	"Console_Enable",					&CMAST_GameWrapper::Console_Enable,
+	"Misc_SetValue",					&CMAST_GameWrapper::Misc_SetValue,
+	"Misc_GetValue",					&CMAST_GameWrapper::Misc_GetValue,
+	"Misc_GetDifficulty",				&CMAST_GameWrapper::Misc_GetDifficulty,
 
 	// Tack functions...
 	"Tack_Find",						&CMAST_TackWrapper::Tack_Find,
@@ -382,6 +394,7 @@ AMX_NATIVE_INFO MAScriptTypes_aMAEventNatives[] =
 	// Effects funcitons...
 	"FX_Explosion_Find",				&CMAST_FXWrapper::FX_Explosion_Find,
 	"FX_Explosion",						&CMAST_FXWrapper::FX_Explosion,
+	"FX_StompRing",						&CMAST_FXWrapper::FX_StompRing,
 
 	// Goodie functions...
 	"G_GiveToGlitch",					&CMAST_GoodieWrapper::G_GiveToGlitch,
@@ -2118,7 +2131,11 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_FaceE(AMX *pAMX, cell *aParams)
 
 cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_LoadTalk(AMX *pAMX, cell *aParams)
 {
-	SCRIPT_CHECK_NUM_PARAMS( "Bot_LoadTalk", 2 );
+	// Retail scripts pass three more values, which the retail native hands to a talk-pool
+	// setting this source lacks after BTIPool_Init. They are accepted and ignored.
+	if( (aParams[0] >> 2) != 5 ) {
+		SCRIPT_CHECK_NUM_PARAMS( "Bot_LoadTalk", 2 );
+	}
 
 	char szBTA[100];
 	cchar* pszStaticString= NULL;
@@ -6406,3 +6423,129 @@ cell AMX_NATIVE_CALL CMAST_DebrisWrapper::Deb_Shake( AMX *pAMX, cell *aParams ) 
 
 
 
+
+
+/////////////////////////////////////////////////////////////////
+// Natives imported by retail GameCube scripts that this source snapshot did not have.
+// Each follows the retail implementation in main.dol (see tools/dol_xref.py).
+
+cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_IsPosessed(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Bot_IsPosessed", 1 );
+	CBot *pBot = (CBot *)(aParams[1]);
+	if( pBot == NULL || !(pBot->TypeBits() & ENTITY_BIT_BOT) ) {
+		SCRIPT_ERROR( "Bot_IsPosessed() : Passed in an invalid bot." );
+		return (cell)0;
+	}
+	return (cell)( pBot->IsCreated() && pBot->IsPossessed() );
+}
+
+
+cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_IsRecruited(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Bot_IsRecruited", 1 );
+	CBot *pBot = (CBot *)(aParams[1]);
+	if( pBot == NULL || !(pBot->TypeBits() & ENTITY_BIT_BOT) ) {
+		SCRIPT_ERROR( "Bot_IsRecruited() : Passed in an invalid bot." );
+		return (cell)0;
+	}
+	return (cell)( pBot->IsCreated() && pBot->Recruit_IsRecruited() );
+}
+
+
+// Bot_Recruit( hRecruiterBot, hBot ): hRecruiterBot recruits hBot. Always returns 0.
+cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_Recruit(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Bot_Recruit", 2 );
+	CBot *pRecruiter = (CBot *)(aParams[1]);
+	CBot *pBot = (CBot *)(aParams[2]);
+	if( pRecruiter && pBot && (pRecruiter->TypeBits() & ENTITY_BIT_BOT) && (pBot->TypeBits() & ENTITY_BIT_BOT) ) {
+		pBot->Recruit( pRecruiter );
+	}
+	return (cell)0;
+}
+
+
+// Audio_Play2DSoundEx( hSFX, nVolumePercent, nExtra ): like Audio_Play2DSound, but not
+// duckable. Retail passes nExtra to a play parameter this source's fsndfx_Play2D lacks.
+cell AMX_NATIVE_CALL CMAST_Audio::Audio_Play2DSoundEx(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Audio_Play2DSoundEx", 3 );
+
+	FSndFx_FxHandle_t hSFX = (FSndFx_FxHandle_t)(aParams[1]);
+	if( ( hSFX == NULL ) || ( hSFX == FSNDFX_INVALID_FX_HANDLE ) ) {
+		SCRIPT_ERROR( "Audio_Play2DSoundEx : Invalid SFX Handle provided." );
+		return (cell)0;
+	}
+
+	f32 fVolume = 0.01f * (f32)(u32)aParams[2];
+	FMATH_CLAMP_UNIT_FLOAT( fVolume );
+	fsndfx_Play2D( hSFX, fVolume, 1.0f, FAudio_EmitterDefaultPriorityLevel, 0.0f, FALSE );
+
+	return (cell)0;
+}
+
+
+// Checkpoint_Save2( hSphere ): saves checkpoint 1 with the sphere as the restart location.
+cell AMX_NATIVE_CALL CMAST_Checkpoint::Checkpoint_Save2(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Checkpoint_Save2", 1 );
+	CEntity *pEntity = (CEntity *)(aParams[1]);
+	if( pEntity == NULL || !(pEntity->TypeBits() & ENTITY_BIT_SPHERE) ) {
+		return (cell)0;
+	}
+	return (cell)checkpoint_Save( 1, TRUE, (CESphere *)pEntity );
+}
+
+
+// Console_Enable( hConsole, bEnable ): retail consoles can be switched off by script.
+cell AMX_NATIVE_CALL CMAST_GameWrapper::Console_Enable(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Console_Enable", 2 );
+	CEntity *pEntity = (CEntity *)(aParams[1]);
+	if( pEntity == NULL || !(pEntity->TypeBits() & ENTITY_BIT_CONSOLE) ) {
+		return (cell)0;
+	}
+	((CEConsole *)pEntity)->SetScriptEnabled( aParams[2] != 0 );
+	return (cell)1;
+}
+
+
+// A single script-visible value shared by all scripts (retail keeps one global cell).
+static cell _nMiscValue;
+
+cell AMX_NATIVE_CALL CMAST_GameWrapper::Misc_SetValue(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Misc_SetValue", 1 );
+	_nMiscValue = aParams[1];
+	return (cell)1;
+}
+
+
+cell AMX_NATIVE_CALL CMAST_GameWrapper::Misc_GetValue(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Misc_GetValue", 0 );
+	return _nMiscValue;
+}
+
+
+// Returns the 0-based difficulty level (0 is easiest).
+cell AMX_NATIVE_CALL CMAST_GameWrapper::Misc_GetDifficulty(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "Misc_GetDifficulty", 0 );
+	return (cell)CDifficulty::GetLevel();
+}
+
+
+// FX_StompRing( hEntity, fAmplitude, fSpeed ): a visual stomp ring at the entity; it
+// pushes nothing (retail passes no entity flags and zero push effects).
+cell AMX_NATIVE_CALL CMAST_FXWrapper::FX_StompRing(AMX *pAMX, cell *aParams)
+{
+	SCRIPT_CHECK_NUM_PARAMS( "FX_StompRing", 3 );
+	CEntity *pEntity = (CEntity *)(aParams[1]);
+	if( pEntity == NULL ) {
+		return (cell)0;
+	}
+	CFXShockwave::AddShockwave( pEntity->MtxToWorld()->m_vPos, ConvertCellToF32( aParams[2] ), ConvertCellToF32( aParams[3] ), 0, 0.0f, 0.0f );
+	return (cell)1;
+}
