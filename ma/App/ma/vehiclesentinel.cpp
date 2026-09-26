@@ -1750,6 +1750,11 @@ void CVehicleSentinel::MoveVehicle( void )
 	if( m_pDriverBot != NULL && m_eSentinelState == VEHICLESENTINEL_STATE_DRIVING )
 	{
 		m_fTurretAngleWS += m_fControls_RotateCW * FLoop_fPreviousLoopSecs * _TURRET_ROTATION_RATE;
+#if defined(MA_PC_INPUT)
+		// Mouse look aims the turret and cannon directly (a raw angle, not a rate).
+		m_fTurretAngleWS += TakeMouseLookDelta( FALSE );
+		m_fCannonElevation += TakeMouseLookDelta( TRUE );
+#endif
 		if( m_fTurretAngleWS > FMATH_DEG2RAD( 360.0f ) )
 		{
 			m_fTurretAngleWS -= FMATH_DEG2RAD( 360.0f );

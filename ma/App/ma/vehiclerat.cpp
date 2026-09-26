@@ -2653,6 +2653,14 @@ void CVehicleRat::MoveVehicle( void )
 	{
 		// compute steering change requested by driver
 		fSteeringPos = m_fControls_RotateCW;
+#if defined(MA_PC_INPUT)
+		// Desktop players steer with A/D (the left stick's X axis, unused by the driver on the
+		// GameCube) as well as the right stick; the stronger input wins.
+		if( FMATH_FABS( m_fControlsHuman_StrafeRight ) > FMATH_FABS( fSteeringPos ) )
+		{
+			fSteeringPos = m_fControlsHuman_StrafeRight;
+		}
+#endif
 		fDeltaSteering = fSteeringPos - m_fRawSteeringPosition;
 	}
 	else

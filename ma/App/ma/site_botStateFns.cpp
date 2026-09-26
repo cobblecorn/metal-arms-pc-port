@@ -745,6 +745,11 @@ void CBotSiteWeapon::_Do_Possessed(void)
 		f32 fYawDelta = fYawVelocity * FLoop_fPreviousLoopSecs +Player_aPlayer[ m_nPossessionPlayerIndex ].m_fYawAdjust;
 		f32 fPitchVelocity = m_pData->m_fMaxPitchVelocityPossess * m_fControls_AimDown;
 		f32 fPitchDelta = fPitchVelocity * FLoop_fPreviousLoopSecs + Player_aPlayer[ m_nPossessionPlayerIndex ].m_fPitchAdjust;
+#if defined(MA_PC_INPUT)
+		// Mouse look turns manned guns directly, as it turns the player's bot.
+		fYawDelta += TakeMouseLookDelta( FALSE );
+		fPitchDelta += TakeMouseLookDelta( TRUE );
+#endif
 		m_pData->m_fYawWS += fYawDelta;
 		while(m_pData->m_fYawWS-m_pData->m_fYawAdjustWS2MS > FMATH_PI)
 			m_pData->m_fYawWS -= (FMATH_2PI);
