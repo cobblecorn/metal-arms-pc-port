@@ -840,7 +840,7 @@ samples during `-mission wecdsneak01`.
   166 retail files validated), creates one DirectSound buffer for the whole decoded stream, and a
   worker thread decodes into it while the stream is CREATING. The game waits for STOPPED before
   Play(), as on the GameCube, and DirectSound plays the buffer itself. Largest file: 8.9 MB of
-  ADPCM, about 31 MB of PCM. Volume/pan follow the Xbox code (no GameCube 0.6 stereo scaling).
+  ADPCM, about 31 MB of PCM. Stream gain follows the GameCube (see section 24).
 - Not yet verified: speech streams during scripted dialogue, looping N>1, and stream restart on
   checkpoint reload (`level_RestartAllStreams` destroys and recreates the stream).
 
@@ -858,3 +858,48 @@ automatic capture off and on. Not yet confirmed interactively by the user.
 
 **Next** (user-stated): mouse-driven menus drawn with the game's own cursor art. Also still open:
 RAT vehicle controls, town cart NaN, barter EUK/battery items.
+
+## 24. ADDENDUM (2026-09-26) - mission sweep, math bug, turrets, vehicles, mix
+
+`tools/mission_sweep.sh <secs> <world>...` launches each registered mission and counts loads,
+crashes, asserts, script/data errors, loaded sfx banks, audio errors, ready streams and memory
+errors (logs under build/logs/sweep/). Run it in the foreground. All 44 campaign worlds were swept.
+
+Fixed (each verified in the sweep or by the user):
+- **GameCube-layout math** (`fdx8gcmath_vec.inl`): `CFVec3A/CFVec4A::UnitAndMagXZ`,
+  `SafeUnitAndMagXZ`, `SafeUnitAndInvMagXZ` scaled `this` instead of normalizing the argument. That
+  froze turret yaw (the user saw them lock where they first looked) and fed garbage directions to
+  other XZ users such as AI vehicle steering. A scan for the same pattern found no more; a proper
+  audit of `fdx8gcmath_*.inl` against `gc/fGCmath_*.inl` is still worth doing (a text diff is
+  useless: the GC side uses paired-single code).
+- **Retail schemas** (vocabularies from main.dol via `tools/dol_vocab.py`): floor sentry, pillbox
+  and RAT gun gun tables insert four smoke fields (shared `CBotSiteWeapon::ReadRetailGunTables`;
+  their bullets did no damage), scout (siren sound + debris group), corrosive boss (CorrBeatChest),
+  AA gun mortar (firing time, detonation damage profile, one float), spy_cfg `ddr` table.
+  New retail fields are loaded but several are not used yet (commented in the headers).
+- **Loads**: `.cam` camera animations are byte-swapped (cutscene crash in wewccomm_03); entity
+  BOOL/ENUM properties with numeric values no longer crash BuilderHelp (wediinvas01); Spy vs Spy's
+  reworked retail level has no escorts or `reprogram` sphere (optional now, first `ddr` record
+  used; retail picks a record per DDR stage from level data via arg->[424]->[4]).
+- **Failed-load teardown**: `_PostWorldLoadGameInit`'s error path uninitializes debris/explosion
+  systems and HUDs before releasing the frame. Other objects in that frame still break teardown;
+  the real fix for such levels is to stop the load failing.
+- **Laser tracers** draw additively (their retail texture has no alpha: black box around shots).
+- **Vehicles/guns**: mouse look now reaches the machine the player operates (`m_pCurMech`), aims
+  the Sentinel turret, manned guns and the RAT gun; the RAT gunner camera follows the gun's pitch
+  while mouse-aiming (reticle); A/D steer the RAT.
+- **Audio mix**: 3D sounds use the MusyX distance model (80%, linear to silence at 1.25x radius;
+  DirectSound rolloff off); streams use the GameCube `_GetVolume()` curve and 0.6 for stereo. The
+  MusyX sfx table is flat (all volume 127, key 60, pan 64), so it carries no balance data.
+
+Open, in rough priority:
+- wewchold_01 (Hold Your Ground): `Mini_Game` table has 104 fields, source expects 62; load fails.
+- Checkpoint saves overflow (`FCheckPoint.cpp` asserts `m_nStreamSize` / `FAMEM_ERROR_NONE` in the
+  chase and journey levels): respawn state may be lost.
+- `Create3D()/Create2D() failed` in busy levels: all 80 virtual emitters in use (same limit as the
+  GameCube); check for leaks before raising it.
+- CFQuatTang3 NaN (town carts, wessstatn02).
+- User to confirm: chase-level AI driver (likely fixed by the math bug), RAT controls, vehicle
+  reticle, dialog balance.
+- Missing damage profiles that retail lacks too: `Debris` (gcoll), `SentinelCannon` (xset_veh).
+- Mouse menus with the game's own cursor (user-requested); co-op groundwork (section 23).
