@@ -109,6 +109,20 @@ typedef struct {
 
 #define _NUM_CSV_FIELDS		( sizeof( _InitData_t ) / 4 )
 
+#if FANG_WINGC
+// The retail Mini_Game table (wewchold_01.csv) has 104 fields. Fields 0-2 and 6-61 match this
+// source's 62; retail fields 3-5 (a float, "HugeRatExplosion", "pred_music") took the place of the
+// tank fields, whose code is compiled out here, and fields 62-103 are retail additions (predators,
+// an intro cutscene, timed radio lines) that this source does not implement.
+#define _RETAIL_NUM_CSV_FIELDS	( 104 )
+
+// Skips retail fields the source does not read; always TRUE so it can sit in the parse chain.
+static BOOL _SkipRetailFields( u32 &rnIndex, u32 nCount ) {
+	rnIndex += nCount;
+	return TRUE;
+}
+#endif
+
 typedef struct {
 	u32 nNumPaths;
 	CESpline **papSplines;
@@ -287,10 +301,17 @@ BOOL mg_holdyourground_LevelLoad( LevelEvent_e eEvent ) {
 	
 	// read our data from the level csv file
 	nNumFields = fgamedata_GetNumFields( hTable );
+#if FANG_WINGC
+	if( nNumFields != _RETAIL_NUM_CSV_FIELDS ) {
+		DEVPRINTF( "mg_holdyourground_LevelLoad() : The level csv table '%s' contains %d fields but the retail layout has %d.\n", _CSV_TABLE_NAME, nNumFields, _RETAIL_NUM_CSV_FIELDS );
+		goto _EXIT_WITH_ERROR;
+	}
+#else
 	if( !nNumFields || (nNumFields != _NUM_CSV_FIELDS) ) {
 		DEVPRINTF( "mg_holdyourground_LevelLoad() : The level csv table '%s' contains %d fields but is required to have %d.\n", _CSV_TABLE_NAME, nNumFields, _NUM_CSV_FIELDS );
 		goto _EXIT_WITH_ERROR;
 	}
+#endif
 	FGameData_TableEntry_t FloatEntry, StringEntry, U32Entry;
 	
 	U32Entry.nFlags = (FGAMEDATA_VAR_TYPE_FLOAT | FGAMEDATA_FLAGS_CONVERT_TO_U32);
@@ -306,9 +327,13 @@ BOOL mg_holdyourground_LevelLoad( LevelEvent_e eEvent ) {
 	if( !fgamedata_GetFieldFromTable( hTable, nIndex++, &U32Entry, &_pLevelData->InitData.nNumRats ) ||
 		!fgamedata_GetFieldFromTable( hTable, nIndex++, &StringEntry, &_pLevelData->InitData.psz1stRatDriver ) ||
 		!fgamedata_GetFieldFromTable( hTable, nIndex++, &StringEntry, &_pLevelData->InitData.psz1stRat ) ||
+#if FANG_WINGC
+		!_SkipRetailFields( nIndex, 3 ) ||
+#else
 		!fgamedata_GetFieldFromTable( hTable, nIndex++, &U32Entry, &_pLevelData->InitData.nNumTanks ) ||
 		!fgamedata_GetFieldFromTable( hTable, nIndex++, &StringEntry, &_pLevelData->InitData.psz1stTankDriver ) ||
 		!fgamedata_GetFieldFromTable( hTable, nIndex++, &StringEntry, &_pLevelData->InitData.psz1stTank ) ||
+#endif
 		!fgamedata_GetFieldFromTable( hTable, nIndex++, &StringEntry, &_pLevelData->InitData.pszGunName ) ||
 		// spawn 0
 		!fgamedata_GetFieldFromTable( hTable, nIndex++, &U32Entry, &_pLevelData->InitData.aSpawnInits[0].nNumPaths ) ||
@@ -380,6 +405,13 @@ BOOL mg_holdyourground_LevelLoad( LevelEvent_e eEvent ) {
 		goto _EXIT_WITH_ERROR;	
 	}
 	
+#if FANG_WINGC
+	// The tank code is compiled out; one slot keeps the tank arrays allocated as before.
+	_pLevelData->InitData.nNumTanks = 1;
+	_pLevelData->InitData.psz1stTankDriver = NULL;
+	_pLevelData->InitData.psz1stTank = NULL;
+#endif
+
 	// do some sanity checks on our init data
 	if( !_pLevelData->InitData.nNumRats ||
 		!_pLevelData->InitData.nNumTanks ||
