@@ -132,8 +132,9 @@ FINLINE f32 CFVec4A::UnitAndMagXZ( const CFVec4A &rV ) {
 	FASSERT( fMagXZ != 0.0f );
 	f32 fInvMagXZ = fmath_Inv( fMagXZ );
 
-	x *= fInvMagXZ;
-	z *= fInvMagXZ;
+	x = rV.x * fInvMagXZ;
+	z = rV.z * fInvMagXZ;
+	y = 0.0f;	// as fGCmath_vec.inl; the source vector, not this one, is normalized
 
 	return fMagXZ;
 #else
@@ -194,8 +195,9 @@ FINLINE f32 CFVec4A::SafeUnitAndMagXZ( const CFVec4A &rV ) {
 		return -1.f;
 	f32 fInvMagXZ = fmath_Inv( fMagXZ );
 
-	x *= fInvMagXZ;
-	z *= fInvMagXZ;
+	x = rV.x * fInvMagXZ;
+	z = rV.z * fInvMagXZ;
+	y = 0.0f;	// as fGCmath_vec.inl; the source vector, not this one, is normalized
 
 	return fMagXZ;
 #else
@@ -235,8 +237,9 @@ FINLINE f32 CFVec4A::SafeUnitAndInvMagXZ( const CFVec4A &rV ) {
 		return -1.f;
 	f32 fInvMagXZ = fmath_Inv( fMagXZ );
 
-	x *= fInvMagXZ;
-	z *= fInvMagXZ;
+	x = rV.x * fInvMagXZ;
+	z = rV.z * fInvMagXZ;
+	y = 0.0f;	// as fGCmath_vec.inl; the source vector, not this one, is normalized
 
 	return fInvMagXZ;
 #else
@@ -566,8 +569,9 @@ FINLINE f32 CFVec3A::UnitAndMagXZ( const CFVec3A &rV ) {
 	FASSERT( fMagXZ != 0.0f );
 	f32 fInvMagXZ = fmath_Inv( fMagXZ );
 
-	x *= fInvMagXZ;
-	z *= fInvMagXZ;
+	x = rV.x * fInvMagXZ;
+	z = rV.z * fInvMagXZ;
+	y = 0.0f;	// as fGCmath_vec.inl; the source vector, not this one, is normalized
 
 	return fMagXZ;
 #else
@@ -628,8 +632,9 @@ FINLINE f32 CFVec3A::SafeUnitAndMagXZ( const CFVec3A &rV ) {
 		return -1.f;
 	f32 fInvMagXZ = fmath_Inv( fMagXZ );
 
-	x *= fInvMagXZ;
-	z *= fInvMagXZ;
+	x = rV.x * fInvMagXZ;
+	z = rV.z * fInvMagXZ;
+	y = 0.0f;	// as fGCmath_vec.inl; the source vector, not this one, is normalized
 
 	return fMagXZ;
 #else
@@ -669,8 +674,9 @@ FINLINE f32 CFVec3A::SafeUnitAndInvMagXZ( const CFVec3A &rV ) {
 		return -1.f;
 	f32 fInvMagXZ = fmath_Inv( fMagXZ );
 
-	x *= fInvMagXZ;
-	z *= fInvMagXZ;
+	x = rV.x * fInvMagXZ;
+	z = rV.z * fInvMagXZ;
+	y = 0.0f;	// as fGCmath_vec.inl; the source vector, not this one, is normalized
 
 	return fInvMagXZ;
 #else
