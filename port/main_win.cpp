@@ -282,7 +282,17 @@ static LONG WINAPI _CrashFilter( EXCEPTION_POINTERS *pEx )
 		_Log( "    access violation: %s address 0x%p\n", pRec->ExceptionInformation[0] == 0 ? "reading" : (pRec->ExceptionInformation[0] == 1 ? "writing" : "executing"), (void *)pRec->ExceptionInformation[1] );
 	}
 
-	_LogStack( *pEx->ContextRecord, 40 );
+	CONTEXT Ctx = *pEx->ContextRecord;
+	if( pRec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && pRec->NumberParameters >= 2 &&
+		pRec->ExceptionInformation[0] == 8 && Ctx.Eip == pRec->ExceptionInformation[1] &&
+		!IsBadReadPtr( (const void *)Ctx.Esp, sizeof(DWORD) ) )
+	{
+		// A call through a bad pointer: the caller's return address is on top of the stack.
+		_Log( "    (bad call target; unwinding from the return address)\n" );
+		Ctx.Eip = *(const DWORD *)Ctx.Esp;
+		Ctx.Esp += sizeof(DWORD);
+	}
+	_LogStack( Ctx, 40 );
 
 	fflush( stdout );
 	if( _pLog ) fflush( _pLog );
