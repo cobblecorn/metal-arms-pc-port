@@ -180,3 +180,16 @@ assumes one player, with file/line references and a suggested fix for each:
 
 It ends with a suggested implementation order. Claims I could not confirm from source are marked as
 such in the document.
+
+## 7. Mouse menu design (`docs/mouse-menus-design.md`, new; no code changes)
+
+A design for mouse-driven front-end menus, from reading `wpr_system.cpp`, `wpr_datatypes.h`,
+`wpr_drawutils.cpp`, `msgbox.cpp`, `ftext.cpp` and `port/pc_input.cpp`:
+- pointer state added to `pcinput_WindowMessage()`, and the conversion from window pixels to ftext's
+  unit space (derived from `ftext.cpp` ~1680);
+- tagged `ftext` prints that report their laid-out boxes, for accurate hit tests;
+- clickable button prompts first (they make every screen usable), then hover and click on list items,
+  wheel, right-click = back, and handling for sliders, the name keyboard, level select and message boxes;
+- pointer art options (menu font arrow glyphs, the reticle textures, or a search of retail `tfm*`/`tfh*`
+  textures), since the consoles had no pointer;
+- rules so mouse and pads coexist, a step-by-step plan, and what to verify in a run.
