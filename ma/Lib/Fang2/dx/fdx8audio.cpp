@@ -188,6 +188,7 @@ struct _VirtualEmitter_t
 	f32		fRadiusOuter,
 			fRadiusInner,
 			fVolume, fVolumeDucked,
+			fDistanceGain,		// GameCube-layout 3D distance gain (< 0: not computed yet)
 			fPanLeftRight,
 			fFrequencyFactor, fDopplerFactor, fReverb,
 			fSecondsPlayed, fSecondsToPlay;
@@ -310,6 +311,48 @@ static void _ReleaseCodec( void )
 	gcaudio_Uninit();
 #endif
 }
+
+#if FANG_WINGC
+// The retail GameCube mix, which the data was balanced for (fgcaudio.cpp):
+// - 3D sounds start at 80% volume (_3D_SOUND_VOLUME_SCALE) and MusyX fades them linearly
+//   (sndAddEmitter comp 0) to silence at 1.25x the emitter radius (_3D_SOUND_RADIUS_SCALE).
+//   DirectSound's own inverse-distance rolloff from 1 unit made anything a few feet away
+//   far too quiet (user report: quiet robot dialog, muffled gunfire).
+// - Streams use _GetVolume()'s curve, and stereo streams (music) a further 0.6.
+#define _GC_3D_VOLUME_SCALE		( 0.80f )
+#define _GC_3D_RADIUS_SCALE		( 1.25f )
+#define _GC_STEREO_STREAM_SCALE	( 0.6f )
+
+static f32 _GC3DDistanceGain( f32 fDistance, f32 fRadiusOuter )
+{
+	const f32 fMaxDistance = fRadiusOuter * _GC_3D_RADIUS_SCALE;
+	if( !( fMaxDistance > 0.0f ) || fDistance >= fMaxDistance )
+	{
+		return 0.0f;
+	}
+	return _GC_3D_VOLUME_SCALE * ( 1.0f - fDistance / fMaxDistance );
+}
+
+static f32 _GCStreamGain( f32 fVolume, u32 uChannels )
+{
+	FMATH_CLAMP( fVolume, 0.0f, 1.0f );
+	const f32 fRoot = fmath_Sqrt( fVolume );
+	const f32 fGain = 0.5f * 0.76f * ( fmath_Sqrt( fRoot ) + fRoot );
+	return ( uChannels > 1 ) ? fGain * _GC_STEREO_STREAM_SCALE : fGain;
+}
+
+// DirectSound volume (hundredths of a decibel) for an amplitude gain.
+static s32 _GainToDSVolume( f32 fGain )
+{
+	if( fGain <= 0.0001f )
+	{
+		return DSBVOLUME_MIN;
+	}
+	s32 nVolume = (s32)( 2000.0 * log10( (double)fGain ) );
+	FMATH_CLAMP( nVolume, DSBVOLUME_MIN, DSBVOLUME_MAX );
+	return nVolume;
+}
+#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -459,6 +502,10 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 
 	FDX8_SAFE_RELEASE( poDSBufferPrimary );
 	_poDSRealListener->SetDistanceFactor( FMATH_FEET2METERS( 1.0f ), DS3D_IMMEDIATE );
+#if FANG_WINGC
+	// Distance attenuation follows MusyX instead (see _GC3DDistanceGain); DirectSound only pans.
+	_poDSRealListener->SetRolloffFactor( DS3D_MINROLLOFFFACTOR, DS3D_IMMEDIATE );
+#endif
 	//
 	////
 
@@ -715,6 +762,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 	poVirtualEmitter->fRadiusInner				= DS3D_DEFAULTMINDISTANCE;
 	poVirtualEmitter->fVolume					= 1.0f;
 	poVirtualEmitter->fVolumeDucked				= 1.0f;
+	poVirtualEmitter->fDistanceGain				= -1.0f;
 	poVirtualEmitter->fPanLeftRight				= 0.0f;
 	poVirtualEmitter->fFrequencyFactor			= 1.0f;
 	poVirtualEmitter->fDopplerFactor			= 0.0f;
@@ -755,6 +803,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 		poVirtualEmitter->fRadiusInner				= DS3D_DEFAULTMINDISTANCE;
 		poVirtualEmitter->fVolume					= 1.0f;
 		poVirtualEmitter->fVolumeDucked				= 1.0f;
+		poVirtualEmitter->fDistanceGain				= -1.0f;
 		poVirtualEmitter->fPanLeftRight				= 0.0f;
 		poVirtualEmitter->fFrequencyFactor			= 1.0f;
 		poVirtualEmitter->fDopplerFactor			= 0.0f;
@@ -2503,6 +2552,7 @@ CFAudioEmitter *CFAudioEmitter::Create2D( FAudio_WaveHandle_t oWaveHandle, u8 uP
 		poVirtualEmitter->uPriority                    = uPriority;
 		poVirtualEmitter->fVolume                      = 1.0f;
 		poVirtualEmitter->fVolumeDucked                = 1.0f;
+		poVirtualEmitter->fDistanceGain                = -1.0f;
 		poVirtualEmitter->fPanLeftRight                = 0.0f;
 		poVirtualEmitter->fFrequencyFactor             = 1.0f;
 		poVirtualEmitter->fDopplerFactor               = 0.0f;
@@ -2578,6 +2628,7 @@ CFAudioEmitter *CFAudioEmitter::Create3D( FAudio_WaveHandle_t oWaveHandle, u8 uP
 		poVirtualEmitter->uProperties				  |= _EMITTER_PROPERTIES_3D;
 		poVirtualEmitter->fVolume                      = 1.0f;
 		poVirtualEmitter->fVolumeDucked                = 1.0f;
+		poVirtualEmitter->fDistanceGain                = -1.0f;
 		poVirtualEmitter->fPanLeftRight                = 0.0f;
 		poVirtualEmitter->fFrequencyFactor             = 1.0f;
 		poVirtualEmitter->fDopplerFactor               = 0.0f;
@@ -3819,6 +3870,17 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 						
 						// Position.
 						poVirtualEmitter->poVirtualListenerCurrent->poXfmCurrentOrientation_WS->TransformPointR( _oTempVec3A.v3, poVirtualEmitter->poVecCurrentPosition_WS->v3 );
+#if FANG_WINGC
+						{
+							const f32 fGain = _GC3DDistanceGain( _oTempVec3A.Mag(), poVirtualEmitter->fRadiusOuter );
+							const f32 fChange = fGain - poVirtualEmitter->fDistanceGain;
+							if( poVirtualEmitter->fDistanceGain < 0.0f || fChange * fChange > _SIGNIFICANT_VOLUME_CHANGE_SQ )
+							{
+								poVirtualEmitter->fDistanceGain = fGain;
+								poVirtualEmitter->uStateChanges |= _EMITTER_STATE_CHANGE_VOLUME;
+							}
+						}
+#endif
 
 						_oDSEmitterAttributes.vPosition.x = _oTempVec3A.x;
 						_oDSEmitterAttributes.vPosition.y = _oTempVec3A.y;
@@ -3841,7 +3903,11 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 
 						// Radius, Doppler.						
 //						_oDSEmitterAttributes.flMinDistance = poVirtualEmitter->fRadiusInner;
+#if FANG_WINGC
+						_oDSEmitterAttributes.flMaxDistance = poVirtualEmitter->fRadiusOuter * _GC_3D_RADIUS_SCALE;
+#else
 						_oDSEmitterAttributes.flMaxDistance = poVirtualEmitter->fRadiusOuter;
+#endif
 
 						if( poVirtualEmitter->poRealEmitter->poDS3DBuffer ) {
 							poVirtualEmitter->poRealEmitter->poDS3DBuffer->SetAllParameters( &_oDSEmitterAttributes, DS3D_DEFERRED );
@@ -3857,6 +3923,13 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 				if( FAudio_bMasterSfxVolChanged ||
 					poVirtualEmitter->uStateChanges & _EMITTER_STATE_CHANGE_VOLUME ) {
 					fVolume = FAudio_fMasterSfxUnitVol * poVirtualEmitter->fVolumeDucked;
+#if FANG_WINGC
+					if( poVirtualEmitter->poRealEmitter->poDS3DBuffer )
+					{
+						// Not computed yet (no listener update): the flat 3D scale, never silence.
+						fVolume *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? _GC_3D_VOLUME_SCALE : poVirtualEmitter->fDistanceGain;
+					}
+#endif
 					pDSBuffer->SetVolume( _anVolumes[ fmath_FloatToU32( _UNIQUE_FLOAT_VOL_LEVEL_INDICES * fVolume ) ] );					
 				}
 				
@@ -4086,8 +4159,7 @@ static void _ApplyStreamMix( _Stream_t *poStream )
 	}
 
 	f32 fVolume = ( poStream->bTreatAsSfx ? FAudio_fMasterSfxUnitVol : FAudio_fMasterMusicUnitVol ) * poStream->fVolume;
-	FMATH_CLAMP( fVolume, 0.0f, 1.0f );
-	poStream->poDSBuffer->SetVolume( _anVolumes[ fmath_FloatToU32( _UNIQUE_FLOAT_VOL_LEVEL_INDICES * fVolume ) ] );
+	poStream->poDSBuffer->SetVolume( _GainToDSVolume( _GCStreamGain( fVolume, poStream->oInfo.nChannels ) ) );
 
 	f32 fPan = poStream->fPanLeftRight;
 	FMATH_CLAMP( fPan, -1.0f, 1.0f );
