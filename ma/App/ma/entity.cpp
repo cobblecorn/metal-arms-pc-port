@@ -5359,6 +5359,12 @@ static BOOL dump = FALSE;
 
 	// Error:
 _ExitWithError:
+#if FANG_WINGC
+	// Scripts and level logic look entities up by name, so name the ones that failed.
+	DEVPRINTF( "CEntity::_CreateWorldShape(): Could not build %s entity '%s'.\n",
+		CEntityParser::m_pszEntityType ? CEntityParser::m_pszEntityType : "(untyped)",
+		CEntityParser::m_pszEntityName ? CEntityParser::m_pszEntityName : "(unnamed)" );
+#endif
 	// NKM
 	if( pEntity && !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_GOODIE ) ) {
 		((CCollectable *) pEntity )->Destroy();
