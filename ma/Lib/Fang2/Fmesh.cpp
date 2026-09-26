@@ -2344,7 +2344,8 @@ BOOL CFMeshInst::ConvertMeshCollTokDOP( CFVec3A *pvCollision_WS, CFVec3A *pvNorm
 	
 
 	// Loop through the segments looking for the appropriate collision
-	for ( i = 0; i < m_pMesh->nSegCount; i++ )	
+	// Port: GameCube meshes converted by port/gcmesh.cpp may carry extra segments with no collision tree
+	for ( i = 0; i < m_pMesh->nSegCount && i < m_pMesh->nCollTreeCount; i++ )
 	{
 		if ( m_pMesh->aSeg[i].nBoneMtxCount > 1	|| !m_pMesh->paCollTree[i].paIntervals )
 		{

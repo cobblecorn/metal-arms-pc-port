@@ -2196,7 +2196,9 @@ BOOL CDoorEntity::BotCheckCallback(CFWorldTracker *pTracker, FVisVolume_t *pVolu
 		}
 		if (pBot->IsSleeping() ||
 			pBot->IsDeadOrDying() ||
-			(!pBot->IsPlayerBot() && !pBot->AIBrain()->GetAIMover()->IsFollowingPath()))
+			// Port: aibrainman_Create() may legitimately return NULL (see CEntity::Create()), so a
+			// brainless NPC is treated like one that is not following a path.
+			(!pBot->IsPlayerBot() && (!pBot->AIBrain() || !pBot->AIBrain()->GetAIMover()->IsFollowingPath())))
 		{
 			return(TRUE);
 		}

@@ -868,11 +868,11 @@ void CPlayer::Work( void ) {
 					FVisVolume_t *pCenterVol = pPlayerBot->m_pWorldMesh->GetCenterpointVolume();
 					bOutOfWorldExperience = (pCenterVol == NULL || (pCenterVol->nVolumeID == FVIS_SLOP_BUCKET_ID && FWorld_pWorld->nVolumeCount != 1) );
 #if FANG_WINGC
-					// Port diagnostic: which of the two NULL-volume cases is this, and where is the
-					// player actually standing? Remove once the out-of-world loop is understood.
+					// Port diagnostic: player position and volume, logged for the first frames and then
+					// every 120 frames, to track movement/falling in logs.
 					{
-						static u32 nLogged = 0;
-						if( nLogged < 12 ) {
+						static u32 nLogged = 0, nFrame = 0;
+						if( nLogged < 12 || (++nFrame % 120) == 0 ) {
 	DEVPRINTF( "PORT-DIAG player pos=(%.1f,%.1f,%.1f) pCenterVol=%p volID=%d intersects=%u out=%d\n",
 								pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.x, pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.y, pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.z,
 								pCenterVol, pCenterVol ? pCenterVol->nVolumeID : -1,

@@ -15,6 +15,7 @@
 //   -level <name>    launch a world directly as a generic debug level
 //   -world-only <name> load a world resource, then exit before game/audio setup
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
+//   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 
 #include "fang.h"
 #include "fclib.h"
@@ -232,7 +233,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource>] [-world-only <world-resource>] [-log <file>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource>] [-world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -254,6 +255,8 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-level" ) && bHasValue )		strncpy( _szStartLevel, argv[++i], sizeof(_szStartLevel) - 1 );
 		else if( !_stricmp( pszArg, "-world-only" ) && bHasValue )	strncpy( _szWorldOnly, argv[++i], sizeof(_szWorldOnly) - 1 );
 		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
+		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
+		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );
 		else if( !_stricmp( pszArg, "-res" ) && bHasValue )
 		{
 			if( sscanf( argv[++i], "%dx%d", &_nReqWidth, &_nReqHeight ) != 2 || _nReqWidth < 320 || _nReqHeight < 200 )

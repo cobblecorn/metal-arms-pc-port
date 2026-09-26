@@ -214,8 +214,74 @@ HRESULT IDirect3DDevice8::Reset( D3DPRESENT_PARAMETERS *pPP )
 	return m_pDev->Reset( pPP );
 }
 
+// Developer aid: when MA_PORT_SHOTS names a directory, every MA_PORT_SHOT_EVERY presented frames
+// (default 300) the back buffer is written there as shot_NNN.bmp (32-bit X8R8G8B8/A8R8G8B8 only).
+// main_win.cpp sets these from the -shots command line option.
+static void _WriteBackBufferShot( IDirect3DDevice9 *pDev )
+{
+	static int s_nState = -1;			// -1 = not configured yet, 0 = disabled, 1 = enabled
+	static char s_szDir[MAX_PATH];
+	static unsigned s_nEvery = 300, s_nFrame = 0, s_nShot = 0;
+	if( s_nState < 0 )
+	{
+		DWORD nLen = GetEnvironmentVariableA( "MA_PORT_SHOTS", s_szDir, sizeof(s_szDir) );
+		s_nState = (nLen > 0 && nLen < sizeof(s_szDir)) ? 1 : 0;
+		char szEvery[32];
+		if( GetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", szEvery, sizeof(szEvery) ) > 0 && atoi( szEvery ) > 0 )
+			s_nEvery = (unsigned)atoi( szEvery );
+		if( s_nState )
+			CreateDirectoryA( s_szDir, NULL );
+	}
+	if( !s_nState || (++s_nFrame % s_nEvery) != 0 )
+		return;
+
+	IDirect3DSurface9 *pBack = NULL, *pCopy = NULL;
+	D3DSURFACE_DESC Desc;
+	if( FAILED( pDev->GetBackBuffer( 0, 0, D3DBACKBUFFER_TYPE_MONO, &pBack ) ) )
+		return;
+	pBack->GetDesc( &Desc );
+	if( (Desc.Format == D3DFMT_X8R8G8B8 || Desc.Format == D3DFMT_A8R8G8B8) && Desc.MultiSampleType == D3DMULTISAMPLE_NONE &&
+		SUCCEEDED( pDev->CreateOffscreenPlainSurface( Desc.Width, Desc.Height, Desc.Format, D3DPOOL_SYSTEMMEM, &pCopy, NULL ) ) &&
+		SUCCEEDED( pDev->GetRenderTargetData( pBack, pCopy ) ) )
+	{
+		D3DLOCKED_RECT Lock;
+		if( SUCCEEDED( pCopy->LockRect( &Lock, NULL, D3DLOCK_READONLY ) ) )
+		{
+			char szPath[MAX_PATH + 32];
+			_snprintf( szPath, sizeof(szPath) - 1, "%s\\shot_%03u.bmp", s_szDir, s_nShot++ );
+			szPath[sizeof(szPath) - 1] = 0;
+			FILE *pFile = fopen( szPath, "wb" );
+			if( pFile )
+			{
+				BITMAPFILEHEADER FileHeader = {};
+				BITMAPINFOHEADER InfoHeader = {};
+				const DWORD nImageBytes = Desc.Width * Desc.Height * 4;
+				FileHeader.bfType = 0x4d42;
+				FileHeader.bfOffBits = sizeof(FileHeader) + sizeof(InfoHeader);
+				FileHeader.bfSize = FileHeader.bfOffBits + nImageBytes;
+				InfoHeader.biSize = sizeof(InfoHeader);
+				InfoHeader.biWidth = (LONG)Desc.Width;
+				InfoHeader.biHeight = -(LONG)Desc.Height;	// top-down
+				InfoHeader.biPlanes = 1;
+				InfoHeader.biBitCount = 32;
+				InfoHeader.biCompression = BI_RGB;
+				InfoHeader.biSizeImage = nImageBytes;
+				fwrite( &FileHeader, sizeof(FileHeader), 1, pFile );
+				fwrite( &InfoHeader, sizeof(InfoHeader), 1, pFile );
+				for( UINT y = 0; y < Desc.Height; y++ )
+					fwrite( (const BYTE *)Lock.pBits + y * Lock.Pitch, Desc.Width * 4, 1, pFile );
+				fclose( pFile );
+			}
+			pCopy->UnlockRect();
+		}
+	}
+	if( pCopy ) pCopy->Release();
+	pBack->Release();
+}
+
 HRESULT IDirect3DDevice8::Present( CONST RECT *pSrc, CONST RECT *pDst, HWND hWnd, CONST RGNDATA *pDirty )
 {
+	_WriteBackBufferShot( m_pDev );
 	return m_pDev->Present( pSrc, pDst, hWnd, pDirty );
 }
 
