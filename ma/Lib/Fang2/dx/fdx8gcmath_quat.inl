@@ -79,7 +79,13 @@ FINLINE CFQuatA &CFQuatA::BuildQuat( const CFVec3A &rUnitVecToRotateFrom, const 
 
 	fCosAngleBetweenVecs = rUnitVecToRotateFrom.Dot( rUnitVecToRotateTo );
 
-	w = fmath_Sqrt( (1.0f + fCosAngleBetweenVecs) * 0.5f );
+	// As retail GameCube (gc/fGCmath_quat.inl): nearly opposite vectors give w = 0 rather than the
+	// square root of a value rounding error can push below zero.
+	if ( fCosAngleBetweenVecs < -0.9999f ) {
+		w = 0.0f;
+	} else {
+		w = fmath_Sqrt( (1.0f + fCosAngleBetweenVecs) * 0.5f );
+	}
 
 	fCosAngleBetweenVecs = 1.0f - fCosAngleBetweenVecs;
 	if( fCosAngleBetweenVecs > 0.00001f ) {

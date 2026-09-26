@@ -144,7 +144,14 @@ void CFQuatTang3::Calculate()
 	CFVec3A vecTemp, vecAccel, vecTang;
 	vecTemp = m_pV3OPath->GetTang();
 	vecTemp.y = 0.0f;
-	vecTemp.Unitize();
+	// A path that is momentarily stationary or vertical has no XZ tangent. Unitizing it made NaNs
+	// that spread through this object's orientation and into collision (wessstatn02); treat it as
+	// facing +Z, which leaves the acceleration unrotated.
+	if( !( vecTemp.MagSq() >= 1.0e-12f ) ) {	// also catches a NaN tangent
+		vecTemp.Set( 0.0f, 0.0f, 1.0f );
+	} else {
+		vecTemp.Unitize();
+	}
 	vecTemp.Mul( 0.9999f);
 
 	CFQuatA qOrient;
