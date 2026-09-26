@@ -1,0 +1,551 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\pasm2.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\pasm2.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOG  0, 0, 200, 61
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About PASM"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    DEFPUSHBUTTON   "OK",IDOK,75,40,50,14,WS_GROUP
+    LTEXT           "PASM, Version 1.5\nWritten by: Michael Starich\nCopyright (c) 2000, Swingin' Ape Studios, Inc.",
+                    IDC_STATIC,40,8,153,28,SS_NOPREFIX
+END
+
+IDD_PASM_DIALOG DIALOGEX 0, 0, 375, 361
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | 
+    WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "PASM - Asset File Compiler -- (c) Swingin' Ape Studios, Inc."
+FONT 8, "MS Sans Serif", 0, 0, 0x1
+BEGIN
+    PUSHBUTTON      "Rescan For Changes",IDC_RESCAN,7,3,107,14,BS_MULTILINE
+    PUSHBUTTON      "Library Rescan && Compile ",IDC_SYNC_DOWN_AND_COMPILE,
+                    134,3,107,14,BS_MULTILINE
+    PUSHBUTTON      "Local &Rescan  &&  Compile",IDC_SCAN_AND_COMPILE,261,3,
+                    107,14,BS_MULTILINE
+    CONTROL         "List3",IDC_FILE_LIST,"SysListView32",LVS_REPORT | 
+                    LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,7,19,361,193
+    PUSHBUTTON      "Select Library Files\nNewer Than Local",
+                    IDC_NEWER_THAN_LOCAL,98,217,84,24,BS_CENTER | 
+                    BS_MULTILINE
+    PUSHBUTTON      "Select Local Files\nNewer Than Library",
+                    IDC_NEWER_THAN_LIB,191,217,84,24,BS_CENTER | 
+                    BS_MULTILINE
+    PUSHBUTTON      "Select Local Files\nNewer Than Master",
+                    IDC_NEWER_THAN_MASTER,284,217,84,24,BS_CENTER | 
+                    BS_MULTILINE
+    PUSHBUTTON      "Check &Out   --->",IDC_SYNC_DOWN,98,244,84,16,BS_CENTER | 
+                    BS_MULTILINE
+    PUSHBUTTON      "<---   Check &In",IDC_SYNC_UP,191,244,84,16,BS_CENTER | 
+                    BS_MULTILINE
+    PUSHBUTTON      "&Compile   --->",IDC_COMPILE,284,244,84,16,BS_CENTER | 
+                    BS_MULTILINE
+    CONTROL         "",IDC_STATIC,"Static",SS_ETCHEDHORZ,1,0,368,1
+    CONTROL         "Cut textures by 1/2",IDC_AUTO_DOWNSIZE_TEXTURES,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,12,220,77,10
+    GROUPBOX        "LightMap Settings",IDC_STATIC,7,262,361,73
+    CONTROL         "",IDC_SLIDER1,"msctls_trackbar32",TBS_AUTOTICKS | 
+                    TBS_BOTH | WS_TABSTOP,122,281,194,24
+    CTEXT           "Lighting Quality:\n0: No Lighting  1: No shadows\n2-10: Increasing radiosity detail",
+                    IDC_STATIC,14,276,105,28
+    RTEXT           "Max. Lightmap Size (MB):",IDC_STATIC,114,315,80,12
+    EDITTEXT        IDC_LMAP_MAXSIZE,196,314,32,14,ES_AUTOHSCROLL
+    LTEXT           "0",IDC_STATIC,128,270,8,8
+    LTEXT           "1",IDC_STATIC,146,270,8,8
+    LTEXT           "2",IDC_STATIC,164,270,8,8
+    LTEXT           "3",IDC_STATIC,182,270,8,8
+    LTEXT           "4",IDC_STATIC,199,270,8,8
+    LTEXT           "5",IDC_STATIC,217,270,8,8
+    LTEXT           "6",IDC_STATIC,234,270,8,8
+    LTEXT           "7",IDC_STATIC,253,270,8,8
+    LTEXT           "8",IDC_STATIC,271,270,8,8
+    LTEXT           "9",IDC_STATIC,288,270,8,8
+    LTEXT           "10",IDC_STATIC,304,270,8,8
+    RTEXT           "SubSampling (sample/ft.):\n0 = Use 3x3 filter instead",
+                    IDC_STATIC,235,313,94,17
+    EDITTEXT        IDC_SUBSAMPLE,331,314,31,14,ES_AUTOHSCROLL
+    CONTROL         "Disable Stripping",IDC_DISABLE_STRIPPING,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,12,230,76,10
+    GROUPBOX        "Development Only",IDC_STATIC,7,212,86,48
+    CONTROL         "Ignore VIS (Rebuild All)",IDC_DONT_USE_VIS,"Button",
+                    BS_AUTOCHECKBOX | BS_VCENTER | BS_MULTILINE | WS_TABSTOP,
+                    12,306,101,11
+    CONTROL         "Reuse perfect match VIS only",
+                    IDC_REUSE_PERFECT_MATCH_ONLY,"Button",BS_AUTOCHECKBOX | 
+                    BS_VCENTER | BS_MULTILINE | WS_TABSTOP,12,319,101,11
+    CONTROL         "Detailed Lighting Info",IDC_DETAILED_LIGHTING_INFO,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,240,76,10
+END
+
+IDD_COMPILE_DIALOG DIALOGEX 0, 0, 309, 209
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
+CAPTION "Compiling Assets -- (c) Swingin' Ape Studios, Inc."
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    CONTROL         "Progress1",IDC_PROGRESS_BAR,"msctls_progress32",
+                    WS_BORDER | 0x1,7,7,295,10
+    CTEXT           "Click anywhere to close window",IDC_CLICK_ANYWHERE,7,
+                    160,295,8
+    PUSHBUTTON      "Abort Compile",IDC_ABORT,121,175,69,16,NOT WS_TABSTOP
+    CONTROL         "",IDC_SUBOP_PROGRESS,"msctls_progress32",WS_BORDER | 
+                    0x1,14,145,281,8
+    CONTROL         "",IDC_OP_PROGRESS,"msctls_progress32",WS_BORDER | 0x1,
+                    14,120,281,8
+    CTEXT           "Static",IDC_SUBOP_TEXT,7,134,295,8
+    CTEXT           "Static",IDC_OP_TEXT,7,108,295,8
+    CONTROL         "",IDC_COMPILE_RESULTS,"RichEdit20A",ES_MULTILINE | 
+                    ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | 
+                    WS_BORDER | WS_VSCROLL | WS_HSCROLL | WS_TABSTOP,7,22,
+                    295,83
+END
+
+IDD_SETTINGS_DIALOG DIALOGEX 0, 0, 339, 308
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
+CAPTION "PASM Settings -- (c) Swingin' Ape Studios, Inc."
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    EDITTEXT        IDC_XB_MASTER_FILE_DIR,74,13,239,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_XB_MASTER_FILE_DIR,317,14,10,12
+    EDITTEXT        IDC_GC_MASTER_FILE_DIR,74,29,239,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_GC_MASTER_FILE_DIR,317,30,10,12
+    EDITTEXT        IDC_LOG_OUTPUT_DIR,74,45,239,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_LOG_OUTPUT_DIR,317,46,10,12
+    EDITTEXT        IDC_EXTRACT_DIR,74,61,239,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_EXTRACT_DIR,317,62,10,12
+    EDITTEXT        IDC_CONFIG_DIR,74,77,239,14,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_CONFIG_DIR,317,78,10,12
+    EDITTEXT        IDC_IGNORE_EXTENSIONS,171,100,157,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_CONFIG_FILE,74,139,142,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_CONFIG_FILE,219,139,10,12
+    PUSHBUTTON      "Create &New Config Filename",IDC_CREATE_NEW_CONFIG_NAME,
+                    232,139,95,14
+    EDITTEXT        IDC_MASTER_FILE,74,155,142,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_MASTER_FILE,219,156,10,12
+    PUSHBUTTON      "Create New &Master Filename",IDC_CREATE_NEW_MASTER_NAME,
+                    232,155,95,14
+    EDITTEXT        IDC_LIB_DIR,74,173,239,14,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_LIB_DIR,317,173,10,12
+    EDITTEXT        IDC_LOCAL_DIR,74,190,239,14,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_LOCAL_DIR,317,191,10,12
+    EDITTEXT        IDC_LIBRARY_LOCK_DIR,74,207,239,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_LIB_LOCK_DIR,317,208,10,12
+    DEFPUSHBUTTON   "&OK",IDOK,117,269,50,17
+    PUSHBUTTON      "&Cancel",IDCANCEL,171,269,50,17
+    GROUPBOX        "Global Settings:",IDC_STATIC,7,3,325,123
+    RTEXT           "Xbox master file dir:",IDC_STATIC,13,16,57,8
+    RTEXT           "Log file dir:",IDC_STATIC,13,48,57,8
+    RTEXT           "Library dir:",IDC_STATIC,13,176,57,8
+    RTEXT           "Local dir:",IDC_STATIC,13,193,57,8
+    RTEXT           "Master file:",IDC_STATIC,13,158,57,8
+    GROUPBOX        "User Settings:",IDC_STATIC,7,130,325,128
+    RTEXT           "File extraction dir:",IDC_STATIC,13,64,57,8
+    RTEXT           "Config file dir:",IDC_STATIC,13,80,57,8
+    RTEXT           "Config file:",IDC_STATIC,13,142,57,8
+    RTEXT           "&Do not compile these file extensions, \nseperate with a ;  (example *.max;*.txt ). ",
+                    IDC_STATIC,13,99,155,17
+    RTEXT           "Library lock dir:",IDC_STATIC,13,209,57,8
+    RTEXT           "GC master file dir:",IDC_STATIC,13,32,57,8
+    RTEXT           "XClient file:",IDC_STATIC,13,226,57,8
+    EDITTEXT        IDC_XCLIENT_DIR,74,224,239,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_CHOOSE_XCLIENT_DIR,317,225,10,12
+    CONTROL         "Auto synchronize with XClient",IDC_AUTO_RUN_XCLIENT,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,74,246,106,8
+END
+
+IDD_ENTER_STRING_DLG DIALOG  0, 0, 187, 59
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Dialog"
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_INPUT_USER_STRING,7,22,173,12,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,39,38,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,98,38,50,14
+    LTEXT           "THIS IS A VERY LONG STRING ON PURPOSE I WANTED TO MAKE SURE THAT THIS WAS TWO LINE",
+                    IDC_STATIC_INSTRUCTIONS,7,3,173,16
+END
+
+IDD_DELETE_FILE_DIALOG DIALOG  0, 0, 230, 82
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "PASM File Delete"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL         "Library Dir",IDC_FROM_LIB,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,15,42,57,10
+    CONTROL         "Local Dir",IDC_FROM_LOCAL,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,87,42,57,10
+    CONTROL         "Master File",IDC_FROM_MASTER,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,159,42,57,10
+    PUSHBUTTON      "&Delete",IDC_DELETE,8,61,50,14
+    PUSHBUTTON      "Delete &All",IDC_DELETE_ALL,63,61,50,14
+    PUSHBUTTON      "&Skip",IDOK,118,61,50,14
+    PUSHBUTTON      "&Cancel",IDCANCEL,173,61,50,14
+    CTEXT           "Are you sure that you want to delete the following file?",
+                    IDC_STATIC,7,7,216,8
+    CTEXT           "FILENAMEHERE.TXT",IDC_FILENAME,35,19,160,8
+    GROUPBOX        "Delete File From:",IDC_STATIC,7,32,216,24
+END
+
+IDD_SYNC_DIALOG DIALOG  0, 0, 196, 50
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
+CAPTION "Please wait..."
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "The Xbox update client is currently running.  Please wait.",
+                    IDC_STATIC,7,7,182,11
+    ICON            IDR_MAINFRAME,IDC_STATIC,87,21,20,20
+END
+
+IDD_ASSET_SCAN_DIALOG DIALOGEX 0, 0, 171, 31
+STYLE DS_SETFONT | DS_MODALFRAME | DS_3DLOOK | DS_CENTER | WS_POPUP | 
+    WS_CAPTION
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "PASM - Asset File Compiler"
+FONT 8, "Microsoft Sans Serif", 400, 0, 0x0
+BEGIN
+    CONTROL         "",IDC_SCAN_PROGRESS_BAR,"msctls_progress32",WS_BORDER,7,
+                    15,157,9
+    CTEXT           "Scanning for Assets...",IDC_STATIC,7,4,157,8
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "pasm2 MFC Application"
+            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "InternalName", "pasm2"
+            VALUE "LegalCopyright", "Copyright (C) 2001"
+            VALUE "OriginalFilename", "pasm2.EXE"
+            VALUE "ProductName", "pasm2 Application"
+            VALUE "ProductVersion", "1, 0, 0, 1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 193
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 54
+    END
+
+    IDD_PASM_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 368
+        BOTTOMMARGIN, 354
+    END
+
+    IDD_COMPILE_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 302
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 196
+    END
+
+    IDD_SETTINGS_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 332
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 301
+    END
+
+    IDD_ENTER_STRING_DLG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 180
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 52
+    END
+
+    IDD_DELETE_FILE_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 223
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 75
+    END
+
+    IDD_SYNC_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 189
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 43
+    END
+
+    IDD_ASSET_SCAN_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 164
+        TOPMARGIN, 2
+        BOTTOMMARGIN, 28
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_MAIN_MENU MENU 
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "E&xit",                       IDCANCEL
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "Configuration &Settings...",  IDC_CONFIG
+        MENUITEM "Disable Library Support",     ID_DISABLE_LIB
+        MENUITEM SEPARATOR
+        MENUITEM "&Delete...",                  IDC_DELETE
+        MENUITEM SEPARATOR
+        MENUITEM "Clear Error &Log",            IDC_CLEAR_ERROR_LOG
+        MENUITEM "Open Error Log",              ID_OPEN_ERRORLOG
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Show Differences Only",      ID_VIEW_SHOWDIFFERENCESONLY
+        MENUITEM "Hold Compile Stats",          ID_VIEW_HOLD_COMPILE_STATS
+        MENUITEM SEPARATOR
+        MENUITEM "View Detailed File Info...",  IDC_SHOW_FILESTATS
+    END
+    POPUP "&Build"
+    BEGIN
+        MENUITEM "&Compile...",                 IDC_COMPILE
+        MENUITEM "Rebuild Master File",         IDC_REBUILD_MASTER_FILE
+        MENUITEM "Forced Compile...",           IDC_FORCE_COMPILE
+    END
+    POPUP "&Tools"
+    BEGIN
+        MENUITEM "Create &Zip File Of Master File...", 
+                                                ID_TOOLS_CREATE_ZIP_FILE
+        MENUITEM SEPARATOR
+        MENUITEM "Optimize Master File (Load Log Required)...", 
+                                                IDC_OPTIMIZE_MASTERFILE
+        MENUITEM "Optimize International Master File (US Load Log Required)", 
+                                                59397
+        MENUITEM "Create New Master File With Only Logged Assets (Load Log Required)...", 
+                                                ID_TOOLS_CREATENEWMASTERFILEWITHONLYLOGGEDASSETS
+
+        MENUITEM "Compact Master File...",      IDC_COMPACT_MASTER_FILE
+        MENUITEM SEPARATOR
+        MENUITEM "Generate File Type Log (Load Log Required)...", 
+                                                ID_TOOLS_GENERATE_FILE_USAGE_FILE
+
+        MENUITEM "Generate List Of Unused Assets (Load Log Required)...", 
+                                                ID_TOOLS_GENERATELISTOFUNUSEDASSETS
+
+        MENUITEM "Generate Log Of Master File Entries...", 
+                                                ID_TOOLS_GENERATE_MASTER_FILE_LIST
+
+        MENUITEM SEPARATOR
+        MENUITEM "Dump File Info To CSV File...", IDC_DUMP_FILENAMES
+        MENUITEM "Output Debug Pics",           ID_OUTPUT_DEBUG_PICS
+        MENUITEM "Extract From Master File",    IDC_EXTRACT, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "&Mirror Library",             IDC_MIRROR_LIBRARY, GRAYED
+    END
+    POPUP "&Platform"
+    BEGIN
+        MENUITEM "&Xbox",                       ID_PLATFORM_XBOX
+        MENUITEM "GC",                          ID_PLATFORM_GC
+        MENUITEM "PC",                          ID_PLATFORM_PC
+    END
+END
+
+IDR_POPUP_MENU MENU 
+BEGIN
+    POPUP "Actions"
+    BEGIN
+        MENUITEM "View Detailed File Info...",  IDC_SHOW_FILESTATS
+        MENUITEM SEPARATOR
+        MENUITEM "&Compile...",                 IDC_COMPILE
+        MENUITEM "&Delete...",                  IDC_DELETE
+        MENUITEM SEPARATOR
+        MENUITEM "Check &Out From Library",     IDC_SYNC_DOWN, GRAYED
+        MENUITEM "Check &Into Library",         IDC_SYNC_UP, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "Local &Rescan && Compile",    IDC_SCAN_AND_COMPILE
+        MENUITEM "Library Rescan && Compile",   IDC_SYNC_DOWN_AND_COMPILE
+        , GRAYED
+        MENUITEM "Re&scan For Changes",         IDC_RESCAN
+        MENUITEM SEPARATOR
+        POPUP "&View"
+        BEGIN
+            MENUITEM "&Show Differences Only",      ID_VIEW_SHOWDIFFERENCESONLY
+
+            MENUITEM "Hold Compile Stats",          ID_VIEW_HOLD_COMPILE_STATS
+
+        END
+        POPUP "&Platform"
+        BEGIN
+            MENUITEM "&Xbox",                       ID_PLATFORM_XBOX
+            MENUITEM "GC",                          ID_PLATFORM_GC
+            MENUITEM "PC",                          ID_PLATFORM_PC, GRAYED
+        END
+        MENUITEM SEPARATOR
+        MENUITEM "Open Error Log",              ID_OPEN_ERRORLOG
+        MENUITEM "Clear Error &Log",            IDC_CLEAR_ERROR_LOG
+        MENUITEM SEPARATOR
+        MENUITEM "Forced Compile...",           IDC_FORCE_COMPILE
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About pasm2..."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\pasm2.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

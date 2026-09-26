@@ -1,0 +1,5 @@
+SCC = This is a Source Code Control file
+
+[SceneExport.dsp]
+SCC_Aux_Path = "\\server\vss\"
+SCC_Project_Name = "$/Code/Src/Plug/max/ape_export", DAAAAAAA

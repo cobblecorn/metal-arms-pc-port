@@ -1,0 +1,23 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0              ; decal texture
+;tex t1				; bumpmap texture
+;tex t2				; envmap texture
+
+;texbeml t2, t1
+
+texm3x2pad t2, t0_bx2    ; Perform first row of matrix multiply.
+texm3x2tex t3, t0_bx2  ; Perform third row of matrix multiply, sample
+
+mov r0, t3
+
+;texbem t2, t1
+;mov r0, t2
+;mov r0, t0			; decal color
+;mul r1, r0.a, t2
+;mad r0.rgb, r1, v1, r0
+;mul r0, r0, c2		; res *= surface color

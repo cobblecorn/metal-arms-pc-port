@@ -1,0 +1,78 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ma_xb", "ma_xb.vcproj", "{6A65697D-95CA-4387-A044-5BFDCD34FE11}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fang2xb", "..\..\..\Lib\Fang2\dx\xb\fang2xb.vcproj", "{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SmallAMX", "..\..\..\Lib\SmallAMX\SmallAMX.vcproj", "{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 4
+		SccProjectName0 = \u0022$/Code/Src/App/ma\u0022,\u0020PRDAAAAA
+		SccLocalPath0 = ..
+		SccProvider0 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection0 = xb\\
+		SolutionUniqueID = {1B55F20C-6646-4ABD-BB67-B9247788EA91}
+		SccProjectUniqueName1 = ma_xb.vcproj
+		SccLocalPath1 = ..
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection1 = xb\\
+		SccProjectUniqueName2 = ..\\..\\..\\Lib\\Fang2\\dx\\xb\\fang2xb.vcproj
+		SccProjectName2 = \u0022$/Code/Src/Lib/Fang2\u0022,\u0020QCDAAAAA
+		SccLocalPath2 = ..\\..\\..\\Lib\\Fang2
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection2 = dx\\xb\\
+		SccProjectUniqueName3 = ..\\..\\..\\Lib\\SmallAMX\\SmallAMX.vcproj
+		SccProjectName3 = \u0022$/Code/Src/Lib/SmallAMX\u0022,\u0020XRCAAAAA
+		SccLocalPath3 = ..\\..\\..\\Lib\\SmallAMX
+		CanCheckoutShared = true
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug Xbox
+		ConfigName.1 = Production Xbox
+		ConfigName.2 = QA Xbox
+		ConfigName.3 = Release Xbox
+		ConfigName.4 = Test Xbox
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.0 = {C84B9AF0-D4E2-4340-A18C-B850E4B46E68}
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.1 = {017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Debug Xbox.ActiveCfg = Debug|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Debug Xbox.Build.0 = Debug|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Production Xbox.ActiveCfg = Production|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Production Xbox.Build.0 = Production|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.QA Xbox.ActiveCfg = QA|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.QA Xbox.Build.0 = QA|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Release Xbox.ActiveCfg = Release|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Release Xbox.Build.0 = Release|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Test Xbox.ActiveCfg = Test|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Test Xbox.Build.0 = Test|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Debug Xbox.ActiveCfg = Debug|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Debug Xbox.Build.0 = Debug|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Production Xbox.ActiveCfg = Production|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Production Xbox.Build.0 = Production|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.QA Xbox.ActiveCfg = QA|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.QA Xbox.Build.0 = QA|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Release Xbox.ActiveCfg = Release|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Release Xbox.Build.0 = Release|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Test Xbox.ActiveCfg = Test|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Test Xbox.Build.0 = Test|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Debug Xbox.ActiveCfg = Debug|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Debug Xbox.Build.0 = Debug|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Production Xbox.ActiveCfg = Production|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Production Xbox.Build.0 = Production|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.QA Xbox.ActiveCfg = QA|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.QA Xbox.Build.0 = QA|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Release Xbox.ActiveCfg = Release|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Release Xbox.Build.0 = Release|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Test Xbox.ActiveCfg = Test|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Test Xbox.Build.0 = Test|Xbox
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

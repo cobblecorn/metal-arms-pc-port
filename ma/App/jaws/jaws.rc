@@ -1,0 +1,425 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\jaws.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\jaws.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOG  0, 0, 235, 55
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About jaws"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    LTEXT           "Jaws Art Utility, Version 0.2",IDC_STATIC,40,17,119,8,
+                    SS_NOPREFIX
+    LTEXT           "Copyright (c) 2001 Swingin' Ape Studios, Inc.",
+                    IDC_STATIC,40,29,179,8
+    DEFPUSHBUTTON   "OK",IDOK,178,7,50,14,WS_GROUP
+END
+
+IDD_JAWS_DIALOG DIALOGEX 0, 0, 412, 347
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | 
+    WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "Jaws Art Utility --- (c) Swingin' Ape Studios, Inc."
+FONT 8, "MS Sans Serif", 0, 0, 0x1
+BEGIN
+    PUSHBUTTON      "&Video",IDC_BUTTON_VIDMODE,13,13,38,19
+    PUSHBUTTON      "&Settings",IDC_BUTTON_SETTINGS,13,34,38,19
+    CONTROL         "Hide Cursor",IDC_HIDE_CURSOR,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,57,11,62,10
+    CONTROL         "Show Bounds",IDC_CHECK_SHOW_BOUNDS,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,57,21,62,10
+    CONTROL         "Show FPS",IDC_CHECK_FPS,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,57,41,62,10
+    CONTROL         "Show Perf Stats",IDC_CHECK_PERF,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,57,51,71,10
+    CONTROL         "30",IDC_30FPS,"Button",BS_AUTORADIOBUTTON | WS_GROUP,
+                    167,10,29,10
+    CONTROL         "60",IDC_60FPS,"Button",BS_AUTORADIOBUTTON,167,21,37,10
+    CONTROL         "Realtime",IDC_REALTIME_FPS,"Button",BS_AUTORADIOBUTTON,
+                    167,32,50,10
+    CONTROL         "1/2",IDC_REALTIME_SLOW10,"Button",BS_AUTORADIOBUTTON,
+                    167,43,37,10
+    CONTROL         "1/3rd",IDC_REALTIME_SLOW20,"Button",BS_AUTORADIOBUTTON,
+                    167,54,37,10
+    CONTROL         "1/4th",IDC_REALTIME_SLOW30,"Button",BS_AUTORADIOBUTTON,
+                    220,11,37,10
+    CONTROL         "1/5th",IDC_REALTIME_SLOW40,"Button",BS_AUTORADIOBUTTON,
+                    220,22,37,10
+    CONTROL         "1/10th",IDC_REALTIME_SLOW50,"Button",BS_AUTORADIOBUTTON,
+                    220,33,37,10
+    CONTROL         "1/20th",IDC_REALTIME_SLOW75,"Button",BS_AUTORADIOBUTTON,
+                    220,44,37,10
+    CONTROL         "1/60th",IDC_REALTIME_SLOW100,"Button",
+                    BS_AUTORADIOBUTTON,220,55,37,10
+    CONTROL         "Series",IDC_SERIES,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,268,13,35,10
+    CONTROL         "Single",IDC_SINGLE,"Button",BS_AUTORADIOBUTTON,307,13,
+                    35,10
+    CONTROL         "TGA",IDC_TGA,"Button",BS_AUTORADIOBUTTON | WS_GROUP,268,
+                    25,35,10
+    CONTROL         "JPEG",IDC_JPEG,"Button",BS_AUTORADIOBUTTON,307,25,35,10
+    PUSHBUTTON      "&Run",IDC_BUTTON_RUN,367,7,38,24
+    DEFPUSHBUTTON   "&Exit",IDCANCEL,367,41,38,24
+    CONTROL         "",IDC_CHECK_LOOP1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    16,124,8,8
+    PUSHBUTTON      "X",IDC_BUTTON_X1,34,119,16,15
+    PUSHBUTTON      "Anim &1",IDC_BUTTON_ANIM1,56,119,90,15
+    CONTROL         "",IDC_CHECK_LOOP2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    16,143,8,8
+    PUSHBUTTON      "X",IDC_BUTTON_X2,34,138,16,15
+    PUSHBUTTON      "Anim &2",IDC_BUTTON_ANIM2,56,138,90,15
+    CONTROL         "",IDC_CHECK_LOOP3,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    16,161,8,8
+    PUSHBUTTON      "X",IDC_BUTTON_X3,34,157,16,15
+    PUSHBUTTON      "Anim &3",IDC_BUTTON_ANIM3,56,157,90,15
+    CONTROL         "",IDC_CHECK_LOOP4,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    16,180,8,8
+    PUSHBUTTON      "X",IDC_BUTTON_X4,34,176,16,15
+    PUSHBUTTON      "Anim &4",IDC_BUTTON_ANIM4,56,176,90,15
+    CONTROL         "oo",IDC_CHECK_LINK1,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,170,135,24,10
+    CONTROL         "oo",IDC_CHECK_LINK2,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,170,172,24,10
+    CONTROL         "Enable",IDC_CHECK_ENABLE_ANIM,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,220,106,38,10
+    CONTROL         "Pause",IDC_CHECK_PAUSE_ANIM,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,220,118,36,10
+    PUSHBUTTON      "&Ambient",IDC_BUTTON_AMBIENT,293,105,55,14
+    CONTROL         "On",IDC_CHECK_AMBIENT,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,354,109,31,8
+    PUSHBUTTON      "&Directional",IDC_BUTTON_DIRECTIONAL,293,122,55,14
+    CONTROL         "On",IDC_CHECK_DIRECTIONAL,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,354,126,31,8
+    PUSHBUTTON      "&Background",IDC_BUTTON_BACKGROUND,293,139,55,14
+    CONTROL         "Clear",IDC_CHECK_BACKGROUND,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,354,143,31,8
+    PUSHBUTTON      "&Load",IDC_BUTTON_LOAD,278,158,111,15
+    PUSHBUTTON      "Load Config",IDC_BUTTON_LOADCONFIG,278,178,53,15
+    PUSHBUTTON      "Save Config",IDC_BUTTON_SAVECONFIG,336,178,53,15
+    LTEXT           "Mixer 3",IDC_STATIC,226,142,24,8
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,199,134,16,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,199,172,15,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,214,144,7,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,214,134,1,11
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,221,138,32,31
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,166,120,32,31
+    LTEXT           "Mixer 1",IDC_STATIC,171,123,24,8
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,166,157,32,31
+    LTEXT           "Mixer 2",IDC_STATIC,170,160,24,8
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,146,182,20,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,146,163,20,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,146,145,20,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,146,127,20,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,253,163,25,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,214,162,7,1
+    CONTROL         "",IDC_STATIC,"Static",SS_BLACKFRAME,214,162,1,11
+    LTEXT           "Clear",IDC_STATIC,34,108,17,8
+    LTEXT           "Animation Files",IDC_STATIC,74,108,48,8
+    LTEXT           "Loop",IDC_STATIC,12,108,17,8
+    GROUPBOX        "Animation Combiner:",IDC_STATIC,7,94,250,104
+    GROUPBOX        "Geometry:",IDC_STATIC,260,67,145,132
+    GROUPBOX        "Settings:",IDC_STATIC,7,3,250,90
+    RTEXT           "Version # 17",IDC_VERSION,342,332,65,8
+    EDITTEXT        IDC_EDIT_PRINTBOX,7,201,398,128,ES_MULTILINE | 
+                    ES_READONLY | WS_VSCROLL | WS_HSCROLL
+    LTEXT           "Animation\nPlayback\n(FPS):",IDC_PLAYBACK_TEXT,131,13,
+                    32,24
+    GROUPBOX        "Screen Shots:",IDC_SCREEN_SHOT_OPTIONS,260,3,103,63
+    LTEXT           "Press SPACE to toggle on/off (Full Screen Req.)",
+                    IDC_SCREEN_SHOT_TEXT,267,35,91,17
+    CONTROL         "Show Bones",IDC_CHECK_SHOW_BONES,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,57,31,62,10
+    CONTROL         "",IDC_LOD_SLIDER,"msctls_trackbar32",TBS_AUTOTICKS | 
+                    TBS_TOP | WS_TABSTOP,265,85,132,19
+    CTEXT           "Force LOD",IDC_FORCE_LOD,274,78,114,7
+    CONTROL         "Don't Render Specular Pass",IDC_DONT_RENDER_SPECULAR,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,71,106,10
+    CONTROL         "Don't Render Surface Pass",IDC_DONT_RENDER_SURFACE,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,61,106,10
+    CONTROL         "",IDC_FOV_SLIDER,"msctls_trackbar32",TBS_AUTOTICKS | 
+                    TBS_TOP | TBS_NOTICKS | WS_TABSTOP,145,79,106,10
+    CTEXT           "FOV 30 - 90 Degrees",IDC_STATIC,158,69,93,8
+END
+
+IDD_VIDMODE DIALOG  0, 0, 411, 79
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Select Video Mode"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "Ok",IDOK,294,58,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,354,58,50,14
+    CONTROL         "Hardware",IDC_RADIO_HARDWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,16,47,10
+    CONTROL         "Software",IDC_RADIO_SOFTWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,28,44,10
+    CONTROL         "RefRast",IDC_RADIO_REFRAST,"Button",BS_AUTORADIOBUTTON,
+                    17,40,42,10
+    CONTROL         "Fullscreen",IDC_CHECK_FULLSCREEN,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,17,62,48,10
+    COMBOBOX        IDC_COMBO_DEVICE,117,14,287,66,CBS_DROPDOWNLIST | 
+                    CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_MODE,117,34,287,168,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Device",IDC_STATIC,88,18,24,8
+    LTEXT           "Mode",IDC_STATIC,93,38,19,8
+END
+
+IDD_DIALOG_SETTINGS DIALOG  0, 0, 282, 72
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Jaws Settings"
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_MASTER_FILE,69,7,193,13,ES_AUTOHSCROLL | ES_READONLY | 
+                    NOT WS_TABSTOP
+    PUSHBUTTON      "...",IDC_BUTTON_MASTER_FILE,265,8,10,12
+    EDITTEXT        IDC_SCREENSHOT_DIR,69,23,193,13,ES_AUTOHSCROLL | 
+                    ES_READONLY | NOT WS_TABSTOP
+    PUSHBUTTON      "...",IDC_CHOOSE_SCREENSHOT_DIR,265,24,10,12
+    CONTROL         "Auto Run On ""LOAD""",IDC_RUN_ON_LOAD,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,9,41,79,10
+    DEFPUSHBUTTON   "OK",IDOK,87,49,50,16
+    PUSHBUTTON      "Cancel",IDCANCEL,145,49,50,16
+    RTEXT           "Master File:",IDC_MASTER_FILE_TEXT,11,9,56,8
+    RTEXT           "Screenshot Path:",IDC_SCREENSHOT_PATH_TEXT,11,25,56,8
+END
+
+IDD_ASSET_PICKER DIALOG  0, 0, 276, 135
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Select Asset From Master File"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL         "List1",IDC_FILE_LIST,"SysListView32",LVS_LIST | 
+                    LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_SORTASCENDING | 
+                    WS_BORDER | WS_TABSTOP,7,25,262,66
+    EDITTEXT        IDC_FILENAME,67,98,140,12,ES_AUTOHSCROLL | ES_READONLY
+    COMBOBOX        IDC_FILETYPE_COMBO,67,115,140,70,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "&Open",IDOK,219,96,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,219,114,50,14
+    EDITTEXT        IDC_MASTER_FILENAME,50,5,219,12,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    LTEXT           "Asset of &type:",IDC_STATIC,9,117,52,8
+    LTEXT           "Asset &name:",IDC_STATIC,9,100,52,8
+    LTEXT           "Look &in:",IDC_STATIC,9,7,36,8
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "jaws MFC Application"
+            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "InternalName", "jaws"
+            VALUE "LegalCopyright", "Copyright (C) 2001"
+            VALUE "OriginalFilename", "jaws.EXE"
+            VALUE "ProductName", "jaws Application"
+            VALUE "ProductVersion", "1, 0, 0, 1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 228
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 48
+    END
+
+    IDD_JAWS_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 405
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 340
+    END
+
+    IDD_VIDMODE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 404
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 72
+    END
+
+    IDD_DIALOG_SETTINGS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 275
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 65
+    END
+
+    IDD_ASSET_PICKER, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 269
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 128
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_ASSET_PICKER DLGINIT
+BEGIN
+    IDC_FILETYPE_COMBO, 0x403, 15, 0
+0x6f57, 0x6c72, 0x7364, 0x2820, 0x2e2a, 0x6c77, 0x2964, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 15, 0
+0x654d, 0x6873, 0x7365, 0x2820, 0x2e2a, 0x6962, 0x296e, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 23, 0
+0x6e41, 0x6d69, 0x7461, 0x6f69, 0x206e, 0x6144, 0x6174, 0x2820, 0x2e2a, 
+0x746d, 0x2978, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 18, 0
+0x6554, 0x7478, 0x7275, 0x7365, 0x2820, 0x2a20, 0x732e, 0x7265, 0x0029, 
+
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About jaws..."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\jaws.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

@@ -1,0 +1,72 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xclient", "xclient.vcproj", "{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fang2win", "..\..\lib\Fang2\dx\win\fang2win.vcproj", "{483A4355-73FC-4C22-8673-4254CBED3729}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 2
+		SccProjectUniqueName0 = xclient.vcproj
+		SccProjectName0 = \u0022$/Code/Src/App/xclient\u0022,\u0020LQFAAAAA
+		SccLocalPath0 = .
+		SccProvider0 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+		SccProjectUniqueName1 = ..\\..\\lib\\Fang2\\dx\\win\\fang2win.vcproj
+		SccProjectName1 = \u0022$/Code/Src/Lib/Fang2\u0022,\u0020QCDAAAAA
+		SccLocalPath1 = ..\\..\\lib\\Fang2
+		SccProvider1 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection1 = dx\\win\\
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Debug Unicode
+		ConfigName.2 = GCDebug
+		ConfigName.3 = GCRelease
+		ConfigName.4 = Production
+		ConfigName.5 = Release
+		ConfigName.6 = Release Unicode
+		ConfigName.7 = Test
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.0 = {483A4355-73FC-4C22-8673-4254CBED3729}
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Debug.ActiveCfg = Debug|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Debug.Build.0 = Debug|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Debug Unicode.ActiveCfg = Debug|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Debug Unicode.Build.0 = Debug|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.GCDebug.ActiveCfg = Debug|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.GCDebug.Build.0 = Debug|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.GCRelease.ActiveCfg = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.GCRelease.Build.0 = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Production.ActiveCfg = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Production.Build.0 = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Release.ActiveCfg = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Release.Build.0 = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Release Unicode.ActiveCfg = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Release Unicode.Build.0 = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Test.ActiveCfg = Release|Win32
+		{07E838B5-8CE7-4B8F-99BB-2E0BC0A3188C}.Test.Build.0 = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug.ActiveCfg = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug.Build.0 = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug Unicode.ActiveCfg = Debug Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug Unicode.Build.0 = Debug Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCDebug.ActiveCfg = GCDebug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCDebug.Build.0 = GCDebug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCRelease.ActiveCfg = GCRelease|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCRelease.Build.0 = GCRelease|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Production.ActiveCfg = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Production.Build.0 = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release.ActiveCfg = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release.Build.0 = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release Unicode.ActiveCfg = Release Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release Unicode.Build.0 = Release Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Test.ActiveCfg = Test|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Test.Build.0 = Test|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

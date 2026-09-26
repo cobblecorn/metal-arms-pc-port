@@ -1,0 +1,159 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "pasm2", "pasm2.vcproj", "{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fang2win", "..\..\Lib\Fang2\dx\win\fang2win.vcproj", "{483A4355-73FC-4C22-8673-4254CBED3729}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AIGraphConvert", "..\..\Lib\AIGraphConvert\AIGraphConvert.vcproj", "{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "nv_norm_lib", "..\..\Lib\nv_norm_lib\nv_norm_lib.vcproj", "{86B487C2-9CD3-431D-A1B4-F443B7CC1653}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SmallAMX", "..\..\Lib\SmallAMX\SmallAMX.vcproj", "{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SmallCompiler", "..\..\Lib\SmallCompiler\SmallCompiler.vcproj", "{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SortedListCtrl", "..\..\Lib\SortedListCtrl\SortedListCtrl.vcproj", "{4CECEE81-644C-45CD-8026-47C06E936444}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ZipArchive", "..\..\Lib\ZipArchive\ZipArchive.vcproj", "{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvTriStrip", "..\..\Lib\NvTriStrip\NvTriStrip.vcproj", "{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 10
+		SccProjectName0 = \u0022$/Code/Src/App/pasm2\u0022,\u0020QDCAAAAA
+		SccLocalPath0 = .
+		SccProvider0 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+		SolutionUniqueID = {DC2F6BAC-3A12-459A-9D6F-45C3591D469B}
+		SccProjectUniqueName1 = pasm2.vcproj
+		SccLocalPath1 = .
+		CanCheckoutShared = true
+		SccProjectUniqueName2 = ..\\..\\Lib\\Fang2\\dx\\win\\fang2win.vcproj
+		SccProjectName2 = \u0022$/Code/Src/Lib/Fang2\u0022,\u0020QCDAAAAA
+		SccLocalPath2 = ..\\..\\Lib\\Fang2
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection2 = dx\\win\\
+		SccProjectUniqueName3 = ..\\..\\Lib\\AIGraphConvert\\AIGraphConvert.vcproj
+		SccProjectName3 = \u0022$/Code/Src/Lib/AIGraphConvert\u0022,\u0020MLEAAAAA
+		SccLocalPath3 = ..\\..\\Lib\\AIGraphConvert
+		CanCheckoutShared = true
+		SccProjectUniqueName4 = ..\\..\\Lib\\nv_norm_lib\\nv_norm_lib.vcproj
+		SccProjectName4 = \u0022$/Code/Src/Lib/nv_norm_lib\u0022,\u0020HSFAAAAA
+		SccLocalPath4 = ..\\..\\Lib\\nv_norm_lib
+		CanCheckoutShared = true
+		SccProjectUniqueName5 = ..\\..\\Lib\\SmallAMX\\SmallAMX.vcproj
+		SccProjectName5 = \u0022$/Code/Src/Lib/SmallAMX\u0022,\u0020XRCAAAAA
+		SccLocalPath5 = ..\\..\\Lib\\SmallAMX
+		CanCheckoutShared = true
+		SccProjectUniqueName6 = ..\\..\\Lib\\SmallCompiler\\SmallCompiler.vcproj
+		SccProjectName6 = \u0022$/Code/Src/Lib/SmallCompiler\u0022,\u0020MQCAAAAA
+		SccLocalPath6 = ..\\..\\Lib\\SmallCompiler
+		CanCheckoutShared = true
+		SccProjectUniqueName7 = ..\\..\\Lib\\SortedListCtrl\\SortedListCtrl.vcproj
+		SccProjectName7 = \u0022$/Code/Src/Lib/SortedListCtrl\u0022,\u0020CNBAAAAA
+		SccLocalPath7 = ..\\..\\Lib\\SortedListCtrl
+		CanCheckoutShared = true
+		SccProjectUniqueName8 = ..\\..\\Lib\\ZipArchive\\ZipArchive.vcproj
+		SccProjectName8 = \u0022$/Code/Src/Lib/ZipArchive\u0022,\u0020NNDAAAAA
+		SccLocalPath8 = ..\\..\\Lib\\ZipArchive
+		CanCheckoutShared = true
+		SccProjectUniqueName9 = ..\\..\\Lib\\NvTriStrip\\NvTriStrip.vcproj
+		SccProjectName9 = \u0022$/Code/Src/Lib/NvTriStrip\u0022,\u0020NCHAAAAA
+		SccLocalPath9 = ..\\..\\Lib\\NvTriStrip
+		CanCheckoutShared = true
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = GCDebug
+		ConfigName.2 = GCRelease
+		ConfigName.3 = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.0 = {4CECEE81-644C-45CD-8026-47C06E936444}
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.1 = {51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.2 = {017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.3 = {86B487C2-9CD3-431D-A1B4-F443B7CC1653}
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.4 = {483A4355-73FC-4C22-8673-4254CBED3729}
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.5 = {1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.6 = {A6236C77-E3D6-4CE4-9E60-0562412CBE3F}
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.7 = {BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.Debug.ActiveCfg = Debug|Win32
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.Debug.Build.0 = Debug|Win32
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.GCDebug.ActiveCfg = GCDebug|Win32
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.GCDebug.Build.0 = GCDebug|Win32
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.GCRelease.ActiveCfg = GCRelease|Win32
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.GCRelease.Build.0 = GCRelease|Win32
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.Release.ActiveCfg = Release|Win32
+		{11F1AA99-0AEF-4B1C-AB24-54B6D3A213DF}.Release.Build.0 = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug.ActiveCfg = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug.Build.0 = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCDebug.ActiveCfg = GCDebug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCDebug.Build.0 = GCDebug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCRelease.ActiveCfg = GCRelease|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCRelease.Build.0 = GCRelease|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release.ActiveCfg = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release.Build.0 = Release|Win32
+		{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}.Debug.ActiveCfg = Debug|Win32
+		{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}.Debug.Build.0 = Debug|Win32
+		{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}.GCDebug.ActiveCfg = GCDebug|Win32
+		{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}.GCDebug.Build.0 = GCDebug|Win32
+		{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}.GCRelease.ActiveCfg = GCRelease|Win32
+		{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}.GCRelease.Build.0 = GCRelease|Win32
+		{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}.Release.ActiveCfg = Release|Win32
+		{1E4555ED-72DD-4DA6-8DC7-4A04D0D3B14A}.Release.Build.0 = Release|Win32
+		{86B487C2-9CD3-431D-A1B4-F443B7CC1653}.Debug.ActiveCfg = Debug|Win32
+		{86B487C2-9CD3-431D-A1B4-F443B7CC1653}.Debug.Build.0 = Debug|Win32
+		{86B487C2-9CD3-431D-A1B4-F443B7CC1653}.GCDebug.ActiveCfg = GCDebug|Win32
+		{86B487C2-9CD3-431D-A1B4-F443B7CC1653}.GCDebug.Build.0 = GCDebug|Win32
+		{86B487C2-9CD3-431D-A1B4-F443B7CC1653}.GCRelease.ActiveCfg = GCRelease|Win32
+		{86B487C2-9CD3-431D-A1B4-F443B7CC1653}.GCRelease.Build.0 = GCRelease|Win32
+		{86B487C2-9CD3-431D-A1B4-F443B7CC1653}.Release.ActiveCfg = Release|Win32
+		{86B487C2-9CD3-431D-A1B4-F443B7CC1653}.Release.Build.0 = Release|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Debug.ActiveCfg = Debug|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Debug.Build.0 = Debug|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.GCDebug.ActiveCfg = GCDebug|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.GCDebug.Build.0 = GCDebug|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.GCRelease.ActiveCfg = GCRelease|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.GCRelease.Build.0 = GCRelease|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Release.ActiveCfg = Release|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Release.Build.0 = Release|Xbox
+		{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}.Debug.ActiveCfg = Debug|Win32
+		{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}.Debug.Build.0 = Debug|Win32
+		{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}.GCDebug.ActiveCfg = GCDebug|Win32
+		{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}.GCDebug.Build.0 = GCDebug|Win32
+		{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}.GCRelease.ActiveCfg = GCRelease|Win32
+		{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}.GCRelease.Build.0 = GCRelease|Win32
+		{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}.Release.ActiveCfg = Release|Win32
+		{51BA5271-1E47-4F0F-9B61-3A94A6C2FEDD}.Release.Build.0 = Release|Win32
+		{4CECEE81-644C-45CD-8026-47C06E936444}.Debug.ActiveCfg = Debug|Win32
+		{4CECEE81-644C-45CD-8026-47C06E936444}.Debug.Build.0 = Debug|Win32
+		{4CECEE81-644C-45CD-8026-47C06E936444}.GCDebug.ActiveCfg = GCDebug|Win32
+		{4CECEE81-644C-45CD-8026-47C06E936444}.GCDebug.Build.0 = GCDebug|Win32
+		{4CECEE81-644C-45CD-8026-47C06E936444}.GCRelease.ActiveCfg = GCRelease|Win32
+		{4CECEE81-644C-45CD-8026-47C06E936444}.GCRelease.Build.0 = GCRelease|Win32
+		{4CECEE81-644C-45CD-8026-47C06E936444}.Release.ActiveCfg = Release|Win32
+		{4CECEE81-644C-45CD-8026-47C06E936444}.Release.Build.0 = Release|Win32
+		{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}.Debug.ActiveCfg = Debug|Win32
+		{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}.Debug.Build.0 = Debug|Win32
+		{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}.GCDebug.ActiveCfg = GCDebug|Win32
+		{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}.GCDebug.Build.0 = GCDebug|Win32
+		{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}.GCRelease.ActiveCfg = GCRelease|Win32
+		{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}.GCRelease.Build.0 = GCRelease|Win32
+		{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}.Release.ActiveCfg = Release|Win32
+		{BCC958BD-8A8A-4E76-A0E5-49DB82FD2AEB}.Release.Build.0 = Release|Win32
+		{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}.Debug.ActiveCfg = Debug|Win32
+		{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}.Debug.Build.0 = Debug|Win32
+		{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}.GCDebug.ActiveCfg = Debug|Win32
+		{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}.GCDebug.Build.0 = Debug|Win32
+		{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}.GCRelease.ActiveCfg = Release|Win32
+		{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}.GCRelease.Build.0 = Release|Win32
+		{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}.Release.ActiveCfg = Release|Win32
+		{A6236C77-E3D6-4CE4-9E60-0562412CBE3F}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,29 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NvTriStrip", "NvTriStrip.vcproj", "{4270ED4C-F9D7-49BA-B0F6-2F81F0E4E09B}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 1
+		SccProjectUniqueName0 = NvTriStrip.vcproj
+		SccProjectName0 = \u0022$/Code/Src/Lib/NvTriStrip\u0022,\u0020NCHAAAAA
+		SccLocalPath0 = .
+		SccProvider0 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{4270ED4C-F9D7-49BA-B0F6-2F81F0E4E09B}.Debug.ActiveCfg = Debug|Win32
+		{4270ED4C-F9D7-49BA-B0F6-2F81F0E4E09B}.Debug.Build.0 = Debug|Win32
+		{4270ED4C-F9D7-49BA-B0F6-2F81F0E4E09B}.Release.ActiveCfg = Release|Win32
+		{4270ED4C-F9D7-49BA-B0F6-2F81F0E4E09B}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

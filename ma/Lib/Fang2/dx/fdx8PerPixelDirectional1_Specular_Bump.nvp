@@ -1,0 +1,17 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0              ; Bumpmap
+;texcoord t1
+
+;texdp3tex_sat t1_bx2, t0_bx2 ;u' = texcoord(t1).tex(t0, u0, v0), t1 = tex(t1, u', 0)
+
+texm3x2pad t1, t0_bx2
+texm3x2tex t2, t0_bx2
+
+;dp3_sat r0, t1, t0_bx2
+
+mul_sat r0, t2, v0

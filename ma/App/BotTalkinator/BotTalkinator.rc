@@ -1,0 +1,426 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\BotTalkinator.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\BotTalkinator.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOG  0, 0, 235, 55
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About BotTalkinator"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    LTEXT           "BotTalkinator Version 1.0",IDC_STATIC,40,10,119,8,
+                    SS_NOPREFIX
+    LTEXT           "Copyright (C) 2001",IDC_STATIC,40,25,119,8
+    DEFPUSHBUTTON   "OK",IDOK,178,7,50,14,WS_GROUP
+END
+
+IDD_BOTTALKINATOR_DIALOG DIALOGEX 0, 0, 592, 392
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | 
+    WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "BotTalkinator"
+FONT 8, "MS Sans Serif", 0, 0, 0x1
+BEGIN
+    COMBOBOX        IDC_COMBO_BOTNAME,71,13,119,164,CBS_DROPDOWNLIST | 
+                    CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_TITLE,71,31,119,225,CBS_DROPDOWNLIST | 
+                    CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "&New",IDC_BUTTON_NEW,195,29,28,16
+    PUSHBUTTON      "<<",IDC_BUTTON_PREVIOUS,225,29,28,16
+    PUSHBUTTON      ">>",IDC_BUTTON_NEXT,255,29,28,16
+    PUSHBUTTON      "Del",IDC_BUTTON_DELETE,285,29,28,16
+    PUSHBUTTON      "&Edit Selection",IDC_BUTTON_SELECT,60,50,72,16
+    DEFPUSHBUTTON   "&Save Bot Talks",IDC_BUTTON_SAVE,137,50,72,16
+    PUSHBUTTON      "E&xit",IDCANCEL,108,71,52,16
+    PUSHBUTTON      "Options...",IDC_BUTTON_OPTIONS,263,71,50,16
+    EDITTEXT        IDC_EDIT_NAME,76,111,47,14,ES_AUTOHSCROLL | ES_READONLY | 
+                    WS_DISABLED | NOT WS_TABSTOP
+    EDITTEXT        IDC_EDIT_TITLE,181,111,132,14,ES_AUTOHSCROLL | 
+                    WS_DISABLED
+    EDITTEXT        IDC_EDIT_DIALOGUE,76,128,237,14,ES_AUTOHSCROLL | 
+                    WS_DISABLED
+    EDITTEXT        IDC_EDIT_EXFILE,76,145,66,14,ES_AUTOHSCROLL | 
+                    WS_DISABLED
+    PUSHBUTTON      "...",IDC_PICK_CSV,145,145,11,14,WS_DISABLED
+    PUSHBUTTON      "Export",IDC_BUTTON_EXPORT,160,145,47,14,WS_DISABLED
+    EDITTEXT        IDC_EDIT_EDITOR_WAVFILE,76,162,66,14,ES_AUTOHSCROLL | 
+                    WS_DISABLED
+    PUSHBUTTON      "...",IDC_PICK_SFX,145,162,11,14,WS_DISABLED
+    CONTROL         "Use Snd File",IDC_CHECK_EDITOR_USEWAV,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,160,165,56,10
+    EDITTEXT        IDC_EDIT_LEN,76,179,47,14,ES_AUTOHSCROLL | WS_DISABLED
+    EDITTEXT        IDC_EDIT_OFFSET,76,196,47,14,ES_AUTOHSCROLL | 
+                    WS_DISABLED
+    COMBOBOX        IDC_COMBO_MILVOICE,242,198,71,41,CBS_DROPDOWN | CBS_SORT | 
+                    WS_DISABLED | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "List1",IDC_LIST1,"SysListView32",LVS_REPORT | 
+                    WS_DISABLED,15,230,552,64
+    CONTROL         "Slider1",IDC_SLIDER_TIMEPOS,"msctls_trackbar32",
+                    TBS_AUTOTICKS | TBS_TOP | WS_DISABLED | WS_TABSTOP,57,
+                    300,518,18
+    SCROLLBAR       IDC_SCROLLBAR_BANK,40,331,535,11,WS_DISABLED
+    PUSHBUTTON      "Play",IDC_BUTTON_PLAY,13,350,50,17,WS_DISABLED
+    PUSHBUTTON      "Play From",IDC_BUTTON_PLAYFROM,66,350,50,17,WS_DISABLED
+    PUSHBUTTON      "Pause",IDC_BUTTON_PAUSE,119,350,50,17,WS_DISABLED
+    PUSHBUTTON      "Set Play From",IDC_BUTTON_SETPLAYFROM,172,350,50,17,
+                    WS_DISABLED
+    CONTROL         "Extended Drag",IDC_CHECK_EDITOR_EXTDRAG,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,228,347,61,10
+    CONTROL         "Use Talk Loop",IDC_CHECK_TALKLOOP,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,228,359,61,10
+    PUSHBUTTON      "Done - Accept Changes",IDC_BUTTON_OKAYSEL,300,350,84,16,
+                    WS_DISABLED
+    PUSHBUTTON      "Done - Lose Changes",IDC_BUTTON_CANCELSEL,394,350,84,16,
+                    WS_DISABLED
+    GROUPBOX        "Dialogue Selector",IDC_STATIC_SELECTOR,7,0,310,91
+    RTEXT           "Robot Name:",IDC_STATIC_SEL_BOTRACE,13,15,55,8
+    RTEXT           "Bot Talk Title:",IDC_STATIC_SEL_TITLE,13,33,55,8
+    GROUPBOX        "",IDC_STATIC_EDITOR,7,221,578,153,WS_DISABLED
+    RTEXT           "Dialogue:",IDC_STATIC_EDITOR_DIALOGUE,13,130,58,8,
+                    WS_DISABLED
+    RTEXT           "Robot Name:",IDC_STATIC_EDITOR_NAME,13,113,58,8,
+                    WS_DISABLED
+    RTEXT           "Bot Talk Title:",IDC_STATIC_EDITOR_TITLE,126,113,51,8,
+                    WS_DISABLED
+    LTEXT           "0.00s/0.00s",IDC_STATIC_CURTIMEPOS,14,307,43,8,
+                    WS_DISABLED
+    SCROLLBAR       IDC_SCROLLBAR_GEST,567,230,10,65,SBS_VERT | WS_DISABLED
+    LTEXT           "Static",IDC_STATIC_BANK1,55,319,18,8,WS_DISABLED
+    LTEXT           "Static",IDC_STATIC_BANK2,566,319,18,8,WS_DISABLED
+    RTEXT           "Mil Voice:",IDC_STATIC_MILVOICE,198,199,40,8,
+                    WS_DISABLED
+    CONTROL         "",IDC_STATIC_VIEWFRAME,"Static",SS_BLACKRECT,321,4,264,
+                    216
+    GROUPBOX        "Dialogue Editor",IDC_STATIC_EDITOR2,7,102,310,112,
+                    WS_DISABLED
+    RTEXT           "Static",IDC_STATIC_VERSION,518,380,70,8
+    RTEXT           ".CSV File Name",IDC_TEXT_EXFILE,13,147,58,8,WS_DISABLED
+    RTEXT           "Sound File:",IDC_STATIC_SOUNDFILE,13,165,58,8,
+                    WS_DISABLED
+    RTEXT           "Min Time (secs):",IDC_LEN_STATIC,13,180,58,8,
+                    WS_DISABLED
+    RTEXT           "Start Offset (secs):",IDC_OFFSET_STATIC,13,199,58,8,
+                    WS_DISABLED
+    CONTROL         "Export as 2d",IDC_CHECK_EDITOR_IS2D,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,216,147,55,10
+END
+
+IDD_DIALOG1 DIALOG  0, 0, 322, 118
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Add New Dialogue"
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_BOTNAME,54,12,40,14,ES_AUTOHSCROLL | 
+                    ES_READONLY | NOT WS_TABSTOP
+    EDITTEXT        IDC_EDIT_TITLE,53,30,245,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,209,96,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,265,96,50,14
+    LTEXT           "Bot Name",IDC_STATIC_BOTNAME,15,14,31,8
+    LTEXT           "Title",IDC_STATIC_TITLE,29,31,14,8
+END
+
+IDD_VIDMODE DIALOG  0, 0, 411, 79
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Select Video Mode"
+FONT 8, "MS Sans Serif"
+BEGIN
+    COMBOBOX        IDC_COMBO_DEVICE,117,14,287,66,CBS_DROPDOWNLIST | 
+                    CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_MODE,117,34,287,168,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Hardware",IDC_RADIO_HARDWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,16,47,10
+    CONTROL         "Software",IDC_RADIO_SOFTWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,28,44,10
+    CONTROL         "RefRast",IDC_RADIO_REFRAST,"Button",BS_AUTORADIOBUTTON,
+                    17,40,42,10
+    DEFPUSHBUTTON   "Ok",IDOK,294,58,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,354,58,50,14
+    LTEXT           "Device",IDC_STATIC,88,18,24,8
+    LTEXT           "Mode",IDC_STATIC,93,38,19,8
+END
+
+IDD_DIALOG_OPTIONS DIALOG  0, 0, 424, 92
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Configuration Options"
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_MASTERFILE,90,7,311,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "...",IDC_BUTTON_BROWSEMASTER,405,7,12,14
+    EDITTEXT        IDC_EDIT_INPUT_DIR,90,27,311,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "...",IDC_BUTTON_BROWSE_INPUT_DIR,405,27,12,14
+    EDITTEXT        IDC_EDIT_OUTPUT_DIR,90,48,311,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "...",IDC_BUTTON_BROWSE_OUTPUT_DIR,405,48,12,14
+    PUSHBUTTON      "Set Video Mode",IDC_BUTTON_VIDEOMODE,5,71,55,14
+    DEFPUSHBUTTON   "OK",IDOK,160,71,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,215,71,50,14
+    RTEXT           "Master File:",IDC_STATIC,7,9,77,8
+    RTEXT           "Input Directory:",IDC_STATIC,7,29,77,8
+    RTEXT           "Output Directory:",IDC_STATIC,7,50,77,8
+END
+
+IDD_DIALOG_NEWGESTURE DIALOG  0, 0, 178, 60
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Insert Gesture"
+FONT 8, "MS Sans Serif"
+BEGIN
+    COMBOBOX        IDC_COMBO_GESTID,63,19,89,80,CBS_DROPDOWNLIST | CBS_SORT | 
+                    WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "OK",IDOK,36,39,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,92,39,50,14
+    LTEXT           "Gesture ID",IDC_STATIC,26,21,33,8
+    CTEXT           "Select the gesture that you would like to insert.",
+                    IDC_STATIC,7,7,164,8
+END
+
+IDD_PICK_SFX_DIALOG DIALOG  0, 0, 157, 65
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION
+CAPTION "Pick SFX from bank"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,23,44,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,85,44,50,14
+    LTEXT           "Pick a sound fx from this bot's SFX bank",IDC_STATIC,9,
+                    10,139,8
+    COMBOBOX        IDC_SFX_COMBO,25,25,107,127,CBS_DROPDOWNLIST | CBS_SORT | 
+                    CBS_LOWERCASE | WS_VSCROLL | WS_TABSTOP
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "BotTalkinator MFC Application"
+            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "InternalName", "BotTalkinator"
+            VALUE "LegalCopyright", "Copyright (C) 2001"
+            VALUE "OriginalFilename", "BotTalkinator.EXE"
+            VALUE "ProductName", "BotTalkinator Application"
+            VALUE "ProductVersion", "1, 0, 0, 1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 228
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 48
+    END
+
+    IDD_BOTTALKINATOR_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 585
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 385
+    END
+
+    IDD_DIALOG1, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 315
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 110
+    END
+
+    IDD_DIALOG_OPTIONS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 417
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 85
+    END
+
+    IDD_DIALOG_NEWGESTURE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 171
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 53
+    END
+
+    IDD_PICK_SFX_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 150
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 58
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_MENU_RCLICK MENU 
+BEGIN
+    POPUP "Justin!"
+    BEGIN
+        MENUITEM "Insert New Gesture",          ID_INSERTNEWGEST
+        MENUITEM "Insert This Gesture",         ID_INSERTTHISGEST
+        MENUITEM "Delete Gesture",              ID_DELETEGEST
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_PICK_SFX_DIALOG DLGINIT
+BEGIN
+    IDC_SFX_COMBO, 0x403, 11, 0
+0x6f73, 0x6e75, 0x2064, 0x7866, 0x3120, "\000" 
+    IDC_SFX_COMBO, 0x403, 11, 0
+0x6f73, 0x6e75, 0x2064, 0x7866, 0x3220, "\000" 
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About BotTalkinator..."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\BotTalkinator.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

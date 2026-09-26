@@ -1,0 +1,20 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+def c0, 1, 1, 1, 1
+
+tex t0              ; light0
+tex t1				; texkill0
+tex t2				; light1
+tex t3				; texkill1
+
+mul_sat r1, t0, v0
+mul_sat r1, r1, 1-t1
+
+mul_sat r0, t2, v1
+mul_sat r0, r0, 1-t3
+
+add_sat r0, r0, r1

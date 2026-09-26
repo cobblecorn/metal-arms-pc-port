@@ -1,0 +1,17 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0              ; decal texture
+tex t1				; envmap texture
+texcoord t2			; emissive value
+
+mov r0, t0
+mul r1, r0.a, t1
+mad r0.rgb, r1, v1, r0
+mul r0.rgb, r0, v0
++mul r0.a, t0.a, c3.a
+;+mov r0.a, t2.a		; output fog value
+mul_sat r0.rgb, r0, c2		; res *= surface color

@@ -1,0 +1,84 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "jaws", "jaws.vcproj", "{34F1D896-8162-40A5-8683-91F2F959F3E4}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fang2win", "..\..\Lib\Fang2\dx\win\fang2win.vcproj", "{483A4355-73FC-4C22-8673-4254CBED3729}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 3
+		SccProjectUniqueName0 = jaws.vcproj
+		SccLocalPath0 = .
+		CanCheckoutShared = true
+		SccProjectUniqueName1 = ..\\..\\Lib\\Fang2\\dx\\win\\fang2win.vcproj
+		SccProjectName1 = \u0022$/Code/Src/Lib/Fang2\u0022,\u0020QCDAAAAA
+		SccLocalPath1 = ..\\..\\Lib\\Fang2
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection1 = dx\\win\\
+		SccProjectName2 = \u0022$/Code/Src/App/jaws\u0022,\u0020WRAAAAAA
+		SccLocalPath2 = .
+		SccProvider2 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+		SolutionUniqueID = {B44FD452-0B5E-4A51-A5D5-71E7893DA3A4}
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Debug Unicode
+		ConfigName.2 = GCDebug
+		ConfigName.3 = GCRelease
+		ConfigName.4 = Production
+		ConfigName.5 = Release
+		ConfigName.6 = Release Unicode
+		ConfigName.7 = Sample
+		ConfigName.8 = Test
+		ConfigName.9 = VTune
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.0 = {483A4355-73FC-4C22-8673-4254CBED3729}
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Debug.ActiveCfg = Debug|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Debug.Build.0 = Debug|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Debug Unicode.ActiveCfg = Debug|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Debug Unicode.Build.0 = Debug|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.GCDebug.ActiveCfg = Debug|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.GCDebug.Build.0 = Debug|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.GCRelease.ActiveCfg = Release|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.GCRelease.Build.0 = Release|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Production.ActiveCfg = Production|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Production.Build.0 = Production|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Release.ActiveCfg = Release|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Release.Build.0 = Release|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Release Unicode.ActiveCfg = Release|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Release Unicode.Build.0 = Release|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Sample.ActiveCfg = Sample|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Sample.Build.0 = Sample|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Test.ActiveCfg = Test|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.Test.Build.0 = Test|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.VTune.ActiveCfg = VTune|Win32
+		{34F1D896-8162-40A5-8683-91F2F959F3E4}.VTune.Build.0 = VTune|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug.ActiveCfg = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug.Build.0 = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug Unicode.ActiveCfg = Debug Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug Unicode.Build.0 = Debug Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCDebug.ActiveCfg = GCDebug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCDebug.Build.0 = GCDebug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCRelease.ActiveCfg = GCRelease|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCRelease.Build.0 = GCRelease|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Production.ActiveCfg = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Production.Build.0 = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release.ActiveCfg = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release.Build.0 = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release Unicode.ActiveCfg = Release Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release Unicode.Build.0 = Release Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Sample.ActiveCfg = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Sample.Build.0 = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Test.ActiveCfg = Test|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Test.Build.0 = Test|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.VTune.ActiveCfg = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.VTune.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

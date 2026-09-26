@@ -1,0 +1,663 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\Spit.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\Spit.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOG  0, 0, 235, 55
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About Spit"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    LTEXT           "Spit Version 1.0",IDC_STATIC,40,10,119,8,SS_NOPREFIX
+    LTEXT           "Copyright (C) 2002",IDC_STATIC,40,25,119,8
+    DEFPUSHBUTTON   "OK",IDOK,178,7,50,14,WS_GROUP
+END
+
+IDD_SPIT_DIALOG DIALOGEX 0, 0, 497, 368
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | 
+    WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "SPIT - Super Particle Interface Tool"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    CONTROL         "Edit Low Intensity Settings",IDC_RADIO_MIN,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP,286,264,99,10
+    CONTROL         "Edit Hi Intensity Settings",IDC_RADIO_MAX,"Button",
+                    BS_AUTORADIOBUTTON,391,264,99,10
+    PUSHBUTTON      "Set To Defaults",IDC_BUTTON_SET_TO_DEFAULTS,394,313,96,
+                    14,WS_GROUP
+    PUSHBUTTON      "Copy Intensity Settings",IDC_BUTTON_COPY_SETTINGS,394,
+                    296,96,14
+    PUSHBUTTON      "Spawn Emitter",IDC_BUTTON_EMIT_SHOT,7,258,60,14
+    EDITTEXT        IDC_EDIT_EMIT_Y,93,280,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_EMIT_ROT,93,294,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_EMIT_INTENSITY,93,308,40,12,ES_AUTOHSCROLL
+    CONTROL         "Freeze Particles",IDC_CHECK_PAUSE,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,324,78,10
+    CONTROL         "Bounding Sphere On",IDC_CHECK_DRAW_BOUNDING_SPHERE,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,334,78,10
+    CONTROL         "Draw Emitter Aid",IDC_CHECK_DRAW_AID,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,89,324,78,10
+    CONTROL         "Super Slow Motion",IDC_CHECK_SLOW_MO,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,89,334,78,10
+    GROUPBOX        "",IDC_STATIC_FRAME,284,0,206,260,NOT WS_VISIBLE
+    RTEXT           "Version # 18",IDC_VERSION,423,339,67,8
+    CONTROL         "",IDC_STATIC_VIEWFRAME,"Static",SS_GRAYRECT,7,1,270,254
+    RTEXT           "Emitter Y:",IDC_STATIC,9,282,81,8
+    RTEXT           "Emitter Angle:",IDC_STATIC,9,296,81,8
+    RTEXT           "Current Intensity Setting:",IDC_STATIC,9,310,81,8
+    LTEXT           "Frames Per Second: 233.36\nMore Info: hello",IDC_STATS,
+                    143,260,133,59
+    CONTROL         "LookAt Camera Mode",IDC_CHECK_LOOK_AT_CAMERA,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,168,334,78,10
+    CONTROL         "Ambient Light On",IDC_CHECK_AMBIENT_LIGHT_ON,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,253,334,78,10
+    CONTROL         "Pick Color",IDC_BUTTON_PICK_AMBIENT_LIGHT,"Button",
+                    BS_OWNERDRAW,334,331,40,15
+    PUSHBUTTON      "Stop All",IDC_BUTTON_STOP,73,258,60,14
+    PUSHBUTTON      "Copy Displayed Settings",
+                    IDC_BUTTON_COPY_CURRENT_SETTINGS,394,279,96,14
+    CONTROL         "Draw Light Bounding Sphere",IDC_CHECK_DRAW_LIGHT_BS,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,168,324,112,10
+END
+
+IDD_NUM_PARTICLES DIALOGEX 0, 0, 199, 136
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    EDITTEXT        IDC_EDIT_MIN_PARTICLES,94,19,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_PARTICLES,147,19,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MIN_BURSTS_PER_SEC,94,49,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_BURSTS_PER_SEC,147,49,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_SECS_TO_EMIT,80,80,40,12,ES_AUTOHSCROLL
+    RTEXT           "Bursts Per Second:",IDC_STATIC,12,52,76,8
+    GROUPBOX        "Timing",IDC_STATIC,6,39,187,92
+    CTEXT           "Total Seconds To Emit (Not Used For One Shot)",
+                    IDC_STATIC,12,68,175,8
+    RTEXT           "Particles Per Burst:",IDC_STATIC,12,21,76,8
+    CTEXT           "Min",IDC_STATIC,94,8,40,8
+    CTEXT           "Max",IDC_STATIC,147,8,40,8
+    CTEXT           "Delay Between Emission Spurts (Emit Forever Only)",
+                    IDC_STATIC,12,98,175,8
+    EDITTEXT        IDC_EDIT_MIN_DELAY_SECS,53,113,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_DELAY_SECS,106,113,40,12,ES_AUTOHSCROLL
+END
+
+IDD_LIFESPAN DIALOG  0, 0, 199, 37
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_MIN_LIFE_SECS,98,18,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_LIFE_SECS,151,18,40,12,ES_AUTOHSCROLL
+    CTEXT           "Min",IDC_STATIC,98,7,40,8
+    RTEXT           "Lifespan In Secs:",IDC_STATIC,8,20,84,8
+    CTEXT           "Max",IDC_STATIC,151,7,40,8
+END
+
+IDD_ASSET_PICKER DIALOG  0, 0, 276, 135
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Select Asset From Master File"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL         "List1",IDC_FILE_LIST,"SysListView32",LVS_LIST | 
+                    LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_SORTASCENDING | 
+                    WS_BORDER | WS_TABSTOP,7,25,262,66
+    EDITTEXT        IDC_FILENAME,67,98,140,12,ES_AUTOHSCROLL | ES_READONLY
+    COMBOBOX        IDC_FILETYPE_COMBO,67,115,140,70,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "&Open",IDOK,219,96,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,219,114,50,14
+    EDITTEXT        IDC_MASTER_FILENAME,50,5,219,12,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    LTEXT           "Asset of &type:",IDC_STATIC,9,117,52,8
+    LTEXT           "Asset &name:",IDC_STATIC,9,100,52,8
+    LTEXT           "Look &in:",IDC_STATIC,9,7,36,8
+END
+
+IDD_VIDMODE DIALOG  0, 0, 411, 79
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Select Video Mode"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "Ok",IDOK,294,58,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,354,58,50,14
+    CONTROL         "Hardware",IDC_RADIO_HARDWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,16,47,10
+    CONTROL         "Software",IDC_RADIO_SOFTWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,28,44,10
+    CONTROL         "RefRast",IDC_RADIO_REFRAST,"Button",BS_AUTORADIOBUTTON,
+                    17,40,42,10
+    COMBOBOX        IDC_COMBO_DEVICE,117,14,287,66,CBS_DROPDOWNLIST | 
+                    CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_MODE,117,34,287,168,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Device",IDC_STATIC,88,18,24,8
+    LTEXT           "Mode",IDC_STATIC,93,38,19,8
+END
+
+IDD_LOD DIALOGEX 0, 0, 199, 83
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    EDITTEXT        IDC_EDIT_CULL_DISTANCE,147,13,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_LOD_PERCENT,147,30,40,12,ES_AUTOHSCROLL
+    RTEXT           "Percent of Distance To Begin LOD:",IDC_STATIC,12,32,130,
+                    8
+    RTEXT           "Furthest Distance Seen:",IDC_STATIC,12,15,130,8
+    EDITTEXT        IDC_EDIT_EMULATION_DISTANCE,147,55,40,12,ES_AUTOHSCROLL
+    RTEXT           "Use SLOWER Software rendering method if inside this distance\n0.0 = No Software rendering (FASTEST)",
+                    IDC_STATIC,10,48,130,26
+END
+
+IDD_LIGHT DIALOGEX 0, 0, 199, 198
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    EDITTEXT        IDC_EDIT_RED,94,20,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_RED2,151,20,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_GREEN,94,33,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_GREEN2,151,33,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_BLUE,94,46,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_BLUE2,151,46,40,12,ES_AUTOHSCROLL
+    CONTROL         "Pick Color",IDC_BUTTON_PICK_COLOR,"Button",BS_OWNERDRAW,
+                    94,62,40,23
+    PUSHBUTTON      "=>",IDC_MAKE_LIGHT_COLORS_EQUAL,136,67,13,13
+    CONTROL         "Pick Color",IDC_BUTTON_PICK_COLOR2,"Button",
+                    BS_OWNERDRAW,151,62,40,23
+    EDITTEXT        IDC_EDIT_INTENSITY,94,90,40,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "=>",IDC_MAKE_INTENSITY_EQUAL,136,90,13,13
+    EDITTEXT        IDC_EDIT_INTENSITY2,151,90,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_RADIUS_PERCENT,94,110,40,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "=>",IDC_MAKE_RADIUS_MULTIPIER_EQUAL,136,110,13,13
+    EDITTEXT        IDC_EDIT_RADIUS_PERCENT2,151,110,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_RADIUS,151,128,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_SOUND_VOL,94,160,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_SOUND_PITCH,94,178,40,12,ES_AUTOHSCROLL
+    RTEXT           "Blue:",IDC_STATIC,6,48,86,8
+    RTEXT           "Red:",IDC_STATIC,6,22,86,8
+    RTEXT           "Green:",IDC_STATIC,6,35,86,8
+    RTEXT           "Intensity:",IDC_STATIC,6,91,86,8
+    RTEXT           "Radius Multiplier \n(% of Bounding Sphere):",IDC_STATIC,
+                    6,106,86,17
+    RTEXT           "Start",IDC_STATIC,94,8,35,8,0,WS_EX_RIGHT
+    RTEXT           "End",IDC_STATIC,150,8,35,8,0,WS_EX_RIGHT
+    LTEXT           "-----------------------------------------------------------------------------------------",
+                    IDC_STATIC,10,149,179,8
+    RTEXT           "Sound Volume:",IDC_STATIC,6,162,86,8
+    RTEXT           "Sound Pitch Multiplier:",IDC_STATIC,6,179,86,8
+    RTEXT           "Don't let light get bigger than this many feet\n( 0 means don't limit the size):",
+                    IDC_STATIC,3,127,141,18
+END
+
+IDD_FORCES DIALOG  0, 0, 199, 166
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_GRAVITY,92,16,40,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "Set To None",IDC_RESET_GRAVITY,135,8,57,14
+    PUSHBUTTON      "Earth's Gravity",IDC_EARTH_GRAVITY,135,24,57,14
+    EDITTEXT        IDC_EDIT_DRAG,92,54,40,12,ES_AUTOHSCROLL
+    PUSHBUTTON      "Set To None",IDC_RESET_DRAG,135,53,57,14
+    RTEXT           "Drag Per Second:",IDC_STATIC,8,56,79,8
+    RTEXT           "Gravity Per Second:",IDC_STATIC,8,18,79,8
+    EDITTEXT        IDC_EDIT_BUBBLE_X,63,83,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_BUBBLE_Y,108,83,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_BUBBLE_Z,152,83,40,12,ES_AUTOHSCROLL
+    RTEXT           "Bubble X Y Z:",IDC_STATIC,7,85,52,8
+    EDITTEXT        IDC_EDIT_BUBBLE_UPDATE_CHANCE,152,99,40,12,
+                    ES_AUTOHSCROLL
+    RTEXT           "Chance of Bubble Update:",IDC_STATIC,13,101,135,8
+    EDITTEXT        IDC_EDIT_BUBBLE_DRAG,152,114,40,12,ES_AUTOHSCROLL
+    RTEXT           "Bubble Drag Per Second:",IDC_STATIC,13,116,135,8
+END
+
+IDD_SPRITES DIALOG  0, 0, 199, 99
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_NUM_SPRITES,140,9,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_SPRITE_VEL,140,27,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_ALPHA_PERCENT_PER_SPRITE,140,44,40,12,
+                    ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_SIZE_PERCENT_PER_SPRITE,140,61,40,12,
+                    ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_POS_PER_SPRITE,140,78,40,12,ES_AUTOHSCROLL
+    RTEXT           "Speed To Draw Max Sprites:",IDC_STATIC,18,28,117,8
+    RTEXT           "Max Number Of Sprites:",IDC_STATIC,18,11,117,8
+    RTEXT           "Alpha Percent Per Sprite:",IDC_STATIC,18,45,117,8
+    RTEXT           "Size Percent Per Sprite:",IDC_STATIC,18,62,117,8
+    RTEXT           "Pos Offset Per Sprite:",IDC_STATIC,18,79,117,8
+END
+
+IDD_SCALE DIALOG  0, 0, 199, 53
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_MIN_INIT_SCALE,98,18,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_INIT_SCALE,151,18,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MIN_FINAL_SCALE,98,34,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_FINAL_SCALE,151,34,40,12,ES_AUTOHSCROLL
+    CTEXT           "Min",IDC_STATIC,98,7,40,8
+    RTEXT           "Initial Scale:",IDC_STATIC,8,20,84,8
+    CTEXT           "Max",IDC_STATIC,151,7,40,8
+    RTEXT           "Final Scale:",IDC_STATIC,8,36,84,8
+END
+
+IDD_COLOR DIALOGEX 0, 0, 199, 175
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    EDITTEXT        IDC_EDIT_INIT_MIN_RED,92,17,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_INIT_MAX_RED,151,17,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_INIT_MIN_GREEN,92,30,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_INIT_MAX_GREEN,151,30,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_INIT_MIN_BLUE,92,43,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_INIT_MAX_BLUE,151,43,40,12,ES_AUTOHSCROLL
+    CONTROL         "Pick Color",IDC_BUTTON_PICK_MIN_INIT_COLOR,"Button",
+                    BS_OWNERDRAW,92,57,40,18
+    CONTROL         "Pick Color",IDC_BUTTON_PICK_MAX_INIT_COLOR,"Button",
+                    BS_OWNERDRAW,151,57,40,18
+    EDITTEXT        IDC_EDIT_FINAL_MIN_RED,92,79,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_FINAL_MAX_RED,151,79,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_FINAL_MIN_GREEN,92,92,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_FINAL_MAX_GREEN,151,92,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_FINAL_MIN_BLUE,92,105,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_FINAL_MAX_BLUE,151,105,40,12,ES_AUTOHSCROLL
+    CONTROL         "Pick Color",IDC_BUTTON_PICK_MIN_FINAL_COLOR,"Button",
+                    BS_OWNERDRAW,92,119,40,18
+    CONTROL         "Pick Color",IDC_BUTTON_PICK_MAX_FINAL_COLOR,"Button",
+                    BS_OWNERDRAW,151,119,40,18
+    EDITTEXT        IDC_EDIT_INIT_MIN_ALPHA,92,143,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_INIT_MAX_ALPHA,151,143,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_FINAL_MIN_ALPHA,92,157,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_FINAL_MAX_ALPHA,151,157,40,12,ES_AUTOHSCROLL
+    RTEXT           "Initial Blue:",IDC_STATIC,14,45,75,8
+    RTEXT           "Initial Red:",IDC_STATIC,14,19,75,8
+    RTEXT           "Initial Green:",IDC_STATIC,14,32,75,8
+    CTEXT           "Min",IDC_STATIC,92,6,40,8
+    CTEXT           "Max",IDC_STATIC,151,6,40,8
+    RTEXT           "Final Blue:",IDC_STATIC,14,107,75,8
+    RTEXT           "Final Red:",IDC_STATIC,14,81,75,8
+    RTEXT           "Final Green:",IDC_STATIC,14,94,75,8
+    RTEXT           "Final Opacity:",IDC_STATIC,14,159,75,8
+    RTEXT           "Initial Opacity:",IDC_STATIC,14,145,75,8
+    PUSHBUTTON      "=>",IDC_MAKE_INIT_COLORS_EQUAL,135,59,13,13
+    PUSHBUTTON      "=>",IDC_MAKE_FINAL_COLORS_EQUAL,135,121,13,13
+    PUSHBUTTON      "=>",IDC_MAKE_INIT_ALPHA_EQUAL,135,143,13,13
+    PUSHBUTTON      "=>",IDC_MAKE_FINAL_ALPHA_EQUAL,135,157,13,13
+END
+
+IDD_EMISSIVE DIALOG  0, 0, 199, 31
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_MIN_EMISSIVE,98,15,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_EMISSIVE,151,15,40,12,ES_AUTOHSCROLL
+    CTEXT           "Min",IDC_STATIC,98,4,40,8
+    RTEXT           "Emissive Intensity:",IDC_STATIC,8,17,84,8
+    CTEXT           "Max",IDC_STATIC,151,4,40,8
+END
+
+IDD_POSITION DIALOG  0, 0, 199, 46
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_INITIAL_POS_RADIUS,152,8,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_JITTER_X,63,26,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_JITTER_Y,108,26,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_JITTER_Z,152,26,40,12,ES_AUTOHSCROLL
+    RTEXT           "Emitter Radius:",IDC_STATIC,17,10,130,8
+    RTEXT           "Jitter X Y Z:",IDC_STATIC,7,28,52,8
+END
+
+IDD_VELOCITY DIALOG  0, 0, 199, 53
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_EDIT_MIN_INIT_VEL,98,18,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_INIT_VEL,151,18,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MIN_SPREAD_ANGLE,98,34,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_SPREAD_ANGLE,151,34,40,12,ES_AUTOHSCROLL
+    CTEXT           "Min",IDC_STATIC,98,7,40,8
+    RTEXT           "Initial Velocity:",IDC_STATIC,8,20,84,8
+    CTEXT           "Max",IDC_STATIC,151,7,40,8
+    RTEXT           "Spread Angle:",IDC_STATIC,8,36,84,8
+END
+
+IDD_GLOBAL DIALOGEX 0, 0, 199, 452
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    CONTROL         "Modulate",IDC_RADIO_MODULATE_MODE,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP,26,33,52,10
+    CONTROL         "Additive",IDC_RADIO_ADD_MODE,"Button",
+                    BS_AUTORADIOBUTTON,98,33,52,10
+    CONTROL         "Don't Fog",IDC_NO_FOG,"Button",BS_AUTOCHECKBOX | 
+                    WS_GROUP | WS_TABSTOP,26,44,70,10
+    CONTROL         "Group Z Scale",IDC_GROUP_Z_SCALE,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,98,44,70,10
+    CONTROL         "Update Z Buffer",IDC_Z_BUFFER,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,26,55,70,10
+    CONTROL         "Size In Pixels",IDC_PIXEL_SIZE,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,98,55,70,10
+    CONTROL         "Sort Particle Group (Not individual particles)",
+                    IDC_SORT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,26,64,160,
+                    10
+    CONTROL         "Split On Impact",IDC_SPLIT_ON_IMPACT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,85,70,10
+    CONTROL         "Close Multi Sprite Gaps",IDC_CLOSE_SPRITES_GAP,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,89,85,98,10
+    CONTROL         "Ignore Wind",IDC_IGNORE_WIND,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,95,70,10
+    CONTROL         "Multiple Sprites Per Particle",IDC_MULTI_SPRITES,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,89,95,98,10
+    CONTROL         "Use Bubble Force",IDC_USE_BUBBLE_FORCE,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,105,70,10
+    CONTROL         "Add Positional Jitter",IDC_JITTER_POS,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,89,105,98,10
+    CONTROL         "One Shot",IDC_ONE_SHOT,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,129,70,10
+    CONTROL         "Emit Forever",IDC_BURST_FOREVER,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,89,129,98,10
+    CONTROL         "Directional Emitter",IDC_DIRECTIONAL_EMISSION,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,139,70,10
+    CONTROL         "Random Initial Color",IDC_RANDOM_INIT_COLOR,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,161,82,10
+    CONTROL         "Random Final Color",IDC_RANDOM_FINAL_COLOR,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,104,161,82,10
+    CONTROL         "Textures On",IDC_ENABLE_TEXTURES,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,189,54,10
+    PUSHBUTTON      "...",IDC_CHOOSE_TEXTURE,175,187,10,12
+    CONTROL         "Sample World Lights (THIS IS EXPENSIVE!!!)",
+                    IDC_SAMPLE_LIGHTS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    13,220,173,10
+    EDITTEXT        IDC_EDIT_SAMPLES_PER_SEC,148,233,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_SCALE_SAMPLED_RED,148,246,40,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_SCALE_SAMPLED_GREEN,148,259,40,12,
+                    ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_SCALE_SAMPLED_BLUE,148,272,40,12,ES_AUTOHSCROLL
+    CONTROL         "Emit Dynamic Light",IDC_EMIT_LIGHT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,313,84,10
+    EDITTEXT        IDC_EDIT_MOTIF_INDEX,148,312,40,12,ES_AUTOHSCROLL
+    CONTROL         "Per Pixel Light",IDC_PER_PIXEL_LIGHT_ON,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,324,84,10
+    CONTROL         "Auto Calc Light Intensity ( Using Particle Opacity )",
+                    IDC_AUTO_CALCULATE_LIGHT_INTENSITY_ON,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,335,175,10
+    CONTROL         "Corona On",IDC_CORONA_ON,"Button",BS_AUTOCHECKBOX | 
+                    BS_LEFT | WS_TABSTOP,13,349,59,10
+    CONTROL         "Perspective Scale Corona",IDC_WORLD_SCALE_CORONA_ON,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,89,349,98,10
+    PUSHBUTTON      "...",IDC_CHOOSE_CORONA_TEXTURE,165,363,10,12
+    PUSHBUTTON      "X",IDC_CLEAR_CORONA_TEXTURE,179,363,10,12
+    EDITTEXT        IDC_EDIT_CORONA_SCALE,126,380,40,12,ES_AUTOHSCROLL
+    CONTROL         "Play Sound Fx --> ",IDC_ENABLE_SOUND,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,407,71,10
+    EDITTEXT        IDC_SOUND_NAME,89,405,98,14,ES_AUTOHSCROLL
+    CONTROL         "Color",IDC_SPIKE_COLOR_ON,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,434,48,10
+    CONTROL         "Alpha",IDC_SPIKE_ALPHA_ON,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,76,434,48,10
+    CONTROL         "Scale",IDC_SPIKE_SCALE_ON,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,139,434,48,10
+    CTEXT           "NOTE: These settings are shared between\nthe Hi and Low Intensities.",
+                    IDC_STATIC,29,4,140,18
+    GROUPBOX        "Draw Mode",IDC_STATIC,7,25,185,51
+    GROUPBOX        "Color",IDC_STATIC,7,151,185,26
+    GROUPBOX        "Misc",IDC_STATIC,7,77,185,42
+    EDITTEXT        IDC_TEXTURE_NAME,72,187,98,14,ES_AUTOHSCROLL | 
+                    ES_READONLY | NOT WS_TABSTOP
+    GROUPBOX        "Texture Map",IDC_STATIC,7,177,185,29
+    GROUPBOX        "Sampled Light",IDC_STATIC,7,208,185,80
+    RTEXT           "Motif Index:",IDC_STATIC,100,314,43,8
+    RTEXT           "Samples Per Sec (less often is faster):",IDC_STATIC,11,
+                    235,132,8
+    RTEXT           "Scale Sampled Red:",IDC_STATIC,55,248,88,8
+    RTEXT           "Scaled Sampled Green:",IDC_STATIC,55,261,88,8
+    RTEXT           "Scaled Sampled Blue:",IDC_STATIC,55,274,88,8
+    GROUPBOX        "Emission",IDC_STATIC,7,120,185,30
+    GROUPBOX        "Light && Sound",IDC_STATIC,7,290,185,133
+    EDITTEXT        IDC_CORONA_TEXTURE_NAME,75,362,86,14,ES_AUTOHSCROLL | 
+                    ES_READONLY | NOT WS_TABSTOP
+    RTEXT           "Corona Scale Factor:",IDC_STATIC,34,382,88,8
+    RTEXT           "Corona Texture:",IDC_STATIC,14,365,55,8
+    GROUPBOX        "Random Spikes",IDC_STATIC,7,424,185,24
+    RTEXT           "----------------------------------------------------------------------------------",
+                    IDC_STATIC,17,394,165,8
+    LTEXT           "NOTE: Lights are NOT free, only use where needed",
+                    IDC_STATIC,15,301,171,8
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "Spit MFC Application"
+            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "InternalName", "Spit"
+            VALUE "LegalCopyright", "Copyright (C) 2002"
+            VALUE "OriginalFilename", "Spit.EXE"
+            VALUE "ProductName", "Spit Application"
+            VALUE "ProductVersion", "1, 0, 0, 1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 228
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 48
+    END
+
+    IDD_SPIT_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 490
+        BOTTOMMARGIN, 347
+    END
+
+    IDD_ASSET_PICKER, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 269
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 128
+    END
+
+    IDD_LIGHT, DIALOG
+    BEGIN
+        BOTTOMMARGIN, 176
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_MAIN_MENU MENU 
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&New...",                     ID_NEW_FILE
+        MENUITEM "&Open...",                    ID_OPEN_FILE
+        MENUITEM "&Save",                       ID_SAVE_FILE
+        MENUITEM "Save As...",                  ID_SAVEAS
+        MENUITEM SEPARATOR
+        MENUITEM "Batch File Version Update...", ID_FILE_UPDATEVERSION
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",                       IDCANCEL
+    END
+    POPUP "&Configuration"
+    BEGIN
+        MENUITEM "Select Master File...",       ID_SELECT_MASTERFILE
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_ASSET_PICKER DLGINIT
+BEGIN
+    IDC_FILETYPE_COMBO, 0x403, 15, 0
+0x6f57, 0x6c72, 0x7364, 0x2820, 0x2e2a, 0x6c77, 0x2964, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 15, 0
+0x654d, 0x6873, 0x7365, 0x2820, 0x2e2a, 0x6962, 0x296e, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 23, 0
+0x6e41, 0x6d69, 0x7461, 0x6f69, 0x206e, 0x6144, 0x6174, 0x2820, 0x2e2a, 
+0x746d, 0x2978, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 18, 0
+0x6554, 0x7478, 0x7275, 0x7365, 0x2820, 0x2a20, 0x732e, 0x7265, 0x0029, 
+
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About Spit..."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\Spit.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

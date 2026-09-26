@@ -1,0 +1,15 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0				;EMBM - bubbling
+texbem t1, t0		;Layer0 - emissive lava perturbed by lava bubbling
+tex t2				;Layer1 - crust
+
+mov r1, t2
+mul r0, t1, r1.a			;multiply lava by crust alpha.
+mad r0, r1, 1-r1.a, r0		;add (1-a)*crust
+
+mul r0, r0, c0

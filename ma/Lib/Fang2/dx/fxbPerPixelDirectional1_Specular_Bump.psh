@@ -1,0 +1,13 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+xps.1.0                 ; DirectX8 Version
+
+tex t0                 ; sample normal map
+texm3x2pad t1, t0_bx2  ; dot with light vector
+texm3x2tex t2, t0_bx2  ; dot with halfway vector and sample
+
+mul r1, t2, v0
+mov r0, r1_sat
+;mul r0, r1_sat, v0

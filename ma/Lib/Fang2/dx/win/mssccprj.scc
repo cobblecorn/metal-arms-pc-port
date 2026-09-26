@@ -1,0 +1,5 @@
+SCC = This is a Source Code Control file
+
+[fang2win.dsp]
+SCC_Aux_Path = "\\server\vss\"
+SCC_Project_Name = "$/Code/Src/Lib/Fang2/dx/win", TCDAAAAA

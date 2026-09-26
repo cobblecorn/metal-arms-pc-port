@@ -1,0 +1,279 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\SrcTreeArchiver.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON    DISCARDABLE     "res\\SrcTreeArchiver.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOG DISCARDABLE  0, 0, 198, 55
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About SrcTreeArchiver"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    LTEXT           "SrcTreeArchiver Version 1.0",IDC_STATIC,40,10,151,8,
+                    SS_NOPREFIX
+    LTEXT           "Copyright (C) 2002, Swingin' Ape Studios, Inc.",
+                    IDC_STATIC,40,21,151,8
+    DEFPUSHBUTTON   "OK",IDOK,74,34,50,14,WS_GROUP
+END
+
+IDD_SRCTREEARCHIVER_DIALOG DIALOGEX 0, 0, 360, 207
+STYLE DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | 
+    WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "Source Tree Archiver"
+FONT 8, "MS Sans Serif"
+BEGIN
+    PUSHBUTTON      "...",IDC_BUTTON_PICK_SOURCE_TREE,337,17,10,12
+    EDITTEXT        IDC_OUTPUT_FILENAME,108,32,239,12,ES_AUTOHSCROLL
+    EDITTEXT        IDC_IGNORE_EXT,108,47,239,12,ES_AUTOHSCROLL
+    CONTROL         "Recurse Sub Directories",IDC_SUB_DIRS_CHECK,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,24,66,92,10
+    COMBOBOX        IDC_SPAN_COMBO,148,65,83,95,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_PROFILE_COMBO,263,65,83,60,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    CONTROL         "DateTimePicker1",IDC_DATETIMEPICKER1,"SysDateTimePick32",
+                    DTS_RIGHTALIGN | DTS_SHOWNONE | WS_TABSTOP,108,124,75,15
+    PUSHBUTTON      "&Start Compressing",IDC_RUN_BUTTON,140,145,80,14
+    PUSHBUTTON      "&Exit",IDCANCEL,155,186,50,14
+    RTEXT           "Output File:",IDC_STATIC,11,34,93,8
+    RTEXT           "Source Tree:",IDC_STATIC,11,19,93,8
+    EDITTEXT        IDC_SOURCE_TREE,108,17,227,12,ES_AUTOHSCROLL | 
+                    ES_READONLY | NOT WS_TABSTOP
+    RTEXT           "Ignore Extensions:\nThe format is:  *.ext;*.ext",
+                    IDC_STATIC,11,45,93,15
+    CONTROL         "Progress1",IDC_PROGRESS_BAR,"msctls_progress32",
+                    WS_BORDER,7,163,346,8
+    LTEXT           "Compiling 101 of 999",IDC_PROGRESS_TEXT,7,175,346,8
+    GROUPBOX        "Settings:",IDC_STATIC,7,3,346,139
+    RTEXT           "Backup Files Newer Than:",IDC_STATIC,11,127,93,8
+    CONTROL         "Click && Go -- ( processes\nall profiles with one click )",
+                    IDC_CLICK_N_GO,"Button",BS_AUTOCHECKBOX | BS_MULTILINE | 
+                    WS_TABSTOP,245,122,103,17
+    LTEXT           "Note: When spanning multiple disks you need to rename all files to have the same\n.zip filename.  If you do not have winzip 8.1 you will also need to copy each file onto",
+                    IDC_STATIC,39,81,314,19
+    LTEXT           "a removable disk labeled 'PKBACK# 00X' where X is a number starting with 1 and\nincreasing.  Look at file creation times and name the earliest disk 1, the next one 2...",
+                    IDC_STATIC,39,101,314,19
+END
+
+
+#ifndef _MAC
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "\0"
+            VALUE "FileDescription", "SrcTreeArchiver MFC Application\0"
+            VALUE "FileVersion", "1, 0, 0, 1\0"
+            VALUE "InternalName", "SrcTreeArchiver\0"
+            VALUE "LegalCopyright", "Copyright (C) 2002\0"
+            VALUE "LegalTrademarks", "\0"
+            VALUE "OriginalFilename", "SrcTreeArchiver.EXE\0"
+            VALUE "ProductName", "SrcTreeArchiver Application\0"
+            VALUE "ProductVersion", "1, 0, 0, 1\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+#endif    // !_MAC
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 191
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 48
+    END
+
+    IDD_SRCTREEARCHIVER_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 353
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 200
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_SRCTREEARCHIVER_DIALOG DLGINIT
+BEGIN
+    IDC_SPAN_COMBO, 0x403, 17, 0
+0x6f4e, 0x4420, 0x7369, 0x206b, 0x7053, 0x6e61, 0x696e, 0x676e, "\000" 
+    IDC_SPAN_COMBO, 0x403, 13, 0
+0x2e31, 0x3434, 0x624d, 0x4420, 0x7369, 0x736b, "\000" 
+    IDC_SPAN_COMBO, 0x403, 11, 0
+0x3031, 0x624d, 0x4420, 0x7369, 0x736b, "\000" 
+    IDC_SPAN_COMBO, 0x403, 11, 0
+0x3532, 0x624d, 0x4420, 0x7369, 0x736b, "\000" 
+    IDC_SPAN_COMBO, 0x403, 11, 0
+0x3035, 0x624d, 0x4420, 0x7369, 0x736b, "\000" 
+    IDC_SPAN_COMBO, 0x403, 12, 0
+0x3031, 0x4d30, 0x2062, 0x6944, 0x6b73, 0x0073, 
+    IDC_SPAN_COMBO, 0x403, 12, 0
+0x3032, 0x4d30, 0x2062, 0x6944, 0x6b73, 0x0073, 
+    IDC_SPAN_COMBO, 0x403, 12, 0
+0x3532, 0x4d30, 0x2062, 0x6944, 0x6b73, 0x0073, 
+    IDC_SPAN_COMBO, 0x403, 12, 0
+0x3036, 0x4d30, 0x2062, 0x6944, 0x6b73, 0x0073, 
+    IDC_SPAN_COMBO, 0x403, 12, 0
+0x3536, 0x4d30, 0x2062, 0x6944, 0x6b73, 0x0073, 
+    IDC_SPAN_COMBO, 0x403, 12, 0
+0x3037, 0x4d30, 0x2062, 0x6944, 0x6b73, 0x0073, 
+    IDC_PROFILE_COMBO, 0x403, 11, 0
+0x7250, 0x666f, 0x6c69, 0x2065, 0x3123, "\000" 
+    IDC_PROFILE_COMBO, 0x403, 11, 0
+0x7250, 0x666f, 0x6c69, 0x2065, 0x3223, "\000" 
+    IDC_PROFILE_COMBO, 0x403, 11, 0
+0x7250, 0x666f, 0x6c69, 0x2065, 0x3323, "\000" 
+    IDC_PROFILE_COMBO, 0x403, 11, 0
+0x7250, 0x666f, 0x6c69, 0x2065, 0x3423, "\000" 
+    IDC_PROFILE_COMBO, 0x403, 11, 0
+0x7250, 0x666f, 0x6c69, 0x2065, 0x3523, "\000" 
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About SrcTreeArchiver..."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\SrcTreeArchiver.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

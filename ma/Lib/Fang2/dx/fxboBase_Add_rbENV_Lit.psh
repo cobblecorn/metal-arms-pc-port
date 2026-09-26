@@ -1,0 +1,22 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0              ; decal texture
+tex t1				; envmap texture
+texcoord t2			; emissive value
+texcoord t3			; envmap motif.
+
+mul r0.rgb, t0.a, t1
+mad r0.rgb, r0, t3, t0
+
+mul r0.rgb, r0_sat, c2
++mov r0.a, t0.a		; output fog value
+
+;handle emissive support
+mov r1.rgb, v0_sat
+
+mul_x2 r0.rgb, r0_sat, r1_sat
++mul r0.a, r0.a, 1-t2.a

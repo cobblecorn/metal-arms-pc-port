@@ -1,0 +1,310 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\SndSeqBanker.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON    DISCARDABLE     "res\\SndSeqBanker.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOG DISCARDABLE  0, 0, 235, 55
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About SndSeqBanker"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    LTEXT           "SndSeqBanker Version 1.0",IDC_STATIC,40,10,119,8,
+                    SS_NOPREFIX
+    LTEXT           "Copyright (C) 2002",IDC_STATIC,40,25,119,8
+    DEFPUSHBUTTON   "OK",IDOK,178,7,50,14,WS_GROUP
+END
+
+IDD_SNDSEQBANKER_DIALOG DIALOGEX 0, 0, 353, 334
+STYLE DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | 
+    WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "Sound Sequence Banker"
+FONT 8, "MS Sans Serif"
+BEGIN
+    PUSHBUTTON      "...",IDC_CHOOSE_CURRENT_SEQ_BANK,333,8,12,14
+    CONTROL         "List3",IDC_SEQ_BANK_LIST,"SysListView32",LVS_REPORT | 
+                    LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | 
+                    WS_TABSTOP,8,26,280,112
+    PUSHBUTTON      "&Create Bank",IDC_CREATE_NEW_BANK,291,28,54,14
+    CONTROL         "List3",IDC_WAV_BANK_LIST,"SysListView32",LVS_REPORT | 
+                    LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,8,184,338,112
+    PUSHBUTTON      "&Exit",IDCANCEL,152,313,50,14
+    EDITTEXT        IDC_CURRENT_WAV_BANK,105,166,241,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    RTEXT           "Current Wav Bank:",IDC_STATIC,8,169,95,8
+    RTEXT           "Version # 17",IDC_VERSION,283,322,65,8
+    LTEXT           "36 object(s)",IDC_NUM_WAV_BANK_FILES,9,298,97,8
+    EDITTEXT        IDC_CURRENT_SEQ_BANK,105,8,224,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    RTEXT           "Current Sequence Bank:",IDC_STATIC,8,11,95,8
+    LTEXT           "36 object(s)",IDC_NUM_SEQ_BANK_FILES,10,140,97,8
+    LTEXT           "----------------------------------------------------------------------------------------------------------------------------------------------------------------",
+                    IDC_STATIC,15,154,323,8
+    PUSHBUTTON      "Verify Names",IDC_CHECK_SFX_NAMES,291,48,54,14
+END
+
+IDD_EDIT_FX_DIALOG DIALOG DISCARDABLE  0, 0, 273, 120
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION
+CAPTION "Edit Fx - Blah Blah"
+FONT 8, "MS Sans Serif"
+BEGIN
+    EDITTEXT        IDC_FX_NAME,114,5,75,12,ES_AUTOHSCROLL
+    COMBOBOX        IDC_WAV_COMBO,114,23,75,55,CBS_DROPDOWNLIST | CBS_SORT | 
+                    WS_VSCROLL | WS_TABSTOP
+    EDITTEXT        IDC_LOOPS,114,41,40,12,ES_RIGHT | ES_AUTOHSCROLL | 
+                    ES_NUMBER | WS_GROUP
+    CONTROL         "Spin1",IDC_LOOP_SPIN,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | 
+                    UDS_NOTHOUSANDS,150,41,10,14
+    EDITTEXT        IDC_VOLUME,114,59,40,12,ES_RIGHT | ES_AUTOHSCROLL | 
+                    ES_NUMBER | WS_GROUP
+    CONTROL         "Spin1",IDC_VOLUME_SPIN,"msctls_updown32",
+                    UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | 
+                    UDS_ARROWKEYS | UDS_NOTHOUSANDS,150,59,10,14
+    EDITTEXT        IDC_PITCH,114,77,40,12,ES_RIGHT | ES_AUTOHSCROLL | 
+                    WS_GROUP
+    CONTROL         "Spin1",IDC_PITCH_SPIN,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | 
+                    UDS_NOTHOUSANDS,150,76,10,14
+    PUSHBUTTON      "OK",IDOK,79,99,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,144,99,50,14
+    LTEXT           "44100 Hz\n2 channels\n01:23:46.23",IDC_WAV_INFO,200,16,
+                    66,27
+    RTEXT           "Sound Fx Name:",IDC_STATIC,7,7,102,8
+    RTEXT           "Wav file to play:",IDC_STATIC,7,25,102,8
+    RTEXT           "Number of loops ( 0 infinite ):",IDC_STATIC,7,43,102,8
+    RTEXT           "Volume ( 1 to 100 ):",IDC_STATIC,7,61,102,8
+    RTEXT           "Frequency % ( -1000 to 1000 ):",IDC_STATIC,7,79,102,8
+END
+
+
+#ifndef _MAC
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "\0"
+            VALUE "FileDescription", "SndSeqBanker MFC Application\0"
+            VALUE "FileVersion", "1, 0, 0, 1\0"
+            VALUE "InternalName", "SndSeqBanker\0"
+            VALUE "LegalCopyright", "Copyright (C) 2002\0"
+            VALUE "LegalTrademarks", "\0"
+            VALUE "OriginalFilename", "SndSeqBanker.EXE\0"
+            VALUE "ProductName", "SndSeqBanker Application\0"
+            VALUE "ProductVersion", "1, 0, 0, 1\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+#endif    // !_MAC
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 228
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 48
+    END
+
+    IDD_SNDSEQBANKER_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 346
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 327
+    END
+
+    IDD_EDIT_FX_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 266
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 113
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_SEQ_POPUP_MENU MENU DISCARDABLE 
+BEGIN
+    POPUP "Actions"
+    BEGIN
+        MENUITEM "&Edit Sound Fx",              IDC_EDIT_FX
+        MENUITEM SEPARATOR
+        MENUITEM "&Save Bank File",             IDC_SAVE_BANK
+        MENUITEM SEPARATOR
+        MENUITEM "&Delete Sound Fx",            IDC_DELETE_FX
+        MENUITEM "Delete All Sound Fxs",        IDC_REMOVE_ALL_FXS
+    END
+END
+
+IDR_WAV_POPUP_MENU MENU DISCARDABLE 
+BEGIN
+    POPUP "Actions"
+    BEGIN
+        MENUITEM "&Create Sound Fx",            IDC_CREATE_SFX
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_EDIT_FX_DIALOG DLGINIT
+BEGIN
+    IDC_WAV_COMBO, 0x403, 17, 0
+0x4854, 0x5349, 0x4920, 0x2053, 0x3631, 0x4320, 0x4148, 0x5352, "\000" 
+    IDC_WAV_COMBO, 0x403, 12, 0
+0x616e, 0x656d, 0x656c, 0x696e, 0x6f73, 0x006b, 
+    IDC_WAV_COMBO, 0x403, 13, 0
+0x6461, 0x6a6b, 0x6166, 0x733b, 0x646b, 0x666a, "\000" 
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About SndSeqBanker..."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\SndSeqBanker.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

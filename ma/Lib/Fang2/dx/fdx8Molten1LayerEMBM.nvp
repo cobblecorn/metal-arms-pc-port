@@ -1,0 +1,11 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0				;EMBM - bubbling
+texbem t1, t0		;Layer0 - emissive lava perturbed by lava bubbling
+
+mov r0, t1
+mul r0, r0, c0

@@ -1,0 +1,12 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0              ; decal texture
+tex t1				; envmap texture
+mov r0, t0
+mul r1, r0.a, t1
+mad r0.rgb, r1, v0, r0
+mul r0, r0, c2		; res *= surface color

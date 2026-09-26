@@ -1,0 +1,15 @@
+; Declare pixel shader version
+ps.1.1
+
+; declare constants:
+def c1, 0.3f, 0.59f, 0.11f, 0.0f    ; luminance conversion constant
+
+; get color from first texture stage only
+tex t0
+
+; convert color to luminance and output
+dp3 r0.rgba, t0, c1	
+mul r0.rgb, r0.rgb, v0.rgb
++mov r0.a, v0.a
+
+

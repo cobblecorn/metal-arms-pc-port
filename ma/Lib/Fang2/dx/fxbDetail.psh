@@ -1,0 +1,16 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+def c0, 0.5, 0.5, 0.5, 0.5
+
+tex t0              ; decal texture
+tex t1				; detail texture
+
+add r1, t1, c0
+mul r0.rgb, t0, r1      ; multiply texture * diffuse_color
++mov r0.a, t0.a
+mul r0.rgb, r0, v0
+mul r0, r0, c2		; res *= surface color

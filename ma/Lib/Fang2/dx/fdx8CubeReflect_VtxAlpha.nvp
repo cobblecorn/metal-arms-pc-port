@@ -1,0 +1,13 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0               ; Define t0 as a standard 3-vector.
+texm3x3pad t1, t0_bx2    ; Perform first row of matrix multiply.
+texm3x3pad t2, t0_bx2    ; Perform second row of matrix multiply.
+texm3x3vspec t3, t0_bx2  ; Perform third row of matrix multiply, sample
+
+mul r0.rgb, t3, c0
++mov r0.a, v0.a

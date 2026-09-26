@@ -1,0 +1,29 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CopyGo", "CopyGo.vcproj", "{B986F3B0-575A-426C-A497-BE5A2AFC4236}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 1
+		SccProjectUniqueName0 = CopyGo.vcproj
+		SccProjectName0 = \u0022$/Code/Src/App/CopyGo\u0022,\u0020LOAAAAAA
+		SccLocalPath0 = .
+		SccProvider0 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{B986F3B0-575A-426C-A497-BE5A2AFC4236}.Debug.ActiveCfg = Debug|Win32
+		{B986F3B0-575A-426C-A497-BE5A2AFC4236}.Debug.Build.0 = Debug|Win32
+		{B986F3B0-575A-426C-A497-BE5A2AFC4236}.Release.ActiveCfg = Release|Win32
+		{B986F3B0-575A-426C-A497-BE5A2AFC4236}.Release.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,76 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestFang_Win", "TestFang_Win.vcproj", "{CEC696EA-D873-4E38-A438-DFF37BB98094}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fang2win", "..\..\..\Lib\Fang2\dx\win\fang2win.vcproj", "{483A4355-73FC-4C22-8673-4254CBED3729}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 3
+		SccProjectUniqueName0 = ..\\..\\..\\Lib\\Fang2\\dx\\win\\fang2win.vcproj
+		SccProjectName0 = \u0022$/Code/Src/Lib/Fang2\u0022,\u0020QCDAAAAA
+		SccLocalPath0 = ..\\..\\..\\Lib\\Fang2
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection0 = dx\\win\\
+		SccProjectUniqueName1 = TestFang_Win.vcproj
+		SccLocalPath1 = ..
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection1 = Win\\
+		SccProjectName2 = \u0022$/Code/Src/App/TestFang\u0022,\u0020FFGAAAAA
+		SccLocalPath2 = ..
+		SccProvider2 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection2 = Win\\
+		SolutionUniqueID = {D0524CEB-5F4B-45D8-9DE8-35A5E6B283CD}
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Debug Unicode
+		ConfigName.2 = GCDebug
+		ConfigName.3 = GCRelease
+		ConfigName.4 = Production
+		ConfigName.5 = Release
+		ConfigName.6 = Release Unicode
+		ConfigName.7 = Test
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.0 = {483A4355-73FC-4C22-8673-4254CBED3729}
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Debug.ActiveCfg = Debug|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Debug.Build.0 = Debug|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Debug Unicode.ActiveCfg = Debug|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Debug Unicode.Build.0 = Debug|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.GCDebug.ActiveCfg = Debug|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.GCDebug.Build.0 = Debug|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.GCRelease.ActiveCfg = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.GCRelease.Build.0 = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Production.ActiveCfg = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Production.Build.0 = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Release.ActiveCfg = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Release.Build.0 = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Release Unicode.ActiveCfg = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Release Unicode.Build.0 = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Test.ActiveCfg = Release|Win32
+		{CEC696EA-D873-4E38-A438-DFF37BB98094}.Test.Build.0 = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug.ActiveCfg = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug.Build.0 = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug Unicode.ActiveCfg = Debug Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Debug Unicode.Build.0 = Debug Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCDebug.ActiveCfg = GCDebug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCDebug.Build.0 = GCDebug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCRelease.ActiveCfg = GCRelease|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.GCRelease.Build.0 = GCRelease|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Production.ActiveCfg = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Production.Build.0 = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release.ActiveCfg = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release.Build.0 = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release Unicode.ActiveCfg = Release Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Release Unicode.Build.0 = Release Unicode|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Test.ActiveCfg = Test|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Test.Build.0 = Test|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

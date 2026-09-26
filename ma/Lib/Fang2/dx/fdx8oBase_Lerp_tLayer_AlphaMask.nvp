@@ -1,0 +1,15 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0              ; decal texture
+tex t1				; layer texture
+tex t2				; alpha texture
+mov r0.rgb, t0		; move t0 color -> r0 (including alpha)
++mov r0.a, t2.a		; alpha in a seperate texture.	
+mov r1.rgb, t1
++mul r1.a, t1.a, c3.a
+lrp r0.rgb, r1.a, r1, r0
+mul r0, r0, c2		; res *= surface color

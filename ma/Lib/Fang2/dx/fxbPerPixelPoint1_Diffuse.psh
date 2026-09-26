@@ -1,0 +1,13 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0              ; XZ attenuation
+tex t1				; Y attenuation
+
+mul r1, v0, 1-t0
+mad r0, v0, t1, -r1
+mul r0, r0_sat, r0_sat
+mul r0, r0, r0

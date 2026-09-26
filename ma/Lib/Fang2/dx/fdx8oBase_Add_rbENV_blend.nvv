@@ -1,0 +1,102 @@
+#include "fdx8vshader_const.h"
+
+vs.1.0
+
+#define V_POS v0
+#define V_BLEND v1
+#define V_NORMAL v2
+#define V_COLOR v3
+#define V_TEX0 v4
+#define V_TEX1 v5
+#define V_TEX2 v6
+#define V_TEX3 v7
+
+#define R_EYE_VERTEX r8
+#define R_EYE_NORMAL r9
+#define R_EYE_VECTOR r3
+#define R_DOT2 r4
+
+//Blend my vertex
+dp4 r1.x, V_POS, c[CV_BONEMTX0_0]
+dp4 r1.y, V_POS, c[CV_BONEMTX0_1]
+dp4 r1.z, V_POS, c[CV_BONEMTX0_2]
+
+//second bone results -> r2
+dp4 r2.x, V_POS, c[CV_BONEMTX1_0]
+dp4 r2.y, V_POS, c[CV_BONEMTX1_1]
+dp4 r2.z, V_POS, c[CV_BONEMTX1_2]
+
+//third bone results -> r3
+dp4 r3.x, V_POS, c[CV_BONEMTX2_0]
+dp4 r3.y, V_POS, c[CV_BONEMTX2_1]
+dp4 r3.z, V_POS, c[CV_BONEMTX2_2]
+
+//fourth bone results -> r4
+dp4 r4.x, V_POS, c[CV_BONEMTX3_0]
+dp4 r4.y, V_POS, c[CV_BONEMTX3_1]
+dp4 r4.z, V_POS, c[CV_BONEMTX3_2]
+
+//find fourth bone weight: w4 = 1 - (w1+w2+w3)
+add r5.x, V_BLEND.x, V_BLEND.y
+add r5.x, r5.x, V_BLEND.z
+add r5.x, c[CV_ONE], -r5.x
+
+//Blend verts by weight: v1*w1 + v2*w2 + v3*w3 + v4*w4 
+mul r1.xyz, r1.xyz, V_BLEND.x
+mad r2, r2.xyz, V_BLEND.y, r1.xyz
+mad r3, r3.xyz, V_BLEND.z, r2.xyz
+mad r4, r4.xyz, r5.x, r3.xyz
+
+mov r4.w, c[CV_ONE].z //set w to one
+//r4 now contains final position
+
+; Transform position to clip space and output it
+dp4 oPos.x, r4, c[CV_VIEWPROJ_0]
+dp4 oPos.y, r4, c[CV_VIEWPROJ_1]
+dp4 oPos.z, r4, c[CV_VIEWPROJ_2]
+dp4 oPos.w, r4, c[CV_VIEWPROJ_3]
+
+dp4 R_EYE_VERTEX.x, V_POS, c[CV_WORLDVIEW_0]
+dp4 R_EYE_VERTEX.y, V_POS, c[CV_WORLDVIEW_1]
+dp4 R_EYE_VERTEX.z, V_POS, c[CV_WORLDVIEW_2]
+dp4 R_EYE_VERTEX.w, V_POS, c[CV_WORLDVIEW_3]
+
+; Create R_EYE_VECTOR, the normalized vector from the eye to the vertex
+dp3 R_EYE_VECTOR.w, R_EYE_VERTEX, R_EYE_VERTEX
+rsq R_EYE_VECTOR.w, R_EYE_VECTOR.w		
+mul R_EYE_VECTOR, R_EYE_VERTEX, R_EYE_VECTOR.w
+
+; Transform normal to eye-space
+; We use the inverse transpose of the worldview
+; matrix to do this
+dp3 R_EYE_NORMAL.x, V_NORMAL, c[CV_WORLDVIEW_0]
+dp3 R_EYE_NORMAL.y, V_NORMAL, c[CV_WORLDVIEW_1]
+dp3 R_EYE_NORMAL.z, V_NORMAL, c[CV_WORLDVIEW_2]
+
+; Need to re-normalize normal
+dp3 R_EYE_NORMAL.w, R_EYE_NORMAL, R_EYE_NORMAL
+rsq R_EYE_NORMAL.w, R_EYE_NORMAL.w
+mul R_EYE_NORMAL, R_EYE_NORMAL, R_EYE_NORMAL.w
+
+; Calculate E - 2*(E dot N)*N
+dp3 R_DOT2, R_EYE_VECTOR, R_EYE_NORMAL
+add R_DOT2, R_DOT2, R_DOT2
+mul R_EYE_NORMAL, R_EYE_NORMAL, R_DOT2
+
+;mov oT0, V_TEX0
+
+;Now (s,t)*0.5f + 0.5f
+add R_EYE_VECTOR, R_EYE_VECTOR, -R_EYE_NORMAL
+mul R_EYE_VECTOR, R_EYE_VECTOR, c[CV_HALF]
+add oT1, R_EYE_VECTOR, c[CV_HALF]
+
+mov oT1.w, c[CV_ONE].x
+
+mov r0.xy, V_TEX0
+mov r0.z, c[CV_ONE]
+
+dp3 oT0.x, r0, c[CV_TEXMTX0_0]
+dp3 oT0.y, r0, c[CV_TEXMTX0_1]
+
+mov oD0, c[CV_FACTOR]
+mov oD1, c[CV_FACTOR]

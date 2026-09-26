@@ -1,0 +1,10 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0
+
+mov r0.a, t0.a
+mul r0.rgb, v0, r0.a      ; Pass color

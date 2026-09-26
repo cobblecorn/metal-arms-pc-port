@@ -1,0 +1,302 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\Fontomatic.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON    DISCARDABLE     "res\\Fontomatic.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOG DISCARDABLE  0, 0, 184, 53
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About Fontomatic"
+FONT 8, "MS Shell Dlg 2"
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,5,7,20,20
+    LTEXT           "Fontomatic Version 1.0",IDC_STATIC,33,8,72,8,
+                    SS_NOPREFIX
+    LTEXT           "Copyright (c) 2001 Swingin' Ape Studios, Inc.",
+                    IDC_STATIC,34,20,143,8
+    DEFPUSHBUTTON   "OK",IDOK,66,33,50,14,WS_GROUP
+END
+
+IDD_FONTOMATIC_DIALOG DIALOGEX 0, 0, 322, 385
+STYLE DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | 
+    WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "Fontomatic (c) 2001 Swingin' Ape Studios"
+FONT 8, "MS Shell Dlg 2"
+BEGIN
+    GROUPBOX        "Generation",IDC_STATIC,6,3,312,84
+    RTEXT           "Input TGA font filename:",IDC_STATIC,12,18,75,8
+    EDITTEXT        IDC_INPUT_FILE,90,15,208,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "...",IDC_INPUT_FILE_BROWSE,301,15,13,14
+    RTEXT           "Characters in this font:",IDC_STATIC,12,35,75,8
+    EDITTEXT        IDC_CHARACTER_STRING,90,32,208,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "...",IDC_INPUT_CHARS_BROWSE,301,32,13,14
+    RTEXT           "Output directory:",IDC_STATIC,11,52,75,8
+    EDITTEXT        IDC_OUTPUT_DIR,90,49,208,14,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "...",IDC_OUTPUT_SCRIPT_FILE_BROWSE,301,49,13,14
+    DEFPUSHBUTTON   "&Import (from disk)",IDC_LOAD,50,69,107,14
+    PUSHBUTTON      "&Generate (to disk)",IDC_RUN,164,69,107,14,WS_DISABLED
+    GROUPBOX        "Preview",IDC_STATIC,6,90,312,294
+    RTEXT           "Master file:",IDC_STATIC,12,102,40,8
+    EDITTEXT        IDC_EDIT_MASTER_FILE,58,100,186,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "...",IDC_BUTTON_MASTER_FILE,248,100,13,14
+    PUSHBUTTON      "&Video Mode",IDC_BUTTON_VIDMODE,265,100,50,14
+    PUSHBUTTON      "&Preview",IDC_BUTTON_PREVIEW,265,118,50,14,WS_DISABLED
+    EDITTEXT        IDC_EDIT_PREVIEW,12,119,245,53,ES_MULTILINE | 
+                    ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | 
+                    WS_DISABLED | WS_VSCROLL | WS_HSCROLL
+    PUSHBUTTON      "&Save (to disk)",IDC_RUN_SCRIPT,265,158,50,15,
+                    WS_DISABLED
+    CTEXT           "Letter spacing in pixels (kerning)",IDC_STATIC,9,180,
+                    306,8
+    EDITTEXT        IDC_EDIT_SPACING_LETTER,12,192,21,12,ES_RIGHT | 
+                    ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER | WS_DISABLED
+    CONTROL         "Slider1",IDC_SLIDER_SPACING_LETTER,"msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_DISABLED | WS_TABSTOP,33,189,282,18
+    CTEXT           "Word spacing in pixels (size of the space character)",
+                    IDC_STATIC,9,210,306,8
+    EDITTEXT        IDC_EDIT_SPACING_WORD,12,222,21,12,ES_RIGHT | 
+                    ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER | WS_DISABLED
+    CONTROL         "Slider1",IDC_SLIDER_SPACING_WORD,"msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_DISABLED | WS_TABSTOP,33,219,282,18
+    CTEXT           "Italic slant in pixels",IDC_STATIC,9,240,306,8
+    EDITTEXT        IDC_EDIT_ITALIC_SLANT,12,253,21,12,ES_RIGHT | 
+                    ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER | WS_DISABLED
+    CONTROL         "Slider1",IDC_SLIDER_ITALIC_SLANT,"msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_DISABLED | WS_TABSTOP,33,250,282,18
+    CTEXT           "Line spacing (allow enough space for scaling - not saved to script)",
+                    IDC_STATIC,9,271,306,8
+    EDITTEXT        IDC_EDIT_SPACING_LINE,12,284,21,12,ES_RIGHT | 
+                    ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER | WS_DISABLED
+    CONTROL         "Slider1",IDC_SLIDER_SPACING_LINE,"msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_DISABLED | WS_TABSTOP,33,281,282,18
+    CTEXT           "Number of lines (not saved to script)",IDC_STATIC,9,302,
+                    306,8
+    EDITTEXT        IDC_EDIT_NUMBER_LINES,12,315,21,12,ES_RIGHT | 
+                    ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER | WS_DISABLED
+    CONTROL         "Slider1",IDC_SLIDER_NUMBER_LINES,"msctls_trackbar32",
+                    TBS_AUTOTICKS | WS_DISABLED | WS_TABSTOP,33,312,282,18
+    CONTROL         "Fixed Width",IDC_CHECK_FIXED_WIDTH,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,21,335,70,8
+    CONTROL         "Italic",IDC_CHECK_ITALIC,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,91,335,70,8
+    CONTROL         "Draw Guides",IDC_CHECK_DRAW_GUIDES,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,161,335,70,8
+    CONTROL         "1 to 1 (no scaling)",IDC_CHECK_ONE_TO_ONE,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,231,335,70,8
+    RTEXT           "Instructions:",IDC_STATIC,12,351,39,8
+    EDITTEXT        IDC_OUTPUT,54,349,258,12,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "&Exit",IDCANCEL,136,365,50,14
+    RTEXT           "version #",IDC_STATIC_VERSION,216,370,96,8
+END
+
+IDD_VIDMODE DIALOG DISCARDABLE  0, 0, 411, 79
+STYLE DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Select Video Mode"
+FONT 8, "MS Shell Dlg 2"
+BEGIN
+    DEFPUSHBUTTON   "Ok",IDOK,294,58,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,354,58,50,14
+    CONTROL         "Hardware",IDC_RADIO_HARDWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,16,47,10
+    CONTROL         "Software",IDC_RADIO_SOFTWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,28,44,10
+    CONTROL         "RefRast",IDC_RADIO_REFRAST,"Button",BS_AUTORADIOBUTTON,
+                    17,40,42,10
+    COMBOBOX        IDC_COMBO_DEVICE,117,14,287,66,CBS_DROPDOWNLIST | 
+                    CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_MODE,117,34,287,168,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Device",IDC_STATIC,88,18,24,8
+    LTEXT           "Mode",IDC_STATIC,93,38,19,8
+END
+
+
+#ifndef _MAC
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "Comments", "\0"
+            VALUE "CompanyName", "\0"
+            VALUE "FileDescription", "Fontomatic MFC Application\0"
+            VALUE "FileVersion", "1, 0, 0, 1\0"
+            VALUE "InternalName", "Fontomatic\0"
+            VALUE "LegalCopyright", "Copyright (C) 1999\0"
+            VALUE "LegalTrademarks", "\0"
+            VALUE "OriginalFilename", "Fontomatic.EXE\0"
+            VALUE "PrivateBuild", "\0"
+            VALUE "ProductName", "Fontomatic Application\0"
+            VALUE "ProductVersion", "1, 0, 0, 1\0"
+            VALUE "SpecialBuild", "\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+#endif    // !_MAC
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 179
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 46
+    END
+
+    IDD_FONTOMATIC_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 315
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 378
+    END
+
+    IDD_VIDMODE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 404
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 72
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE DISCARDABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About Fontomatic"
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\Fontomatic.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

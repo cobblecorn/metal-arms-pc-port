@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding = "Windows-1252"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="7.00"
+	Name="viewer"
+	ProjectGUID="{2E580F25-5E85-4AA1-8EFF-8E7A9FE847DF}"
+	SccProjectName="&quot;$/Code/Src/App/viewer&quot;, VNEAAAAA"
+	SccAuxPath=""
+	SccLocalPath=".."
+	SccProvider="MSSCCI:Microsoft Visual SourceSafe">
+	<Platforms>
+		<Platform
+			Name="Xbox"/>
+	</Platforms>
+	<Configurations>
+		<Configuration
+			Name="Release|Xbox"
+			OutputDirectory=".\Release"
+			IntermediateDirectory=".\Release"
+			ConfigurationType="1"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="FALSE">
+			<Tool
+				Name="VCCLCompilerTool"
+				InlineFunctionExpansion="1"
+				OptimizeForProcessor="2"
+				AdditionalIncludeDirectories="..\..\..\lib\fang2"
+				PreprocessorDefinitions="WIN32,_XBOX,NDEBUG,_FANGDEF_PLATFORM_XB"
+				StringPooling="TRUE"
+				RuntimeLibrary="4"
+				EnableFunctionLevelLinking="TRUE"
+				UsePrecompiledHeader="2"
+				PrecompiledHeaderFile=".\Release/viewer.pch"
+				AssemblerListingLocation=".\Release/"
+				ObjectFile=".\Release/"
+				ProgramDataBaseFileName=".\Release/"
+				BrowseInformation="1"
+				WarningLevel="3"
+				SuppressStartupBanner="TRUE"/>
+			<Tool
+				Name="VCCustomBuildTool"/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/MACHINE:I386 /FIXED:NO"
+				AdditionalDependencies="xbdm.lib fang2xb_r.lib smallamxxb_r.lib xapilib.lib d3d8.lib d3dx8.lib xgraphics.lib dsound.lib dmusic.lib xnet.lib xboxkrnl.lib"
+				OutputFile=".\Release/viewer.exe"
+				LinkIncremental="1"
+				SuppressStartupBanner="TRUE"
+				AdditionalLibraryDirectories="..\..\..\..\lib"
+				GenerateDebugInformation="TRUE"
+				ProgramDatabaseFile=".\Release/viewer.pdb"
+				GenerateMapFile="TRUE"
+				MapFileName=".\Release/viewer.map"
+				OptimizeReferences="2"/>
+			<Tool
+				Name="VCPostBuildEventTool"/>
+			<Tool
+				Name="VCPreBuildEventTool"/>
+			<Tool
+				Name="VCPreLinkEventTool"/>
+			<Tool
+				Name="XboxDeploymentTool"
+				RemotePath="xe:\sas\viewer_r.xbe"/>
+			<Tool
+				Name="XboxImageTool"
+				StackSize="0x10000"
+				SuppressStartupBanner="TRUE"
+				TitleID="2"
+				TitleName="SAS Art Viewer"
+				TitleImage="SAS.BMP"
+				SaveGameImage="SAS.BMP"/>
+		</Configuration>
+		<Configuration
+			Name="Debug|Xbox"
+			OutputDirectory=".\Debug"
+			IntermediateDirectory=".\Debug"
+			ConfigurationType="1"
+			UseOfMFC="0"
+			ATLMinimizesCRunTimeLibraryUsage="FALSE">
+			<Tool
+				Name="VCCLCompilerTool"
+				Optimization="0"
+				OptimizeForProcessor="2"
+				AdditionalIncludeDirectories="..\..\..\lib\Fang2"
+				PreprocessorDefinitions="WIN32,_XBOX,_DEBUG,_FANGDEF_PLATFORM_XB"
+				RuntimeLibrary="5"
+				UsePrecompiledHeader="2"
+				PrecompiledHeaderFile=".\Debug/viewer.pch"
+				AssemblerListingLocation=".\Debug/"
+				ObjectFile=".\Debug/"
+				ProgramDataBaseFileName=".\Debug/"
+				BrowseInformation="1"
+				WarningLevel="3"
+				SuppressStartupBanner="TRUE"
+				DebugInformationFormat="3"/>
+			<Tool
+				Name="VCCustomBuildTool"/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/MACHINE:I386 /FIXED:NO"
+				AdditionalDependencies="xbdm.lib fang2xb_d.lib smallamxxb_d.lib xapilibd.lib d3d8d.lib d3dx8d.lib xgraphicsd.lib dsoundd.lib dmusicd.lib xnetd.lib xboxkrnl.lib"
+				OutputFile=".\Debug/viewer.exe"
+				LinkIncremental="2"
+				SuppressStartupBanner="TRUE"
+				AdditionalLibraryDirectories="..\..\..\..\lib"
+				GenerateDebugInformation="TRUE"
+				ProgramDatabaseFile=".\Debug/viewer.pdb"/>
+			<Tool
+				Name="VCPostBuildEventTool"/>
+			<Tool
+				Name="VCPreBuildEventTool"/>
+			<Tool
+				Name="VCPreLinkEventTool"/>
+			<Tool
+				Name="XboxDeploymentTool"
+				RemotePath="xe:\sas\viewer_d.xbe"/>
+			<Tool
+				Name="XboxImageTool"
+				StackSize="0x10000"
+				IncludeDebugInfo="TRUE"
+				SuppressStartupBanner="TRUE"
+				TitleID="2"
+				TitleName="SAS Art Viewer"
+				TitleImage="SAS.BMP"
+				SaveGameImage="SAS.BMP"/>
+		</Configuration>
+	</Configurations>
+	<Files>
+		<Filter
+			Name="Source Files"
+			Filter="cpp;c;cxx;rc;def;r;odl;idl;hpj;bat">
+			<File
+				RelativePath=".\main.cpp">
+			</File>
+			<File
+				RelativePath="..\viewer.cpp">
+			</File>
+		</Filter>
+		<Filter
+			Name="Header Files"
+			Filter="h;hpp;hxx;hm;inl">
+			<File
+				RelativePath="..\viewer.h">
+			</File>
+		</Filter>
+		<Filter
+			Name="Resource Files"
+			Filter="ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe">
+		</Filter>
+	</Files>
+	<Globals>
+	</Globals>
+</VisualStudioProject>

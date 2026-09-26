@@ -1,0 +1,15 @@
+;
+; Pixel shader 
+
+; Declare pixel shader version 1.1
+ps.1.1
+
+tex t0              ; decal texture
+tex t1				; lightmap 0
+tex t2				; lightmap 1
+
+mov r0, t1
+mad r0, t2, c1, r0			; lightmap0 + lightmap1 * motif
+mad r0.rgb, t0, r0, v1      ; decal * lightmap + dynamic (dynamic = baselighting + ambient + emissive)
++mov r0.a, t0.a				; write out decal texture alpha.
+;mul r0, r0, c2				; res *= surface color

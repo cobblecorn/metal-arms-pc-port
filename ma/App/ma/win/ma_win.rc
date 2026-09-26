@@ -1,0 +1,585 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\ma_win.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\ma_win.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOG  0, 0, 184, 55
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About ma_win"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
+    DEFPUSHBUTTON   "OK",IDOK,67,34,50,14,WS_GROUP
+    LTEXT           "Mettle Arms Shell -- version 1.0",IDC_STATIC,39,10,70,8,
+                    SS_NOPREFIX
+    LTEXT           "Copyright (C) 2001 Swingin' Ape Studios, Inc.",
+                    IDC_STATIC,39,20,132,8
+END
+
+IDD_MA_WIN_DIALOG DIALOGEX 0, 0, 409, 354
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | 
+    WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "Mettle Arms Windows Shell"
+FONT 8, "MS Sans Serif", 0, 0, 0x1
+BEGIN
+    PUSHBUTTON      "...",IDC_BUTTON_LOAD,249,8,10,12
+    PUSHBUTTON      "&Video Mode",IDC_VIDEO_MODE,267,7,72,18
+    PUSHBUTTON      "&Run",IDC_BUTTON_RUN,348,7,46,18
+    PUSHBUTTON      "...",IDC_CHOOSE_MASTER_FILE,249,23,10,12
+    PUSHBUTTON      "Background Color",IDC_3D_COLOR,267,49,72,18
+    PUSHBUTTON      "&Input Setup",IDC_BUTTON_INPUT_EMULATION,267,28,72,18
+    EDITTEXT        IDC_SCREENSHOT_DIR,71,38,175,12,ES_AUTOHSCROLL | 
+                    ES_READONLY | NOT WS_TABSTOP
+    PUSHBUTTON      "...",IDC_CHOOSE_SCREENSHOT_DIR,249,38,10,12
+    PUSHBUTTON      "...",IDC_CHOOSE_MEMCARD_DIR,249,53,10,12
+    CONTROL         "Skip Level Select Screen",IDC_SKIP_LEVEL_SELECT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,12,77,93,10
+    CONTROL         "Install audio",IDC_INSTALL_AUDIO,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,139,75,50,10
+    RTEXT           "Platform To Emulate:",IDC_STATIC,11,88,78,8
+    CONTROL         "Xbox",IDC_XBOX,"Button",BS_AUTORADIOBUTTON | WS_GROUP,
+                    98,87,35,10
+    CONTROL         "GameCube",IDC_GAMECUBE,"Button",BS_AUTORADIOBUTTON,139,
+                    87,49,10
+    RTEXT           "Attached Mem Cards:",IDC_STATIC,11,98,78,8
+    CONTROL         "Slot 1",IDC_SLOT1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    98,98,35,10
+    CONTROL         "Slot 2",IDC_SLOT2,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    139,98,35,10
+    CONTROL         "Series",IDC_SERIES,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,207,83,35,10
+    CONTROL         "Single",IDC_SINGLE,"Button",BS_AUTORADIOBUTTON,207,93,
+                    35,10
+    CONTROL         "TGA",IDC_TGA,"Button",BS_AUTORADIOBUTTON | WS_GROUP,252,
+                    99,35,10
+    CONTROL         "JPEG",IDC_JPEG,"Button",BS_AUTORADIOBUTTON,291,99,35,10
+    CONTROL         "View Bounds",IDC_VIEW_BOUNDS,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,124,94,10
+    CONTROL         "Show FPS",IDC_DISPLAY_FPS,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,133,94,10
+    CONTROL         "Show Screen Safe Area",IDC_DISPLAY_SAFE_SCREEN_BOX,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,142,94,10
+    CONTROL         "30",IDC_30FPS,"Button",BS_AUTORADIOBUTTON | WS_GROUP,
+                    234,150,24,10
+    CONTROL         "60",IDC_60FPS,"Button",BS_AUTORADIOBUTTON,260,150,24,10
+    CONTROL         "Realtime",IDC_REALTIME_FPS,"Button",BS_AUTORADIOBUTTON,
+                    286,150,43,10
+    EDITTEXT        IDC_EDIT_PRINTBOX,7,190,395,134,ES_MULTILINE | 
+                    ES_READONLY | WS_VSCROLL | WS_HSCROLL
+    PUSHBUTTON      "&Exit",IDCANCEL,174,329,54,18
+    RTEXT           "World File:",IDC_WORLD_FILE_TEXT,11,10,56,8
+    EDITTEXT        IDC_INPUT_NAME,71,8,175,12,ES_AUTOHSCROLL | ES_READONLY | 
+                    NOT WS_TABSTOP
+    RTEXT           "Master File:",IDC_MASTER_FILE_TEXT,11,25,56,8
+    EDITTEXT        IDC_MASTER_FILE,71,23,175,12,ES_AUTOHSCROLL | 
+                    ES_READONLY | NOT WS_TABSTOP
+    RTEXT           "Screenshot Path:",IDC_SCREENSHOT_PATH_TEXT,11,40,56,8
+    GROUPBOX        "Runtime Options:",IDC_RUNTIME_OPTIONS_FRAME,7,113,337,
+                    71
+    LTEXT           "Animations Playback (FPS):",IDC_PLAYBACK_TEXT,242,139,
+                    84,8
+    GROUPBOX        "Screen Shots:",IDC_SCREEN_SHOT_OPTIONS,201,67,143,45
+    LTEXT           "Press SPACE to toggle on/off (Full Screen Req).",
+                    IDC_SCREEN_SHOT_TEXT,244,80,97,18
+    RTEXT           "Version # 17",IDC_VERSION,339,343,65,8
+    GROUPBOX        "Development Options:",IDC_DEV_OPTIONS,7,67,188,45
+    RTEXT           "Mem Card Path:",IDC_STATIC,11,55,56,8
+    EDITTEXT        IDC_MEMCARD_DIR,71,53,175,12,ES_AUTOHSCROLL | 
+                    ES_READONLY | NOT WS_TABSTOP
+    CONTROL         "Debug AI",IDC_CBDEBUG_AI,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,133,127,85,10
+    CONTROL         "Let Player Die",IDC_CBPLAYER_DEATH,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,133,145,85,10
+    CONTROL         "BlindDeafAndDumbAI",IDC_CBBDADAI,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,133,136,85,10
+    CONTROL         "Default",IDC_LEGSERVO_DEFAULT,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP,355,50,39,10
+    CONTROL         "L1",IDC_LEGSERVO_L1,"Button",BS_AUTORADIOBUTTON,355,60,
+                    24,10
+    CONTROL         "L2",IDC_LEGSERVO_L2,"Button",BS_AUTORADIOBUTTON,355,70,
+                    24,10
+    CONTROL         "L3",IDC_LEGSERVO_L3,"Button",BS_AUTORADIOBUTTON,355,80,
+                    24,10
+    CONTROL         "Default",IDC_ARMSERVO_DEFAULT,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP,355,111,39,10
+    CONTROL         "L1",IDC_ARMSERVO_L1,"Button",BS_AUTORADIOBUTTON,355,121,
+                    24,10
+    CONTROL         "L2",IDC_ARMSERVO_L2,"Button",BS_AUTORADIOBUTTON,355,131,
+                    24,10
+    CONTROL         "L3",IDC_ARMSERVO_L3,"Button",BS_AUTORADIOBUTTON,355,141,
+                    24,10
+    LTEXT           "Leg Servos",IDC_STATIC,355,38,37,8
+    LTEXT           "Arm Servos",IDC_STATIC,355,99,37,8
+    GROUPBOX        "Servos",IDC_STATIC,349,26,53,128
+    CONTROL         "Show Entity Info",IDC_CHECK_SHOW_ENTITY_INFO,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,133,118,85,10
+    CONTROL         "Don't Draw HUD",IDC_DONT_DRAW_HUD,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,133,163,75,10
+    CONTROL         "Don't Draw Debug Info",IDC_DONT_DRAW_DEBUG,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,133,154,79,10
+    CONTROL         "Don't Render Surface Pass",IDC_DONT_RENDER_SURFACE,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,152,91,10
+    CONTROL         "Don't Render Specular Pass",IDC_DONT_RENDER_SPECULAR,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,161,95,10
+    CONTROL         "Don't Render Translucencies",
+                    IDC_DONT_RENDER_TRANSLUCENCIES,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,171,99,10
+    CONTROL         "Camera POV Visibility",IDC_CAMERA_POV_VISIBILITY,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,133,172,79,10
+    CONTROL         "Show Light Range",IDC_LIGHT_SHOWRANGE,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,234,172,79,10
+END
+
+IDD_VIDMODE DIALOG  0, 0, 411, 79
+STYLE DS_SETFONT | DS_MODALFRAME | WS_MINIMIZEBOX | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Select Video Mode"
+FONT 8, "MS Sans Serif"
+BEGIN
+    DEFPUSHBUTTON   "Ok",IDOK,294,58,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,354,58,50,14
+    CONTROL         "Hardware",IDC_RADIO_HARDWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,16,47,10
+    CONTROL         "Software",IDC_RADIO_SOFTWARE,"Button",
+                    BS_AUTORADIOBUTTON,17,28,44,10
+    CONTROL         "RefRast",IDC_RADIO_REFRAST,"Button",BS_AUTORADIOBUTTON,
+                    17,40,42,10
+    CONTROL         "Fullscreen",IDC_CHECK_FULLSCREEN,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,17,62,48,10
+    COMBOBOX        IDC_COMBO_DEVICE,117,14,287,66,CBS_DROPDOWNLIST | 
+                    CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_MODE,117,34,287,168,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Device",IDC_STATIC,88,18,24,8
+    LTEXT           "Mode",IDC_STATIC,93,38,19,8
+END
+
+IDD_INPUT_EMULATION DIALOGEX 0, 0, 343, 442
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Input Emulation Setup"
+FONT 8, "MS Sans Serif", 0, 0, 0x1
+BEGIN
+    LTEXT           "Device:",IDC_STATIC,45,6,26,8
+    COMBOBOX        IDC_COMBO_EMUL_DEVICES,72,3,204,63,CBS_DROPDOWNLIST | 
+                    CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Xbox",IDC_STATIC,3,17,336,214
+    GROUPBOX        "Gamecube",IDC_STATIC,3,233,336,187
+    LTEXT           "Buttons",IDC_STATIC,97,24,25,8
+    LTEXT           "Axes",IDC_STATIC,257,24,16,8
+    LTEXT           "Buttons",IDC_STATIC,124,241,25,8
+    LTEXT           "Axes",IDC_STATIC,279,239,16,8
+    CONTROL         "Start",IDC_RADIO_EMUL_XB_START,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,32,52,31,
+                    10,WS_EX_RIGHT
+    CONTROL         "Back",IDC_RADIO_EMUL_XB_BACK,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,30,67,33,
+                    10,WS_EX_RIGHT
+    CONTROL         "Black",IDC_RADIO_EMUL_XB_BLACK,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,29,81,34,
+                    10,WS_EX_RIGHT
+    CONTROL         "White",IDC_RADIO_EMUL_XB_WHITE,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,28,98,35,
+                    10,WS_EX_RIGHT
+    CONTROL         "A",IDC_RADIO_EMUL_XB_A,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,42,112,21,10,WS_EX_RIGHT
+    CONTROL         "B",IDC_RADIO_EMUL_XB_B,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,42,128,21,10,WS_EX_RIGHT
+    CONTROL         "X",IDC_RADIO_EMUL_XB_X,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,42,142,21,10,WS_EX_RIGHT
+    CONTROL         "Y",IDC_RADIO_EMUL_XB_Y,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,42,156,21,10,WS_EX_RIGHT
+    CONTROL         "Left Trigger",IDC_RADIO_EMUL_XB_LEFT_TRIGGER,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,11,171,52,
+                    10,WS_EX_RIGHT
+    CONTROL         "Right Trigger",IDC_RADIO_EMUL_XB_RIGHT_TRIGGER,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,6,185,57,
+                    10,WS_EX_RIGHT
+    CONTROL         "Left Stick",IDC_RADIO_EMUL_XB_LEFT_STICK,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,17,201,46,
+                    10,WS_EX_RIGHT
+    CONTROL         "Right Stick",IDC_RADIO_EMUL_XB_RIGHT_STICK,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,12,215,51,
+                    10,WS_EX_RIGHT
+    CONTROL         "Left Stick X",IDC_RADIO_EMUL_XB_LEFT_STICK_X,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,166,36,53,
+                    10,WS_EX_RIGHT
+    CONTROL         "Left Stick Y",IDC_RADIO_EMUL_XB_LEFT_STICK_Y,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,166,52,53,
+                    10,WS_EX_RIGHT
+    CONTROL         "Right Stick X",IDC_RADIO_EMUL_XB_RIGHT_STICK_X,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,162,65,57,
+                    10,WS_EX_RIGHT
+    CONTROL         "Right Stick Y",IDC_RADIO_EMUL_XB_RIGHT_STICK_Y,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,162,81,57,
+                    10,WS_EX_RIGHT
+    CONTROL         "DPad X",IDC_RADIO_EMUL_XB_DPAD_X,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,178,95,41,
+                    10,WS_EX_RIGHT
+    CONTROL         "DPad Y",IDC_RADIO_EMUL_XB_DPAD_Y,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,178,111,41,
+                    10,WS_EX_RIGHT
+    CONTROL         "Start",IDC_RADIO_EMUL_GC_START,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,56,269,31,
+                    10,WS_EX_RIGHT
+    CONTROL         "A",IDC_RADIO_EMUL_GC_A,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,66,285,21,10,WS_EX_RIGHT
+    CONTROL         "B",IDC_RADIO_EMUL_GC_B,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,66,300,21,10,WS_EX_RIGHT
+    CONTROL         "X",IDC_RADIO_EMUL_GC_X,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,66,315,21,10,WS_EX_RIGHT
+    CONTROL         "Y",IDC_RADIO_EMUL_GC_Y,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,66,329,21,10,WS_EX_RIGHT
+    CONTROL         "Z",IDC_RADIO_EMUL_GC_Z,"Button",BS_AUTORADIOBUTTON | 
+                    BS_LEFTTEXT | WS_TABSTOP,66,343,21,10,WS_EX_RIGHT
+    CONTROL         "Left Trigger Analog",IDC_RADIO_EMUL_GC_LEFT_TRIGGER_A,
+                    "Button",BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,
+                    11,360,76,10,WS_EX_RIGHT
+    CONTROL         "Right Trigger Analog",IDC_RADIO_EMUL_GC_RIGHT_TRIGGER_A,
+                    "Button",BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,6,
+                    375,81,10,WS_EX_RIGHT
+    CONTROL         "Left Trigger Digital",IDC_RADIO_EMUL_GC_LEFT_TRIGGER_D,
+                    "Button",BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,
+                    14,389,73,10,WS_EX_RIGHT
+    CONTROL         "Right Trigger Digital",
+                    IDC_RADIO_EMUL_GC_RIGHT_TRIGGER_D,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,9,403,78,
+                    10,WS_EX_RIGHT
+    CONTROL         "Left Stick X",IDC_RADIO_EMUL_GC_LEFT_STICK_X,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,189,253,53,
+                    10,WS_EX_RIGHT
+    CONTROL         "Left Stick Y",IDC_RADIO_EMUL_GC_LEFT_STICK_Y,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,189,268,53,
+                    10,WS_EX_RIGHT
+    CONTROL         "Right Stick X",IDC_RADIO_EMUL_GC_RIGHT_STICK_X,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,185,281,57,
+                    10,WS_EX_RIGHT
+    CONTROL         "Right Stick Y",IDC_RADIO_EMUL_GC_RIGHT_STICK_Y,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,185,297,57,
+                    10,WS_EX_RIGHT
+    CONTROL         "DPad X",IDC_RADIO_EMUL_GC_DPAD_X,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,201,312,41,
+                    10,WS_EX_RIGHT
+    CONTROL         "DPad Y",IDC_RADIO_EMUL_GC_DPAD_Y,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,201,328,41,
+                    10,WS_EX_RIGHT
+    COMBOBOX        IDC_COMBO_EMUL_XB_START,67,49,90,59,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_BACK,67,64,90,62,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_BLACK,67,79,90,59,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_WHITE,67,95,90,73,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_A,67,109,90,86,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_B,67,125,90,67,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_X,67,139,90,77,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_Y,67,154,90,65,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_LEFT_TRIGGER,67,169,90,62,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_RIGHT_TRIGGER,67,184,90,74,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_LEFT_STICK,67,200,90,79,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_RIGHT_STICK,67,215,90,67,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_LEFT_STICK_X,223,34,90,81,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_LEFT_STICK_Y,223,49,90,63,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_RIGHT_STICK_X,223,64,90,93,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_RIGHT_STICK_Y,223,79,90,72,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_DPAD_X,223,94,90,96,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_XB_DPAD_Y,223,109,90,63,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_START,93,266,90,46,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_A,93,282,90,57,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_B,93,297,90,66,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_X,93,311,90,55,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_Y,93,327,90,63,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_Z,93,341,90,61,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_LEFT_TRIGGER_A,93,357,90,51,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_RIGHT_TRIGGER_A,93,372,90,60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_LEFT_TRIGGER_D,93,386,90,61,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_RIGHT_TRIGGER_D,93,402,90,75,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_LEFT_STICK_X,245,251,90,56,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_LEFT_STICK_Y,245,265,90,48,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_RIGHT_STICK_X,245,281,90,50,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_RIGHT_STICK_Y,245,296,90,53,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_DPAD_X,245,310,90,57,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_EMUL_GC_DPAD_Y,245,326,90,56,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "Save",IDOK,118,424,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,174,424,50,14
+    CONTROL         "Reset",IDC_RADIO_EMUL_XB_RESET,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,28,36,35,
+                    10,WS_EX_RIGHT
+    COMBOBOX        IDC_COMBO_EMUL_XB_RESET,67,34,90,59,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Reset",IDC_RADIO_EMUL_GC_RESET,"Button",
+                    BS_AUTORADIOBUTTON | BS_LEFTTEXT | WS_TABSTOP,51,254,35,
+                    10,WS_EX_RIGHT
+    COMBOBOX        IDC_COMBO_EMUL_GC_RESET,93,251,90,46,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+END
+
+IDD_ASSET_PICKER DIALOG  0, 0, 276, 135
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Select Asset From Master File"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL         "List1",IDC_FILE_LIST,"SysListView32",LVS_LIST | 
+                    LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_SORTASCENDING | 
+                    WS_BORDER | WS_TABSTOP,7,25,262,66
+    EDITTEXT        IDC_FILENAME,67,98,140,12,ES_AUTOHSCROLL | ES_READONLY
+    COMBOBOX        IDC_FILETYPE_COMBO,67,115,140,70,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "&Open",IDOK,219,96,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,219,114,50,14
+    EDITTEXT        IDC_MASTER_FILENAME,50,5,219,12,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    LTEXT           "Asset of &type:",IDC_STATIC,9,117,52,8
+    LTEXT           "Asset &name:",IDC_STATIC,9,100,52,8
+    LTEXT           "Look &in:",IDC_STATIC,9,7,36,8
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "ma_win MFC Application"
+            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "InternalName", "ma_win"
+            VALUE "LegalCopyright", "Copyright (C) 2002"
+            VALUE "OriginalFilename", "ma_win.EXE"
+            VALUE "ProductName", "ma_win Application"
+            VALUE "ProductVersion", "1, 0, 0, 1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 177
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 48
+    END
+
+    IDD_MA_WIN_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 402
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 347
+    END
+
+    IDD_VIDMODE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 404
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 72
+    END
+
+    IDD_INPUT_EMULATION, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 336
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 435
+    END
+
+    IDD_ASSET_PICKER, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 269
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 128
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_ASSET_PICKER DLGINIT
+BEGIN
+    IDC_FILETYPE_COMBO, 0x403, 15, 0
+0x6f57, 0x6c72, 0x7364, 0x2820, 0x2e2a, 0x6c77, 0x2964, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 15, 0
+0x654d, 0x6873, 0x7365, 0x2820, 0x2e2a, 0x6962, 0x296e, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 23, 0
+0x6e41, 0x6d69, 0x7461, 0x6f69, 0x206e, 0x6144, 0x6174, 0x2820, 0x2e2a, 
+0x746d, 0x2978, "\000" 
+    IDC_FILETYPE_COMBO, 0x403, 18, 0
+0x6554, 0x7478, 0x7275, 0x7365, 0x2820, 0x2a20, 0x732e, 0x7265, 0x0029, 
+
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    IDS_ABOUTBOX            "&About ma_win..."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\ma_win.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

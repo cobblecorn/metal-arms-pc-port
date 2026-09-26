@@ -1,0 +1,32 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "XBTestLauncher", "XBTestLauncher.vcproj", "{6451B5E3-1F5C-49E6-92C0-D7F22C3F4B5D}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 2
+		SccProjectName0 = \u0022$/Code/Src/App/XBTestLauncher\u0022,\u0020OXHAAAAA
+		SccLocalPath0 = .
+		SccProvider0 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+		SolutionUniqueID = {5F57E019-9234-40CB-B149-71E49FD87CCC}
+		SccProjectUniqueName1 = XBTestLauncher.vcproj
+		SccLocalPath1 = .
+		CanCheckoutShared = true
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{6451B5E3-1F5C-49E6-92C0-D7F22C3F4B5D}.Debug.ActiveCfg = Debug|Xbox
+		{6451B5E3-1F5C-49E6-92C0-D7F22C3F4B5D}.Debug.Build.0 = Debug|Xbox
+		{6451B5E3-1F5C-49E6-92C0-D7F22C3F4B5D}.Release.ActiveCfg = Release|Xbox
+		{6451B5E3-1F5C-49E6-92C0-D7F22C3F4B5D}.Release.Build.0 = Release|Xbox
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

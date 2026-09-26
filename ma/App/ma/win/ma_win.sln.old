@@ -1,0 +1,148 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ma_win", "ma_win.vcproj", "{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fang2win", "..\..\..\Lib\Fang2\dx\win\fang2win.vcproj", "{483A4355-73FC-4C22-8673-4254CBED3729}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SmallAMX", "..\..\..\Lib\SmallAMX\SmallAMX.vcproj", "{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ma_xb", "..\xb\ma_xb.vcproj", "{6A65697D-95CA-4387-A044-5BFDCD34FE11}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fang2xb", "..\..\..\Lib\Fang2\dx\xb\fang2xb.vcproj", "{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}"
+EndProject
+Global
+	GlobalSection(SourceCodeControl) = preSolution
+		SccNumberOfProjects = 6
+		SccProjectName0 = \u0022$/Code/Src/App/ma\u0022,\u0020PRDAAAAA
+		SccLocalPath0 = ..
+		SccProvider0 = MSSCCI:Microsoft\u0020Visual\u0020SourceSafe
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection0 = win\\
+		SolutionUniqueID = {D6C646C7-2D41-41F0-8DC8-3909AAFBC127}
+		SccProjectUniqueName1 = ma_win.vcproj
+		SccLocalPath1 = ..
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection1 = win\\
+		SccProjectUniqueName2 = ..\\..\\..\\Lib\\Fang2\\dx\\win\\fang2win.vcproj
+		SccProjectName2 = \u0022$/Code/Src/Lib/Fang2\u0022,\u0020QCDAAAAA
+		SccLocalPath2 = ..\\..\\..\\Lib\\Fang2
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection2 = dx\\win\\
+		SccProjectUniqueName3 = ..\\..\\..\\Lib\\SmallAMX\\SmallAMX.vcproj
+		SccProjectName3 = \u0022$/Code/Src/Lib/SmallAMX\u0022,\u0020XRCAAAAA
+		SccLocalPath3 = ..\\..\\..\\Lib\\SmallAMX
+		CanCheckoutShared = true
+		SccProjectUniqueName4 = ..\\xb\\ma_xb.vcproj
+		SccLocalPath4 = ..
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection4 = xb\\
+		SccProjectUniqueName5 = ..\\..\\..\\Lib\\Fang2\\dx\\xb\\fang2xb.vcproj
+		SccProjectName5 = \u0022$/Code/Src/Lib/Fang2\u0022,\u0020QCDAAAAA
+		SccLocalPath5 = ..\\..\\..\\Lib\\Fang2
+		CanCheckoutShared = true
+		SccProjectFilePathRelativizedFromConnection5 = dx\\xb\\
+	EndGlobalSection
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Win32 Debug
+		ConfigName.1 = Win32 Production
+		ConfigName.2 = Win32 QA
+		ConfigName.3 = Win32 Release
+		ConfigName.4 = Win32 Test
+		ConfigName.5 = Xbox Production
+		ConfigName.6 = Xbox QA
+		ConfigName.7 = Xbox Release
+		ConfigName.8 = Xbox Test
+		ConfigName.9 = XboxDebug
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.0 = {483A4355-73FC-4C22-8673-4254CBED3729}
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.1 = {017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.0 = {017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.1 = {C84B9AF0-D4E2-4340-A18C-B850E4B46E68}
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 Debug.ActiveCfg = Debug|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 Debug.Build.0 = Debug|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 Production.ActiveCfg = Production|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 Production.Build.0 = Production|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 QA.ActiveCfg = QA|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 QA.Build.0 = QA|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 Release.ActiveCfg = Release|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 Release.Build.0 = Release|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 Test.ActiveCfg = Test|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Win32 Test.Build.0 = Test|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Xbox Production.ActiveCfg = Production|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Xbox QA.ActiveCfg = QA|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Xbox Release.ActiveCfg = Release|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.Xbox Test.ActiveCfg = Test|Win32
+		{EB1F8F4F-1EE5-494C-A0E2-4E183ABE650F}.XboxDebug.ActiveCfg = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 Debug.ActiveCfg = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 Debug.Build.0 = Debug|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 Production.ActiveCfg = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 Production.Build.0 = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 QA.ActiveCfg = QA|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 QA.Build.0 = QA|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 Release.ActiveCfg = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 Release.Build.0 = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 Test.ActiveCfg = Test|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Win32 Test.Build.0 = Test|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Xbox Production.ActiveCfg = Production|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Xbox QA.ActiveCfg = QA|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Xbox Release.ActiveCfg = Release|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.Xbox Test.ActiveCfg = Test|Win32
+		{483A4355-73FC-4C22-8673-4254CBED3729}.XboxDebug.ActiveCfg = Debug Unicode|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 Debug.ActiveCfg = Debug|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 Debug.Build.0 = Debug|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 Production.ActiveCfg = Production|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 Production.Build.0 = Production|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 QA.ActiveCfg = QA|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 QA.Build.0 = QA|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 Release.ActiveCfg = Release|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 Release.Build.0 = Release|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 Test.ActiveCfg = Test|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Win32 Test.Build.0 = Test|Win32
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Xbox Production.ActiveCfg = Production|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Xbox Production.Build.0 = Production|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Xbox QA.ActiveCfg = QA|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Xbox QA.Build.0 = QA|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Xbox Release.ActiveCfg = Release|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Xbox Release.Build.0 = Release|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Xbox Test.ActiveCfg = Test|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.Xbox Test.Build.0 = Test|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.XboxDebug.ActiveCfg = Debug|Xbox
+		{017A7BB6-36DC-440C-A8D9-8BFF30D5EA21}.XboxDebug.Build.0 = Debug|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Win32 Debug.ActiveCfg = Debug|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Win32 Production.ActiveCfg = Production|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Win32 QA.ActiveCfg = QA|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Win32 Release.ActiveCfg = Release|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Win32 Test.ActiveCfg = Test|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Xbox Production.ActiveCfg = Production|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Xbox Production.Build.0 = Production|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Xbox QA.ActiveCfg = QA|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Xbox QA.Build.0 = QA|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Xbox Release.ActiveCfg = Release|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Xbox Release.Build.0 = Release|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Xbox Test.ActiveCfg = Test|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.Xbox Test.Build.0 = Test|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.XboxDebug.ActiveCfg = Debug|Xbox
+		{6A65697D-95CA-4387-A044-5BFDCD34FE11}.XboxDebug.Build.0 = Debug|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Win32 Debug.ActiveCfg = Debug|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Win32 Production.ActiveCfg = Production|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Win32 QA.ActiveCfg = QA|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Win32 Release.ActiveCfg = Release|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Win32 Test.ActiveCfg = Test|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Xbox Production.ActiveCfg = Production|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Xbox Production.Build.0 = Production|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Xbox QA.ActiveCfg = QA|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Xbox QA.Build.0 = QA|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Xbox Release.ActiveCfg = Release|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Xbox Release.Build.0 = Release|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Xbox Test.ActiveCfg = Test|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.Xbox Test.Build.0 = Test|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.XboxDebug.ActiveCfg = Debug|Xbox
+		{C84B9AF0-D4E2-4340-A18C-B850E4B46E68}.XboxDebug.Build.0 = Debug|Xbox
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal
