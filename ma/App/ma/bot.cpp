@@ -17,6 +17,9 @@
 // 02/18/02 Ranck       Created.
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 #include "bot.h"
 
 #include "fanim.h"
@@ -3012,7 +3015,23 @@ void CBot::VelocityHasChanged( void ) {
 //--------------------------------------------------------------------------------------------------------------------------------
 // Bot Rotation:
 //--------------------------------------------------------------------------------------------------------------------------------
+f32 CBot::TakeMouseLookDelta( BOOL bPitch ) {
+#if defined(MA_PC_INPUT)
+	if( m_bControls_Human && m_nPossessionPlayerIndex >= 0 && !IsImmobileOrPending() &&
+		!IsSleeping() && !IgnoreControls() && !MultiplayerMgr.IgnoreControls( m_nPossessionPlayerIndex ) ) {
+		CPlayer &Player = Player_aPlayer[m_nPossessionPlayerIndex];
+		if( Player.HasEntityControl() && Player.m_pEntityCurrent == this ) {
+			f32 fDelta = pcinput_TakeMouseAxis( Player.m_nControllerIndex, bPitch != FALSE );
+			fDelta *= Player.ComputeLookSensitivityMultiplier();
+			return bPitch && Player.GetInvertLook() ? -fDelta : fDelta;
+		}
+	}
+#endif
+	return 0.0f;
+}
+
 void CBot::HandlePitchMovement( void ) {
+	const f32 fMousePitch = TakeMouseLookDelta( TRUE );
 	f32 fZoomRevsPerSec, fMaxRevsPerSec;
 
 	fMaxRevsPerSec = m_pBotInfo_MountAim->fMountPitchUpDownRevsPerSec;
@@ -3042,10 +3061,11 @@ void CBot::HandlePitchMovement( void ) {
 	m_fMountPitchClampedNormDelta = fmath_Abs( m_fControls_AimDown );
 
 	// Update look pitch...
-	if( m_fControls_AimDown != 0.0f || bApplyBias ) {
-		f32 fAdjustment = 0;
+	if( m_fControls_AimDown != 0.0f || bApplyBias || fMousePitch != 0.0f ) {
+		f32 fAdjustment = fMousePitch;
+		if( fMousePitch != 0.0f ) m_fMountPitchClampedNormDelta = 1.0f;
 		if ( m_fControls_AimDown ) {
-			fAdjustment = fMaxRevsPerSec * FMATH_2PI * m_fControls_AimDown * fmath_Abs(m_fControls_AimDown) * FLoop_fPreviousLoopSecs;
+			fAdjustment += fMaxRevsPerSec * FMATH_2PI * m_fControls_AimDown * fmath_Abs(m_fControls_AimDown) * FLoop_fPreviousLoopSecs;
 		}
 		if ( bApplyBias ) {
 			// This is a human player, so we want to apply biasing
@@ -3070,7 +3090,8 @@ void CBot::HandlePitchMovement( void ) {
 
 
 void CBot::HandleYawMovement( void ) {
-	f32 fAbsControlsRotateCW, fBaseRevsPerSec, fDelta, fZoomRevsPerSec;
+	f32 fAbsControlsRotateCW, fBaseRevsPerSec, fDelta = 0.0f, fZoomRevsPerSec;
+	const f32 fMouseYaw = TakeMouseLookDelta( FALSE );
 	f32 fYawRevsPerSec_WS;
 	BOOL bUseScopeZoomSpeed = FALSE;
 
@@ -3240,6 +3261,15 @@ void CBot::HandleYawMovement( void ) {
 				ChangeMountYaw( m_fMountYaw_WS + fDelta );
 			}
 		}
+	}
+
+	// Raw mouse displacement is an angular delta, independent of the stick's
+	// cubic response, acceleration/overdrive and frame duration.
+	if( fMouseYaw != 0.0f ) {
+		ChangeMountYaw( m_fMountYaw_WS + fMouseYaw );
+		fDelta += fMouseYaw;
+		fAbsControlsRotateCW = 1.0f; // Preserve the existing hip/torso turn response.
+		m_fMountYawClampedNormDelta = 1.0f;
 	}
 
 	// pgm added this code so that bots torso will counter

@@ -21,12 +21,53 @@ Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see belo
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world>] [-world-only <world>] [-log <file>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world>] [-world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>]
 
 `-level <world>` starts the normal generic level path. `-world-only <world>` loads and converts
 the WLD resource, then exits before localized setup and gameplay entity creation.
 
 `tools/mst_list.py` lists/extracts a `.mst` master file (GameCube byte order).
+
+## Desktop controls
+
+| Control | Action |
+|---|---|
+| WASD | Move (diagonal speed is normalized) |
+| F1 | Toggle raw mouse look |
+| Mouse / arrow keys | Look / turn |
+| Space | Jump |
+| E | Weapons menu (observed in current run; adapter intends action) |
+| F | Melee |
+| Left / right mouse button | Primary / secondary fire (requires a supported weapon) |
+| Q | Throwables menu (observed in current run) |
+| R | Adapter maps secondary selection; active menu mapping needs reconciliation |
+| 1 / 2 / 3 / 4 | Quick-select up / right / down / left |
+| Escape / Enter | Pause; Escape also releases the mouse |
+| Alt-F4 | Close the game |
+
+The user confirmed responsive mouse look and reported that some weapons appear to work.
+The observed Q/E menus differ from the adapter/default action table; keep this discrepancy
+open until the active input path is traced. With a throwable equipped and ammo available,
+right mouse maps to secondary fire and starts the throw. The HUD selection code accepts W/S
+to scroll while a selection menu is held open; releasing the menu button equips the selection.
+Throwable behavior has not yet been confirmed interactively.
+
+Mouse look uses raw relative motion, applied as angular displacement without the controller's
+acceleration curve or turn-speed cap. `-mouse-sensitivity 0.1` is the default, in degrees per
+mouse count, before the game's look-sensitivity multiplier. Use `0.05` for half that speed.
+F1 must be pressed again after switching away from the game or entering menu controls. All
+inputs return to neutral when the game loses focus. Desktop defaults to non-inverted look;
+loaded profiles retain their own setting.
+
+XInput controllers occupy ports 1-4 and can connect after launch. The keyboard shares port 1.
+The adapter intends A for jump, Y for action, B/X for weapon selection, triggers for fire,
+and RB/right-stick click for melee. Menu-button behavior needs the reconciliation noted above. Controller mapping has automated coverage; physical controller
+behavior and rumble still need verification. Legacy DirectInput-only pads are not supported by
+the new desktop adapter.
+
+Capture through the engine with `-shots build/shots -shot-every 1800`. This saves numbered BMPs
+from the D3D back buffer. The console, `-log` output, CRT diagnostics, and shader/texture probe
+environment variables remain available.
 
 ## What changed and why
 
@@ -51,8 +92,8 @@ the WLD resource, then exits before localized setup and gameplay entity creation
 - [x] Convert GameCube CSV tables to host byte order, including pointer offsets and UTF-16 strings.
 - [x] Decode GameCube TGA textures from GX tiled formats, including CMPR and split S3TCx2,
       into linear ARGB pixels for the D3D texture path.
-- [x] Convert static, unskinned GameCube mesh display lists to D3D vertex/index buffers.
-      Startup has converted weapon and effect meshes through `gf_emp02.ape`.
+- [x] Convert static and skinned GameCube meshes, including streamed NBT3 display lists, to
+      D3D vertex/index buffers. Convert embedded kDOP collision trees and their triangle data.
 - [x] Adapt the retail version 8 particle layout to the source version 7 runtime layout;
       particle textures now load during startup.
 - [x] Convert WLD headers, visibility trees, shape-init records, and world mesh tables.
@@ -83,20 +124,22 @@ the WLD resource, then exits before localized setup and gameplay entity creation
       `fres_ReleaseFrame()` immediately above it already reclaims the same memory, since its
       frame marker was captured before the allocation). This turned a hard crash into a clean
       "this mesh/level can't fully load yet" outcome on real single-player levels.
-- [ ] Extend mesh support to skinned/streaming display lists and translate GameCube
-      collision trees (`kDOP`, embedded per-mesh in `.ape`/world mesh data, same one converter
-      for both a prop's mesh and a level's static geometry). The current adapter drops this
-      data entirely. A real single-player level (`wecdsneak01`) now fails to load *cleanly*
-      (see the fix above) specifically because one of its meshes needs this.
+- [x] Render the single-player `wecdsneak01` scene with textures, Glitch, and the HUD after
+      correcting D3D shader input declarations and affine bone/instance transforms.
+- [ ] Extend mesh coverage beyond the currently supported data. Collision conversion failures
+      still drop collision for that mesh; display lists with more than four bones use an
+      approximation that needs review.
 - [ ] Convert scripts (`.sma`) and other runtime resources. Confirmed via
       `CFScriptSystem::LoadScriptsFromFile : No script names found for this level.` that no
       scripts even attempt to run for the levels tested so far - so whatever else is wrong,
       it isn't yet a script-conversion problem for these specific levels.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
-- [ ] Input: keyboard/mouse and XInput mapping onto the game's pad layer. DirectInput gamepad
-      enumeration works; remapping is disabled when no device/map is configured.
+- [x] Keyboard controls and direct raw mouse look, confirmed interactively in `wecdsneak01`.
+      XInput mapping includes deadzones, separate triggers, focus handling, and hotplug support.
+- [ ] Verify physical XInput controllers, vehicle-specific mouse aiming, and rumble.
 - [ ] Save games (memory-card layer -> files).
-- [ ] Screenshot capture (currently a stub, `port/screenshot_port.cpp`).
+- [x] Engine back-buffer BMP capture through `-shots` / `-shot-every`. The original
+      `port/screenshot_port.cpp` keyboard shortcut implementation is still a stub.
 
 ## Known issues / things worth a reviewer's eye
 
@@ -121,22 +164,11 @@ the WLD resource, then exits before localized setup and gameplay entity creation
 - A regular `-level we01multi01` launch now passes wrapper and world setup and reaches
   `END OF BOOTUP`. Audio remains disabled: `fsndfx.cpp` skips parsing GC SFX banks, so sound groups
   have no loaded sound definitions.
-- **`we01multi01` (a multiplayer arena map) repeats a ~7-second cycle instead of reaching stable
-  gameplay**: the same three bot GUIDs are recreated by `BotDispenser` each time, `AIBrainman`
-  retakes control of a fresh `Player0` each time, and the (now harmless) weapon-inventory assert
-  fires each time. **The cause is not yet found - two plausible theories were checked and ruled
-  out, don't re-chase them**: (1) NOT the player falling through missing collision and hitting the
-  "out of world -> restore checkpoint" path in `player.cpp` (`CBot::GetCenterpointVolume()`) - a
-  temporary diagnostic print confirmed the player stays in a valid volume (`out=0`) throughout;
-  (2) NOT a broken/unconverted `.sma` script calling `game_GotoLevel("restart")` - no scripts even
-  load for this level (see the `.sma` status item above). `we01multi01` is a multiplayer map (name
-  literally means "multiplayer map 1"); its own match-state machine (`MultiplayerMgr.cpp`,
-  `MP_STATE_EXITING`/`MP_STATE_EXIT_CONFIRM`) was only briefly looked at and not ruled out, but its
-  exit-confirm step requires a button press this headless run never sends, so it's an unlikely
-  sole cause too. **Next step: test a real single-player level instead** (e.g. `wecdsneak01`,
-  once it can fully load - see the mesh/collision status item above) to see whether this loop is
-  `we01multi01`-specific (multiplayer match logic behaving oddly under a single-player debug
-  launch) or a general symptom; that answer was still unknown when this was written.
+- Older multiplayer `we01multi01` logs showed a repeated startup cycle. The later skinned-mesh,
+  collision, shader, and matrix fixes supersede the earlier blocker descriptions in the handoff.
+  Use `wecdsneak01` as the current interactive baseline; multiplayer behavior needs a fresh check.
+- Current captures still show some scenery surfaces as solid black. Rendering completeness
+  remains a separate task from the now-working movement and mouse look.
 - The animation adapter bounds-checks offsets, counts, and track ranges. It rejects animations
   with overlapping track ranges and files with more bones than the source runtime's 127-bone
   limit; those assets still need a format-specific review.

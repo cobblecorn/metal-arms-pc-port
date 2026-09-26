@@ -1,0 +1,248 @@
+#include "pc_input.h"
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+static HWND s_window;
+static HMODULE s_xinput;
+typedef DWORD (WINAPI *GetStateFn)(DWORD, XINPUT_STATE *);
+static GetStateFn s_getState;
+static FPadio_InputEmulationPlatform_e s_platform;
+static bool s_connected[FPADIO_MAX_DEVICES];
+static DWORD s_lastProbe[FPADIO_MAX_DEVICES];
+static volatile LONG s_mouseLook, s_mouseDX, s_mouseDY;
+static bool s_rawMouse;
+static float s_mouseDegrees = 0.1f;
+static float s_frameYaw, s_framePitch;
+
+static float Clamp(float value, float low, float high) {
+	return value < low ? low : value > high ? high : value;
+}
+
+static void Stick(float x, float y, float deadzone, float *outX, float *outY) {
+	const float length = sqrtf(x * x + y * y);
+	if (length <= deadzone) { *outX = *outY = 0.0f; return; }
+	const float scale = (Clamp(length, 0.0f, 32767.0f) - deadzone) / (32767.0f - deadzone) / length;
+	*outX = x * scale;
+	*outY = y * scale;
+}
+
+static float Trigger(BYTE value) {
+	return value <= XINPUT_GAMEPAD_TRIGGER_THRESHOLD ? 0.0f :
+		(value - XINPUT_GAMEPAD_TRIGGER_THRESHOLD) / (255.0f - XINPUT_GAMEPAD_TRIGGER_THRESHOLD);
+}
+
+static float Stronger(float a, float b) { return fabsf(a) >= fabsf(b) ? a : b; }
+
+void pcinput_MapSample(const PcInputState &state, bool primary,
+	FPadio_InputEmulationPlatform_e platform, FPadio_Sample_t *sample) {
+	memset(sample, 0, sizeof(*sample));
+	// Keep the keyboard's port connected when focus is lost, but release all inputs.
+	sample->bValid = primary || state.connected;
+	if (!sample->bValid || !state.focused) return;
+	float *v = sample->afInputValues;
+	if (state.connected) {
+		const XINPUT_GAMEPAD &p = state.pad;
+		Stick(p.sThumbLX, p.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE,
+			&v[FPADIO_INPUT_STICK_LEFT_X-1], &v[FPADIO_INPUT_STICK_LEFT_Y-1]);
+		Stick(p.sThumbRX, p.sThumbRY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE,
+			&v[FPADIO_INPUT_STICK_RIGHT_X-1], &v[FPADIO_INPUT_STICK_RIGHT_Y-1]);
+		v[FPADIO_INPUT_TRIGGER_LEFT-1] = Trigger(p.bLeftTrigger);
+		v[FPADIO_INPUT_TRIGGER_RIGHT-1] = Trigger(p.bRightTrigger);
+		v[FPADIO_INPUT_START-1] = (p.wButtons & XINPUT_GAMEPAD_START) != 0;
+		v[FPADIO_INPUT_CROSS_BOTTOM-1] = (p.wButtons & XINPUT_GAMEPAD_A) != 0;
+		v[FPADIO_INPUT_CROSS_RIGHT-1] = (p.wButtons & XINPUT_GAMEPAD_B) != 0;
+		v[FPADIO_INPUT_CROSS_LEFT-1] = (p.wButtons & XINPUT_GAMEPAD_X) != 0;
+		v[FPADIO_INPUT_CROSS_TOP-1] = (p.wButtons & XINPUT_GAMEPAD_Y) != 0;
+		v[FPADIO_INPUT_DPAD_X-1] = float((p.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0) - float((p.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0);
+		v[FPADIO_INPUT_DPAD_Y-1] = float((p.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0) - float((p.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0);
+		if (platform == FPADIO_INPUT_EMULATION_PLATFORM_GC) {
+			v[FPADIO_INPUT_GC_DBUTTON_TRIGGER_LEFT-1] = p.bLeftTrigger > 230;
+			v[FPADIO_INPUT_GC_DBUTTON_TRIGGER_RIGHT-1] = p.bRightTrigger > 230;
+			v[FPADIO_INPUT_GC_DBUTTON_TRIGGER_Z-1] = (p.wButtons & (XINPUT_GAMEPAD_RIGHT_SHOULDER | XINPUT_GAMEPAD_RIGHT_THUMB)) != 0;
+		} else {
+			v[FPADIO_INPUT_XB_DBUTTON_BACK-1] = (p.wButtons & XINPUT_GAMEPAD_BACK) != 0;
+			v[FPADIO_INPUT_XB_DBUTTON_STICK_LEFT-1] = (p.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0;
+			v[FPADIO_INPUT_XB_DBUTTON_STICK_RIGHT-1] = (p.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
+			v[FPADIO_INPUT_XB_ABUTTON_BLACK-1] = (p.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
+			v[FPADIO_INPUT_XB_ABUTTON_WHITE-1] = (p.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0;
+		}
+	}
+	if (!primary) return;
+	const bool *k = state.keys;
+	float x = float(k['D']) - float(k['A']), y = float(k['W']) - float(k['S']);
+	if (x && y) { x *= 0.70710678f; y *= 0.70710678f; }
+	v[FPADIO_INPUT_STICK_LEFT_X-1] = Stronger(v[FPADIO_INPUT_STICK_LEFT_X-1], x);
+	v[FPADIO_INPUT_STICK_LEFT_Y-1] = Stronger(v[FPADIO_INPUT_STICK_LEFT_Y-1], y);
+	// Merging keyboard and stick axes must not create faster diagonal movement.
+	x = v[FPADIO_INPUT_STICK_LEFT_X-1]; y = v[FPADIO_INPUT_STICK_LEFT_Y-1];
+	const float length = sqrtf(x*x + y*y);
+	if (length > 1.0f) { v[FPADIO_INPUT_STICK_LEFT_X-1] /= length; v[FPADIO_INPUT_STICK_LEFT_Y-1] /= length; }
+	x = float(k[VK_RIGHT]) - float(k[VK_LEFT]);
+	y = float(k[VK_UP]) - float(k[VK_DOWN]);
+	v[FPADIO_INPUT_STICK_RIGHT_X-1] = Stronger(v[FPADIO_INPUT_STICK_RIGHT_X-1], x);
+	v[FPADIO_INPUT_STICK_RIGHT_Y-1] = Stronger(v[FPADIO_INPUT_STICK_RIGHT_Y-1], y);
+	if (k[VK_SPACE]) v[FPADIO_INPUT_CROSS_BOTTOM-1] = 1.0f;
+	if (k['E']) v[FPADIO_INPUT_CROSS_TOP-1] = 1.0f;
+	if (k['Q']) v[FPADIO_INPUT_CROSS_RIGHT-1] = 1.0f;
+	if (k['R']) v[FPADIO_INPUT_CROSS_LEFT-1] = 1.0f;
+	if (k[VK_ESCAPE] || k[VK_RETURN]) v[FPADIO_INPUT_START-1] = 1.0f;
+	if (k[VK_LBUTTON]) v[FPADIO_INPUT_TRIGGER_RIGHT-1] = 1.0f;
+	if (k[VK_RBUTTON]) v[FPADIO_INPUT_TRIGGER_LEFT-1] = 1.0f;
+	if (k['F']) v[(platform == FPADIO_INPUT_EMULATION_PLATFORM_GC ? FPADIO_INPUT_GC_DBUTTON_TRIGGER_Z : FPADIO_INPUT_XB_DBUTTON_STICK_RIGHT)-1] = 1.0f;
+	x = float(k['2']) - float(k['4']); y = float(k['1']) - float(k['3']);
+	v[FPADIO_INPUT_DPAD_X-1] = Stronger(v[FPADIO_INPUT_DPAD_X-1], x);
+	v[FPADIO_INPUT_DPAD_Y-1] = Stronger(v[FPADIO_INPUT_DPAD_Y-1], y);
+	if (platform == FPADIO_INPUT_EMULATION_PLATFORM_GC) {
+		if (k[VK_RBUTTON]) v[FPADIO_INPUT_GC_DBUTTON_TRIGGER_LEFT-1] = 1.0f;
+		if (k[VK_LBUTTON]) v[FPADIO_INPUT_GC_DBUTTON_TRIGGER_RIGHT-1] = 1.0f;
+	}
+}
+
+static bool MouseLook() { return InterlockedCompareExchange(&s_mouseLook, 0, 0) != 0; }
+
+static void ClipToGame() {
+	RECT r;
+	if (GetClientRect(s_window, &r) && r.right > r.left && r.bottom > r.top) {
+		POINT tl = {r.left, r.top}, br = {r.right, r.bottom};
+		if (ClientToScreen(s_window, &tl) && ClientToScreen(s_window, &br)) {
+			RECT screen = {tl.x, tl.y, br.x, br.y};
+			ClipCursor(&screen);
+		}
+	}
+}
+
+static void ReleaseMouse() {
+	if (InterlockedExchange(&s_mouseLook, 0)) {
+		ClipCursor(NULL);
+		SetCursor(LoadCursor(NULL, IDC_ARROW));
+	}
+	InterlockedExchange(&s_mouseDX, 0);
+	InterlockedExchange(&s_mouseDY, 0);
+}
+
+bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
+	s_window = (HWND)window;
+	s_platform = platform;
+	s_mouseLook = s_mouseDX = s_mouseDY = 0;
+	s_frameYaw = s_framePitch = 0;
+	s_mouseDegrees = 0.1f;
+	char sensitivity[32];
+	DWORD length = GetEnvironmentVariableA("MA_PORT_MOUSE_SENSITIVITY", sensitivity, sizeof(sensitivity));
+	if (length && length < sizeof(sensitivity)) {
+		char *end;
+		const double value = strtod(sensitivity, &end);
+		if (*end == 0 && value >= 0.001 && value <= 10.0) s_mouseDegrees = (float)value;
+	}
+	RAWINPUTDEVICE mouse = {0x01, 0x02, 0, s_window};
+	s_rawMouse = RegisterRawInputDevices(&mouse, 1, sizeof(mouse)) != FALSE;
+	memset(s_connected, 0, sizeof(s_connected));
+	for (u32 i = 0; i < FPADIO_MAX_DEVICES; i++) s_lastProbe[i] = GetTickCount() - 2000;
+	const char *dlls[] = { "xinput1_4.dll", "xinput9_1_0.dll" };
+	for (u32 i = 0; i < sizeof(dlls)/sizeof(dlls[0]); i++) {
+		s_xinput = LoadLibraryExA(dlls[i], NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+		if (!s_xinput) continue;
+		s_getState = (GetStateFn)GetProcAddress(s_xinput, "XInputGetState");
+		if (s_getState) break;
+		FreeLibrary(s_xinput); s_xinput = NULL;
+	}
+	return s_rawMouse;
+}
+
+void pcinput_Uninstall() {
+	// The caller joins the polling thread first; it can no longer call into the DLL.
+	ReleaseMouse();
+	if (s_rawMouse) {
+		RAWINPUTDEVICE mouse = {0x01, 0x02, RIDEV_REMOVE, NULL};
+		RegisterRawInputDevices(&mouse, 1, sizeof(mouse));
+	}
+	s_rawMouse = false;
+	if (s_xinput) FreeLibrary(s_xinput);
+	s_xinput = NULL; s_getState = NULL; s_window = NULL;
+	memset(s_connected, 0, sizeof(s_connected));
+}
+
+void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info) {
+	memset(info, 0, sizeof(*info));
+	if (index >= FPADIO_MAX_DEVICES || (index && !s_connected[index])) return;
+	sprintf(info->szName, index ? "XInput controller %u" : "Keyboard/mouse + XInput controller %u", index + 1);
+	info->oeID = FPADIO_INPUT_DX_GAMEPAD;
+	info->uInputs = FPADIO_MAX_INPUTS;
+	for (u32 i = 0; i < FPADIO_MAX_INPUTS; i++) info->aeInputIDs[i] = (FPadio_InputID_e)(i + 1);
+}
+
+void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
+	PcInputState state = {};
+	if (index >= FPADIO_MAX_DEVICES) { memset(sample, 0, sizeof(*sample)); return; }
+	const DWORD now = GetTickCount();
+	if (s_getState && (s_connected[index] || now - s_lastProbe[index] >= 2000)) {
+		XINPUT_STATE padState = {};
+		s_lastProbe[index] = now;
+		s_connected[index] = s_getState(index, &padState) == ERROR_SUCCESS;
+		if (s_connected[index]) state.pad = padState.Gamepad;
+	}
+	state.connected = s_connected[index];
+	state.focused = s_window && GetForegroundWindow() == s_window && !IsIconic(s_window);
+	if (index == 0) {
+		if (state.focused) {
+			// Only inspect gameplay keys, and only while the game owns focus.
+			const int keys[] = { 'W','A','S','D','E','Q','R','F','1','2','3','4', VK_SPACE,
+				VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,VK_RETURN,VK_ESCAPE,VK_LBUTTON,VK_RBUTTON };
+			for (u32 i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) state.keys[keys[i]] = (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
+		}
+	}
+	pcinput_MapSample(state, index == 0, s_platform, sample);
+}
+
+bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
+	if (!s_window) return false;
+	if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && !wParam) || message == WM_DESTROY) ReleaseMouse();
+	if (message == WM_KEYDOWN && !(lParam & (1L << 30))) {
+		if (wParam == VK_ESCAPE) ReleaseMouse();
+		if (wParam == VK_F1 && s_rawMouse && GetForegroundWindow() == s_window) {
+			if (MouseLook()) ReleaseMouse();
+			else {
+				InterlockedExchange(&s_mouseDX, 0); InterlockedExchange(&s_mouseDY, 0);
+				InterlockedExchange(&s_mouseLook, 1);
+				ClipToGame(); SetCursor(NULL);
+			}
+		}
+	}
+	if (message == WM_SETCURSOR && MouseLook() && LOWORD(lParam) == HTCLIENT) {
+		SetCursor(NULL); return true;
+	}
+	if ((message == WM_MOVE || message == WM_SIZE) && MouseLook()) ClipToGame();
+	if (message == WM_INPUT && MouseLook() && GetForegroundWindow() == s_window) {
+		RAWINPUT data;
+		UINT size = sizeof(data);
+		const UINT read = GetRawInputData((HRAWINPUT)lParam, RID_INPUT, &data, &size, sizeof(RAWINPUTHEADER));
+		if (read != (UINT)-1 && read >= sizeof(RAWINPUTHEADER) + sizeof(RAWMOUSE) &&
+			data.header.dwType == RIM_TYPEMOUSE && !(data.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
+			InterlockedExchangeAdd(&s_mouseDX, data.data.mouse.lLastX);
+			InterlockedExchangeAdd(&s_mouseDY, data.data.mouse.lLastY);
+		}
+	}
+	// WM_INPUT must still reach DefWindowProc for the foreground packet cleanup.
+	return false;
+}
+
+void pcinput_BeginFrame(bool allowLook) {
+	const LONG dx = InterlockedExchange(&s_mouseDX, 0), dy = InterlockedExchange(&s_mouseDY, 0);
+	s_frameYaw = s_framePitch = 0;
+	if (!allowLook) ReleaseMouse();
+	if (allowLook && MouseLook() && GetForegroundWindow() == s_window) {
+		// Distance, not stick deflection: no turn-speed cap, acceleration curve or dt scaling.
+		const float radiansPerCount = s_mouseDegrees * (3.14159265358979323846f / 180.0f);
+		s_frameYaw = dx * radiansPerCount;
+		s_framePitch = dy * radiansPerCount;
+	}
+}
+
+float pcinput_TakeMouseAxis(u32 controller, bool pitch) {
+	if (controller != 0) return 0;
+	float &axis = pitch ? s_framePitch : s_frameYaw;
+	const float delta = axis;
+	axis = 0; // Repeated bot work/substeps cannot apply the same mouse delta twice.
+	return MouseLook() && GetForegroundWindow() == s_window ? delta : 0.0f;
+}

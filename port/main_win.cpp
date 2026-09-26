@@ -15,6 +15,7 @@
 //   -level <name>    launch a world directly as a generic debug level
 //   -world-only <name> load a world resource, then exit before game/audio setup
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
+//   -mouse-sensitivity <n> raw mouse sensitivity in degrees per count (default 0.1)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 
 #include "fang.h"
@@ -233,7 +234,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource>] [-world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource>] [-world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -255,6 +256,16 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-level" ) && bHasValue )		strncpy( _szStartLevel, argv[++i], sizeof(_szStartLevel) - 1 );
 		else if( !_stricmp( pszArg, "-world-only" ) && bHasValue )	strncpy( _szWorldOnly, argv[++i], sizeof(_szWorldOnly) - 1 );
 		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
+		else if( !_stricmp( pszArg, "-mouse-sensitivity" ) && bHasValue ) {
+			char *pEnd;
+			const char *pszValue = argv[++i];
+			double fValue = strtod( pszValue, &pEnd );
+			if( *pEnd || !(fValue >= 0.001 && fValue <= 10.0) ) {
+				_Log( "Mouse sensitivity must be between 0.001 and 10 degrees per count.\n" );
+				return false;
+			}
+			SetEnvironmentVariableA( "MA_PORT_MOUSE_SENSITIVITY", pszValue );
+		}
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );
 		else if( !_stricmp( pszArg, "-res" ) && bHasValue )

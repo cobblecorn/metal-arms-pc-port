@@ -18,6 +18,9 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "fang.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 #include "fdx8.h"
 #include "fdx8vid.h"
@@ -2744,6 +2747,9 @@ static LRESULT CALLBACK _UnSubclassD3DsWndProc( HWND hWnd, UINT nMsg, WPARAM wPa
 
 static LRESULT CALLBACK _WndProc( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam ) 
 {
+#if defined(MA_PC_INPUT)
+	if( pcinput_WindowMessage( nMsg, wParam, lParam ) ) return TRUE;
+#endif
 	switch( nMsg ) 
 	{
 	case WM_PAINT:

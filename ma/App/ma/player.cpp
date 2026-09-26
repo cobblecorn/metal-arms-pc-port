@@ -132,7 +132,7 @@ BOOL CPlayer::InitSystem( void ) {
 		pPlayer->m_hTextBoxLowNoAmmo = ftext_Create( &TextArea );
 		pPlayer->m_hTextBoxRestart = ftext_Create( &TextArea );
 
-		pPlayer->m_bInvertLook = TRUE;
+		pPlayer->m_bInvertLook = !FANG_PLATFORM_WIN; // Desktop defaults to non-inverted mouse/stick look.
 		pPlayer->m_bAutoCenter = FALSE;
 		pPlayer->m_bFourWayQuickSelect = FALSE;
 		pPlayer->m_fUnitTargetingAssistance = PLAYER_HIGH_TARGET_ASSIST_SETTING;
@@ -309,7 +309,7 @@ BOOL CPlayer::InitLevel( const GameInitInfo_t *pGameInit, Level_e nLevel ) {
 			pPlayer->m_pPlayerProfile = NULL;
 			pPlayer->m_nControllerIndex = i;
 			pPlayer->m_nTeamNum = 0;
-			pPlayer->m_bInvertLook = TRUE;
+			pPlayer->m_bInvertLook = !FANG_PLATFORM_WIN; // Desktop defaults to non-inverted mouse/stick look.
 			pPlayer->m_bAutoCenter = FALSE;
 			pPlayer->m_bFourWayQuickSelect = FALSE;
 			pPlayer->m_fUnitTargetingAssistance = PLAYER_HIGH_TARGET_ASSIST_SETTING;

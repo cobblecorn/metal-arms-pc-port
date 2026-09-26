@@ -510,3 +510,72 @@ hit.
 The user is switching to the Opus model after this session for more capability on what's shaping
 up to be a genuinely deep remaining task (display-list format support). Everything above is
 committed and pushed to `x86-port` on the private GitHub remote.
+
+## 15. ADDENDUM (2026-09-26) - current rendering checkpoint and desktop controls
+
+The latest source supersedes several older status items above. Earlier changes added skinned
+meshes/NBT3 display lists/kDOP collision, fixed D3D9 shader input declarations, and fixed affine
+matrix concatenation. `wecdsneak01` now shows
+Glitch, the HUD, textured world geometry, and lighting. Some scenery remains solid black.
+Do not restart the old missing-font, missing-skinning, or world-origin-bone investigations.
+
+This checkpoint adds desktop input:
+
+- `port/pc_input.cpp` maps WASD, actions, mouse buttons, and XInput to Fang's existing samples.
+  Keyboard port 1 is always available, even without an attached gamepad. XInput hotplug probes
+  empty slots every two seconds. Analog deadzones and independent triggers are handled.
+- F1 enables raw relative mouse motion via the game window's `WM_INPUT` handler. The first
+  implementation translated mouse motion into the right stick; the user reported a controller
+  feel, so it was replaced with direct angular deltas. `gamepad_Sample()` collects each frame's
+  motion; `CBot::HandlePitchMovement()` / `HandleYawMovement()` consume it once, retaining pitch
+  limits, yaw normalization, control ownership, and hip/torso response. The user confirmed the
+  updated mouse look is responsive and feels clean.
+- Mouse motion is not multiplied by frame time or limited by the stick's acceleration/overdrive.
+  `-mouse-sensitivity <n>` sets degrees per count (default 0.1, valid 0.001-10), before the existing
+  look-sensitivity multiplier. `MA_PORT_MOUSE_SENSITIVITY` is the equivalent environment option.
+- Focus loss releases all sampled controls and mouse capture. F1 toggles capture; Escape releases
+  it and pauses. The old Windows Escape-to-quit shortcut is disabled for the port; use Alt-F4 or
+  the window close button. Desktop defaults to non-inverted look when there is no profile.
+- CMake defines `MA_PC_INPUT` for Fang/game targets. The old DirectInput code remains for legacy
+  project builds; the desktop port now uses keyboard/mouse and XInput. Legacy DirectInput-only
+  controllers, physical XInput testing, rumble, and mouse controls for specialized vehicles are
+  still outstanding.
+
+Verification completed:
+
+```powershell
+cmake --build build --config Debug --target ma_port ma_input_tests
+.\build\Debug\ma_input_tests.exe
+```
+
+The build and input mapping checks passed. Checks cover no-controller startup samples, focus
+loss, disconnect, diagonal normalization, deadzone boundaries, signed stick extremes, independent
+triggers, and GC/Xbox button aliases. Invalid mouse-sensitivity arguments are rejected. User
+interaction confirmed keyboard movement, camera rotation, and the improved raw mouse path.
+The user also tried some weapons and reported they appear to work; this is not complete weapon
+coverage. They observed Q opening throwables and E opening weapons, contrary to the adapter
+and default action table (Q/R selection, E action). Do not overwrite this feedback with the
+intended mapping: trace the active mapping before changing keys. Right mouse maps to secondary
+fire; throwable execution remains unconfirmed.
+The player moved from the original spawn while retaining a valid volume and ground height;
+the current log has reached boot completion without a crash/assert diagnostic.
+
+Current run and engine captures:
+
+```powershell
+& .\build\Debug\ma_port.exe -data gamedata\files -mst mettlearms_gc.mst -level wecdsneak01 -mouse-sensitivity 0.1 -log build\logs\pc-input-raw.log -shots build\shots-raw-input -shot-every 1800
+```
+
+`build/logs/pc-input-raw-build.log` is the build log. Runtime output is in
+`build/logs/pc-input-raw.log` and `.out`; captures are under `build/shots-raw-input/`.
+Keep using the engine capture and diagnostic console workflow. The game was left available for
+the user's exploration, but no ma_port process was present at the final checkpoint inspection.
+Inspect current process state before rebuilding or relaunching.
+
+Suggested next work: compatible retail weapon tables (`w_laser` / `w_blaster` are still disabled),
+remaining black surfaces, proper campaign/script startup, then audio and saves. Preserve the
+working movement/camera baseline while investigating these. `PORTING.md` now includes controls
+and the rendering progress that was missing from its older checklist.
+
+The configured remote is the private `cobblecorn/metal-arms-pc-port` repository. It was verified
+private and no retail game data or disc images were tracked before this checkpoint's push.

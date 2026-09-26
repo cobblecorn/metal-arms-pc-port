@@ -1130,7 +1130,12 @@ static BOOL _GameMain( BOOL bExitRequest, void *pParameter ) {
 #if FANG_PLATFORM_WIN
 static BOOL _IsEscKeyHit( void ) {
 	// under windows, look for the escape key
+#if defined(MA_PC_INPUT)
+	// Escape releases mouse look and pauses; the window close button/Alt-F4 exits.
+	return FALSE;
+#else
 	return (GetAsyncKeyState( VK_ESCAPE ) < 0);
+#endif
 }
 
 static BOOL _ShouldAppMinimize( void ) {

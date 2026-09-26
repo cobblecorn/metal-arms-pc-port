@@ -79,7 +79,8 @@ add_custom_command(
     VERBATIM)
 add_custom_target(ma_shaders DEPENDS ${MA_SHADER_DIR}/shaders.stamp)
 
-add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcdata.cpp port/gcmesh.cpp)
+add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcdata.cpp port/gcmesh.cpp port/pc_input.cpp)
+target_compile_definitions(fang2 PRIVATE MA_PC_INPUT)
 add_dependencies(fang2 ma_shaders)
 ma_common_settings(fang2)
 target_link_libraries(fang2 PUBLIC smallamx)
@@ -91,6 +92,7 @@ set(MA_GAME_SOURCES ${MA_SOURCES})
 # ma/App/ma/win is the MFC launcher/tools shell; it is replaced rather than ported.
 list(FILTER MA_GAME_SOURCES EXCLUDE REGEX "^ma/App/ma/win/")
 add_library(ma_game STATIC ${MA_GAME_SOURCES})
+target_compile_definitions(ma_game PRIVATE MA_PC_INPUT)
 ma_common_settings(ma_game)
 target_include_directories(ma_game PRIVATE ${MA_ROOT}/App/ma ${MA_ROOT}/App/ma/win)
 target_link_libraries(ma_game PUBLIC fang2)
@@ -110,3 +112,8 @@ add_custom_command(TARGET ma_port POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${MA_ROOT}/App/ma/win/binkw32.dll $<TARGET_FILE_DIR:ma_port>
     COMMENT "Copying binkw32.dll")
+
+# Focus/deadzone/button mapping checks; no game data or controller required.
+add_executable(ma_input_tests EXCLUDE_FROM_ALL tools/test_pc_input.cpp port/pc_input.cpp)
+ma_common_settings(ma_input_tests)
+target_link_libraries(ma_input_tests PRIVATE user32)

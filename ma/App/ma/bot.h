@@ -2164,6 +2164,7 @@ protected:
 
 
 	// Rotation:
+	f32 TakeMouseLookDelta( BOOL bPitch );
 	void HandlePitchMovement( void );
 	void HandleYawMovement( void );
 

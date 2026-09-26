@@ -18,6 +18,9 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "fang.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 #include "gamepad.h"
 #include "fpadio.h"
 #include "fpad.h"
@@ -396,6 +399,9 @@ void gamepad_Sample( void )
 	FASSERT( _bSystemInitialized );
 
 	Gamepad_nPortOnlineMask = fpad_UpdateSamples();
+#if defined(MA_PC_INPUT)
+	pcinput_BeginFrame( _anCurrentMap[0] == GAMEPAD_MAP_MAIN1 );
+#endif
 
 	_HandleCheatCodes();
 

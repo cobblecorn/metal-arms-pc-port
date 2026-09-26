@@ -29,6 +29,9 @@
 #include "fres.h"
 #include "fclib.h"
 #include "fpadio.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 
 
@@ -369,6 +372,17 @@ FPadio_Error_e fpadio_Install( const FPadio_Init_t *poInit /* = NULL */ )
 
 	fang_MemZero( _aoDevices, sizeof( _aoDevices ) );
 
+#if defined(MA_PC_INPUT)
+	BOOL bRawMouse = pcinput_Install( poInit->DX8ONLY_ohWnd, poInit->DX8ONLY_uInputEmulationPlatform );
+	DEVPRINTF( "PC input: raw mouse %s (sensitivity: MA_PORT_MOUSE_SENSITIVITY degrees/count).\n", bRawMouse ? "available" : "unavailable; use arrow keys" );
+	DEVPRINTF( "PC input: WASD move; arrows look; Space jump; E action; F melee; Q/R weapons.\n" );
+	DEVPRINTF( "PC input: mouse buttons fire; F1 toggles mouse look; Escape releases it/pauses; Enter pauses.\n" );
+	DEVPRINTF( "PC input: keyboard uses port 1; XInput controllers use ports 1-4 (hotplug supported).\n" );
+	_bModuleInstalled = TRUE;
+	ResumeThread( _hPollingThread );
+	return FPADIO_NO_ERROR;
+#endif
+
 	DWORD dwExitCode;
 
 	////
@@ -613,6 +627,10 @@ void fpadio_Uninstall( void )
 		GetExitCodeThread( _hPollingThread, &dwExitCode );
 
 	} while( STILL_ACTIVE == dwExitCode );
+	CloseHandle( _hPollingThread );
+#if defined(MA_PC_INPUT)
+	pcinput_Uninstall();
+#endif
 
 	for( u32 uIndex = 0; uIndex < FPADIO_MAX_DEVICES; ++uIndex )
 	{
@@ -677,7 +695,11 @@ void fpadio_GetDeviceInfo( u32 uDeviceIndex, FPadio_DeviceInfo_t *poDeviceInfo )
 
 	WaitForSingleObject( _hSamplesAndDevicesMutex, INFINITE );
 
+#if defined(MA_PC_INPUT)
+	pcinput_GetDeviceInfo( uDeviceIndex, poDeviceInfo );
+#else
 	fang_MemCopy( poDeviceInfo, &( _aoDevices[ uDeviceIndex ].oInfo ), sizeof( _aoDevices[ uDeviceIndex ].oInfo ) );
+#endif
 
 	ReleaseMutex( _hSamplesAndDevicesMutex );
 
@@ -698,6 +720,10 @@ DWORD WINAPI _fpadio_SamplingThread( LPVOID pParam ) {
 		for( uIndex = 0; uIndex < FPADIO_MAX_DEVICES; ++uIndex ) {
 			poTempSample = (FPadio_Sample_t *)&( _papaoCurrentSamples[ uIndex ][ _uValidSamples ] );
 			poTempDevice = &( _aoDevices[ uIndex ] );
+#if defined(MA_PC_INPUT)
+			pcinput_Sample( uIndex, poTempSample );
+			continue;
+#endif
 			
 			if( poTempDevice->bAcquired ) {
 				//// Sample.
