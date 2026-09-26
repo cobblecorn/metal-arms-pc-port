@@ -165,3 +165,18 @@ memory. The HUD and debris/explosion lines added earlier worked around three of 
 **Checked.** Syntax check of `game.cpp`. **Verify in a run:** `-mission wewchold_01` (or any level that
 fails after world load) exits or returns cleanly, with no crash or assert during teardown. Also check
 that a normal level still loads and quits cleanly.
+
+## 6. Co-op audit (`docs/coop-audit.md`, new; no code changes)
+
+A source-only survey of what already works per player (the split-screen multiplayer path: HUD,
+reticle, camera, viewports, audio listeners, inventory, input layouts) and every place found that
+assumes one player, with file/line references and a suggested fix for each:
+- the scripts' "player" (`Bot_GetPlayer` returns the current-player global);
+- death rolling back the whole level to a checkpoint;
+- progress only saved with exactly one player;
+- one start point per campaign level;
+- pause, barter, EUK display, swarmer/grunt/AI-brain use of player 0;
+- minigames and boss levels written for one Glitch.
+
+It ends with a suggested implementation order. Claims I could not confirm from source are marked as
+such in the document.
