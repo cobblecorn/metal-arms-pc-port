@@ -268,10 +268,13 @@ static BOOL _ConvertFpr( void *pData, u32 nBytes, cchar *pszResName )
 		return TRUE;
 	}
 
-	// Retail GC particles are version 8. The serialized structure adds one
-	// 8-byte field to each keyframe; the old fields after each keyframe retain
-	// their order. Remove those additions so the v7 runtime layout can consume
-	// the file. Validate the shifted texture name and invariant tail first.
+	// Retail GC particles are version 8. Each keyframe gains one 8-byte field,
+	// inserted just before NumPerBurst (after fSndPitchMultiplier): across all
+	// 377 retail files only that position leaves every unit-range field (colors,
+	// alphas, bubble chance, draw percent) in range with plausible volume/pitch.
+	// It holds (1.0, 100.0) in most files, equal in both keyframes; its meaning
+	// is unknown. Remove it so the v7 runtime layout can consume the file.
+	// Validate the shifted texture name and invariant tail first.
 	const u32 nV7TextureOffset = (u32)offsetof(FParticleDef_t, szTextureName);
 	const u32 nV7TailOffset = (u32)offsetof(FParticleDef_t, fSecsBetweenLightSamples);
 	const u32 nKeyFrameBytes = sizeof(FParticleKeyFrame_t);
@@ -318,13 +321,15 @@ static BOOL _ConvertFpr( void *pData, u32 nBytes, cchar *pszResName )
 		}
 	}
 
-	const u32 nMinExtensionOffset = 2 * sizeof(u32) + nKeyFrameBytes;
-	const u32 nMaxExtensionOffsetV8 = nMinExtensionOffset + 8 + nKeyFrameBytes;
-	for( u32 i = 0; i < 8; i++ )
+	const u32 nInsertInKeyFrame = (u32)offsetof(FParticleKeyFrame_t, NumPerBurst);
+	const u32 nMinExtensionOffset = 2 * sizeof(u32) + nInsertInKeyFrame;
+	const u32 nMaxExtensionOffsetV8 = 2 * sizeof(u32) + nKeyFrameBytes + 8 + nInsertInKeyFrame;
+	for( u32 i = 0; i < 8; i += 4 )
 	{
-		if( pBytes[nMinExtensionOffset + i] != 0 || pBytes[nMaxExtensionOffsetV8 + i] != 0 )
+		if( !isfinite( fang_ConvertEndian( *(const f32 *)(pBytes + nMinExtensionOffset + i) ) ) ||
+			!isfinite( fang_ConvertEndian( *(const f32 *)(pBytes + nMaxExtensionOffsetV8 + i) ) ) )
 		{
-			DEVPRINTF( "gcdata: unsupported nonzero GameCube particle keyframe extension in '%s'.\n",
+			DEVPRINTF( "gcdata: invalid GameCube particle keyframe extension in '%s'.\n",
 				pszResName ? pszResName : "(unnamed)" );
 			return FALSE;
 		}
@@ -332,7 +337,7 @@ static BOOL _ConvertFpr( void *pData, u32 nBytes, cchar *pszResName )
 
 	memmove( pBytes + nMinExtensionOffset, pBytes + nMinExtensionOffset + 8,
 		nBytes - (nMinExtensionOffset + 8) );
-	const u32 nMaxExtensionOffset = 2 * sizeof(u32) + 2 * nKeyFrameBytes;
+	const u32 nMaxExtensionOffset = 2 * sizeof(u32) + nKeyFrameBytes + nInsertInKeyFrame;
 	const u32 nBytesAfterMinCompaction = nBytes - 8;
 	memmove( pBytes + nMaxExtensionOffset, pBytes + nMaxExtensionOffset + 8,
 		nBytesAfterMinCompaction - (nMaxExtensionOffset + 8) );
