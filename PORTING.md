@@ -78,6 +78,10 @@ F1 must be pressed again after switching away from the game or entering menu con
 inputs return to neutral when the game loses focus. Desktop defaults to non-inverted look;
 loaded profiles retain their own setting.
 
+Target assistance (reticle snapping, aim biasing, shot focusing) is tuned for sticks. By
+default (`-aim-assist auto`) it is suspended while you aim with captured mouse look and returns
+when the right stick aims; `-aim-assist on|off` (or `MA_PORT_AIM_ASSIST`) forces it.
+
 XInput controllers occupy ports 1-4 and can connect after launch. The keyboard shares port 1.
 The adapter intends A for jump, Y for action, B/X for weapon selection, triggers for fire,
 and RB/right-stick click for melee. Menu-button behavior needs the reconciliation noted above. Controller mapping has automated coverage; physical controller
@@ -156,8 +160,14 @@ environment variables remain available.
       `Misc_GetDifficulty`, `Misc_GetValue`, `Misc_SetValue`); none is used by Night Sneak.
       Scripts importing them still load, the missing names are logged, and a call to one
       aborts that script callback with `AMX_ERR_NOTFOUND` instead of calling a NULL pointer.
-- [ ] Implement the 10 missing script natives above, then verify objectives/transitions.
-- [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
+- [x] Implement the 10 missing natives from their retail code in main.dol. All 393 retail
+      scripts now bind every native. `Bot_LoadTalk` accepts the retail 5-argument form.
+- [ ] Verify mission objectives, level transitions and saves.
+- [x] Bink cutscenes play full screen (4:3, stretched with linear filtering) with their own
+      audio. The retail movies use the `GC_` prefix.
+- [ ] Game audio (GC MusyX sound banks / DSP-ADPCM streams). Still disabled.
+- [ ] Vehicle controls: the RAT in `WEWHchase01` does not respond to WASD for driving or the
+      turret, and mouse motion appears to steer it (user report).
 - [x] Keyboard controls and direct raw mouse look, confirmed interactively in `wecdsneak01`.
       XInput mapping includes deadzones, separate triggers, focus handling, and hotplug support.
 - [ ] Verify physical XInput controllers, vehicle-specific mouse aiming, and rumble.
@@ -206,6 +216,25 @@ environment variables remain available.
   confirmation. Other item tables still report unsupported retail collectable names.
 - Retail inventory startup slots now follow recognized items when unsupported names are skipped;
   array/count validation prevents invalid table indices and empty-inventory underflow.
+- Retail data layouts recovered from main.dol and now read: goodies.csv (collectables; every
+  pickup was unknown before), materials.csv (surface class field), deb_group.csv (debris; the
+  random-orientation flag is gone and priority widened), sw_wall.csv (wall sentry; smoke fields
+  not implemented). `fgamedata_GetTableDataRemapped` reads a source vocabulary from mapped retail
+  fields. Retail barter EUK kits and battery upgrades have no source collectable types yet.
+- The retail particle keyframe's extra 8 bytes sit before `NumPerBurst`, not at the end.
+  Removing the wrong bytes had corrupted counts, colors and timings in 375 of 377 effects and
+  produced out-of-range bubble chances that asserted every frame (a frozen-looking mines level).
+- Bone-mask index tables must end with 255. Five did not (rat gun x2, Glitch fire-1 lower,
+  Predator left arm, Corrosive summer) and the reader ran into adjacent data; the rat gun
+  crashed the chase level.
+- The retail elite guard has seven dismemberable limbs (the source had only the head).
+- The retail zombie boss level looks up only `ZombieBotBoss`; the cage/Mozer lose rule and the
+  `mozer01` lookup are skipped in the GC build.
+- Assert and `/RTC` reports are rate-limited (first 10, then 100, 1000, ...) with a stack on
+  the first occurrence, and world entities that fail to build are logged by name.
+- Known: `CFQuatTang3::Calculate` (scripted carts in `WEDTtown_01`) unitizes a zero XZ tangent
+  and produces NaNs that reach collision; the same math would do so on the GameCube, so the
+  input path (path tangent) needs checking. `-level we01multi01`-era notes predate these fixes.
 - Weapon selection rejects unavailable runtime weapon objects and retains the previous equipped
   item. Starting with Empty Secondary now preserves the inventory count so throwables remain
   selectable. These changes build successfully; runtime confirmation is pending.

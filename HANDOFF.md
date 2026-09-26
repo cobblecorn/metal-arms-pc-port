@@ -779,3 +779,31 @@ Next candidates, in order:
 4. Fix the `botgrunt.cpp` failure-path light leak (CFWorldAttachedLight not deleted before
    `fres_ReleaseFrame`).
 5. GC audio.
+
+
+## 22. ADDENDUM (2026-09-26, later) - retail schemas, crash/flood fixes, natives, movies, aim assist
+
+All committed and pushed on `x86-port`. Highlights (details in PORTING.md and commit messages):
+
+- Diagnostics: asserts and `/RTC` failures are rate-limited (a per-frame assert made the game look
+  frozen). Crashes from calls through bad pointers unwind from the return address. Entities
+  that fail to build are logged by type and name.
+- Retail schema work using `tools/dol_vocab.py` (`--scan N --pattern` finds unnamed vocabularies)
+  and `tools/dol_xref.py`: goodies, materials, debris groups, wall sentry, blaster (Astra's +2
+  shift confirmed), laser.
+- Particles: the FPR v8 extra keyframe field is removed from before `NumPerBurst` (proven over the
+  377-file corpus by range checks). This fixed a 345k-assert flood in `WEDMmines01`.
+- Missions: the zombie boss, chase and town missions now load. Bone-mask tables were terminated,
+  the elite guard limbs extended, and the zombie boss setup matched to retail.
+- Scripts: all 10 missing natives are implemented from retail code; 0 unresolved across 393 scripts.
+- Movies: Bink crashed in `BinkDX8SurfaceType` on the shim's D3D9 surface. Movies now play full
+  screen 4:3 with their own audio (user confirmed audio and a clean render).
+- Input: aim assist applies to controller aiming only by default (`-aim-assist auto|on|off`).
+  User-requested. Real mouse testing by the user is still pending.
+
+Sweep helper used this session (scratch, not in repo): run each `-mission <world>` for ~30 s,
+count `END OF LOADING`, `*** CRASH`, `CRT ASSERT`, `SCRIPT ERROR` and data-parse errors. Run it in
+the foreground: a backgrounded loop outlived TaskStop and kept launching windows.
+
+User reports to follow up: RAT vehicle controls broken (WASD dead, mouse steers). No game audio
+(expected; GC MusyX/DSP-ADPCM not implemented). Next priority chosen: audio.
