@@ -62,6 +62,9 @@ typedef struct {
 	BOOL bEnableImpactFlash;
 	BOOL bCanCatchFire;
 	BOOL bLooseDust;
+#if FANG_WINGC
+	u32 nRetailSurfaceClass;		// Retail field 5, see m_aMaterialVocab; not used by this runtime
+#endif
 
 	cchar *pszProjReact;
 
@@ -108,6 +111,18 @@ const FGameData_TableEntry_t CGColl::m_aMaterialVocab[] = {
 	sizeof( BOOL ),
 	F32_DATATABLE_0,
 	F32_DATATABLE_1,
+
+#if FANG_WINGC
+	// nRetailSurfaceClass: the retail materials vocabulary in main.dol inserts a u32 here,
+	// clamped to [0, 4]. Retail values: 0 none, 1 metal/bot/glass, 2 rock, 3 dirt,
+	// 4 acid/water/goop. Read so the later fields line up; its use is not established.
+	// (This source's float table has no 4.0, so the clamp uses 5; values are 0-4.)
+	FGAMEDATA_VAR_TYPE_FLOAT|
+	FGAMEDATA_FLAGS_CONVERT_TO_U32 | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO,
+	sizeof( u32 ),
+	F32_DATATABLE_0,
+	F32_DATATABLE_5,
+#endif
 
 	// pszProjReact:
 	FGAMEDATA_VAR_TYPE_STRING|
