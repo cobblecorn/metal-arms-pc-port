@@ -17,6 +17,7 @@
 //   -world-only <name> load a world resource, then exit before game/audio setup
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
 //   -mouse-sensitivity <n> raw mouse sensitivity in degrees per count (default 0.1)
+//   -aim-assist <auto|on|off> target assistance: auto = controller aiming only (default)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 
 #include "fang.h"
@@ -25,6 +26,7 @@
 #include "floop.h"
 #include "ffile.h"
 #include "gameloop.h"
+#include "pc_input.h"
 
 #include <windows.h>
 #include <dbghelp.h>
@@ -308,7 +310,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -341,6 +343,14 @@ static bool _ParseArgs( int argc, char **argv )
 				return false;
 			}
 			SetEnvironmentVariableA( "MA_PORT_MOUSE_SENSITIVITY", pszValue );
+		}
+		else if( !_stricmp( pszArg, "-aim-assist" ) && bHasValue ) {
+			PcAimAssistMode nMode;
+			if( !pcinput_ParseAimAssistMode( argv[i + 1], &nMode ) ) {
+				_Log( "-aim-assist must be auto (controller only), on, or off.\n" );
+				return false;
+			}
+			SetEnvironmentVariableA( "MA_PORT_AIM_ASSIST", argv[++i] );
 		}
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );

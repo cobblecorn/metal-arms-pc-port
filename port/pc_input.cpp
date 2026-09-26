@@ -15,6 +15,8 @@ static volatile LONG s_mouseLook, s_mouseDX, s_mouseDY;
 static bool s_rawMouse;
 static float s_mouseDegrees = 0.1f;
 static float s_frameYaw, s_framePitch;
+static PcAimAssistMode s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
+static volatile LONG s_mouseAiming;	// port 0's most recent aiming came from the mouse
 
 static float Clamp(float value, float low, float high) {
 	return value < low ? low : value > high ? high : value;
@@ -135,6 +137,11 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 		const double value = strtod(sensitivity, &end);
 		if (*end == 0 && value >= 0.001 && value <= 10.0) s_mouseDegrees = (float)value;
 	}
+	char assist[16];
+	s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
+	s_mouseAiming = 0;
+	length = GetEnvironmentVariableA("MA_PORT_AIM_ASSIST", assist, sizeof(assist));
+	if (length && length < sizeof(assist)) pcinput_ParseAimAssistMode(assist, &s_aimAssistMode);
 	RAWINPUTDEVICE mouse = {0x01, 0x02, 0, s_window};
 	s_rawMouse = RegisterRawInputDevices(&mouse, 1, sizeof(mouse)) != FALSE;
 	memset(s_connected, 0, sizeof(s_connected));
@@ -182,6 +189,10 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 		s_connected[index] = s_getState(index, &padState) == ERROR_SUCCESS;
 		if (s_connected[index]) state.pad = padState.Gamepad;
 	}
+	// Aiming with the right stick hands target assistance back to the controller.
+	if (index == 0 && state.connected &&
+		(abs(state.pad.sThumbRX) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || abs(state.pad.sThumbRY) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE))
+		InterlockedExchange(&s_mouseAiming, 0);
 	state.connected = s_connected[index];
 	state.focused = s_window && GetForegroundWindow() == s_window && !IsIconic(s_window);
 	if (index == 0) {
@@ -236,7 +247,24 @@ void pcinput_BeginFrame(bool allowLook) {
 		const float radiansPerCount = s_mouseDegrees * (3.14159265358979323846f / 180.0f);
 		s_frameYaw = dx * radiansPerCount;
 		s_framePitch = dy * radiansPerCount;
+		if (dx || dy) InterlockedExchange(&s_mouseAiming, 1);
 	}
+}
+
+bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode) {
+	if (!text) return false;
+	if (!_stricmp(text, "auto")) *mode = PCINPUT_AIM_ASSIST_AUTO;
+	else if (!_stricmp(text, "on")) *mode = PCINPUT_AIM_ASSIST_ON;
+	else if (!_stricmp(text, "off")) *mode = PCINPUT_AIM_ASSIST_OFF;
+	else return false;
+	return true;
+}
+
+bool pcinput_AimAssistAllowed(u32 controller) {
+	if (s_aimAssistMode == PCINPUT_AIM_ASSIST_ON) return true;
+	if (s_aimAssistMode == PCINPUT_AIM_ASSIST_OFF) return false;
+	// Only port 0 receives the mouse; captured mouse look that aimed last disables assistance.
+	return !(controller == 0 && MouseLook() && InterlockedCompareExchange(&s_mouseAiming, 0, 0));
 }
 
 float pcinput_TakeMouseAxis(u32 controller, bool pitch) {

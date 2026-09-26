@@ -24,3 +24,10 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample);
 bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam);
 void pcinput_BeginFrame(bool allowLook);
 float pcinput_TakeMouseAxis(u32 controller, bool pitch);
+
+// The game's target assistance (reticle snapping, aim biasing, shot focusing) is tuned for
+// sticks. AUTO applies it unless the controller's most recent aiming came from the mouse;
+// ON and OFF force it. Set with -aim-assist or MA_PORT_AIM_ASSIST (auto, on, off).
+enum PcAimAssistMode { PCINPUT_AIM_ASSIST_AUTO, PCINPUT_AIM_ASSIST_ON, PCINPUT_AIM_ASSIST_OFF };
+bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode);
+bool pcinput_AimAssistAllowed(u32 controller);

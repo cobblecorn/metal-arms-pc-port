@@ -10637,6 +10637,21 @@ FINLINE BOOL BotIsTargetable( CBot *pBot, CBot *pPotentialTarget ) {
 }
 
 // will copy the target point into pRawUnAssistedTargetPt before any target assistance is done to the final pTargetPt
+// Desktop: the target assistance below is tuned for sticks. It applies while the player aims
+// with a controller and is off while they aim with the mouse, unless -aim-assist forces it.
+static FINLINE BOOL _AimAssistAllowed( const CPlayer *pPlayer ) {
+#if defined(MA_PC_INPUT)
+	return pcinput_AimAssistAllowed( pPlayer->m_nControllerIndex );
+#else
+	return TRUE;
+#endif
+}
+
+static FINLINE f32 _TargetingAssistance( const CPlayer *pPlayer ) {
+	return _AimAssistAllowed( pPlayer ) ? pPlayer->m_fUnitTargetingAssistance : 0.0f;
+}
+
+
 void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32 fWeaponRangeOverride/*=-1.f*/, CFVec3A *pRawUnAssistedTargetPt/*=NULL*/ ) { 
 	FASSERT( IsCreated() ); 
 	FASSERT( m_nPossessionPlayerIndex >= 0 );
@@ -10769,7 +10784,7 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 						}
 
 						// Perform aim biasing, if this user has it enabled and the bot is not a vehicle
-						if ( !(pHitEntity->TypeBits() & (ENTITY_BIT_VEHICLE|ENTITY_BIT_BOTSWARMER|ENTITY_BIT_BOTCORROSIVE)) && pPlayer->m_fUnitTargetingAssistance ) {
+						if ( !(pHitEntity->TypeBits() & (ENTITY_BIT_VEHICLE|ENTITY_BIT_BOTSWARMER|ENTITY_BIT_BOTCORROSIVE)) && _TargetingAssistance( pPlayer ) ) {
 							// We are going to be biasing to this mesh, so get its position relative to the reticle 
 							pBiasToMesh = &MeshUnderReticle;
 							fvis_GetMeshPosInScreenRegion( pViewport, 
@@ -10816,7 +10831,7 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 	// If we don't have a targeted mesh from the simple ray case, and this
 	// player has targeting assistance enabled, then we need to check the
 	// proximity of the reticle to determine what is nearby
-	if ( !pTargetedMesh /*&& pPlayer->m_fUnitTargetingAssistance*/ && (!pWeapon || !(pWeapon->m_pInfo->nInfoFlags & CWeapon::INFOFLAG_NO_AUTO_TARGETING)) ) {
+	if ( !pTargetedMesh /*&& pPlayer->m_fUnitTargetingAssistance*/ && _AimAssistAllowed( pPlayer ) && (!pWeapon || !(pWeapon->m_pInfo->nInfoFlags & CWeapon::INFOFLAG_NO_AUTO_TARGETING)) ) {
 		u64 nUnwantedBits = (ENTITY_BIT_RESERVED_FOR_FANG|ENTITY_BIT_BOT|ENTITY_BIT_BOTSWARMER|ENTITY_BIT_DOOR|ENTITY_BIT_GOODIE|ENTITY_BIT_CONSOLE
 							|ENTITY_BIT_SHIELD|ENTITY_BIT_VEHICLELOADER|ENTITY_BIT_VEHICLESENTINEL|ENTITY_BIT_VEHICLERAT|ENTITY_BIT_VEHICLE|ENTITY_BIT_BOTCORROSIVE);
 
@@ -10896,7 +10911,7 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 
 					if ( FVis_apSortedMeshesInRegion[nMeshIdx]->fDistanceFromRegion > fReticleActiveRadius ) {
 						// The mesh is outside of the targeting reticle, but we might use it for biasing
-						if ( !pBiasToMesh && pPlayer->m_fUnitTargetingAssistance ) {
+						if ( !pBiasToMesh && _TargetingAssistance( pPlayer ) ) {
 							// Build the tracker skip list starting where this bot ends
 							FWorld_nTrackerSkipListCount = nThisBotTrackerCount;
 							pHitEntity->AppendTrackerSkipList();
@@ -10927,7 +10942,7 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 				pTargetPt->Set( vFocalPoint );
 
 				// We've found a bot that collides, so let's use it
-				if( pPlayer->m_fUnitTargetingAssistance ) {
+				if( _TargetingAssistance( pPlayer ) ) {
 					pBiasToMesh = FVis_apSortedMeshesInRegion[nMeshIdx];
 				}
 
@@ -11042,7 +11057,7 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 	}
 
 	// If this player has targeting assistance, compute aim biasing here
-	if ( pPlayer->m_fUnitTargetingAssistance > 0.f ) {
+	if ( _TargetingAssistance( pPlayer ) > 0.f ) {
 		// Compute pitch and yaw biasing (note that this currently only works for bots - by setting the pBiasToMesh
 		// pointer in the search of non-bot entities, it could apply to other objects as well)
 		if ( pBiasToMesh ) {
@@ -11111,6 +11126,11 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 			pPlayer->m_fPitchAdjust = 0.f;
 			pPlayer->m_vBiasMeshPosLastFrame.Set( 0.f, 0.f, 0.f );
 		}
+	} else {
+		// Assistance is off (or suspended while aiming with the mouse): drop any earlier bias.
+		pPlayer->m_pBiasingMesh = NULL;
+		pPlayer->m_fYawAdjust = 0.f;
+		pPlayer->m_fPitchAdjust = 0.f;
 	}
 
 	if ( pTargetedMesh ) {
@@ -11154,7 +11174,7 @@ BOOL CBot::FocusHumanTargetPoint_WS( CFVec3A *pFocusedTargetPt, CWeapon *pWeapon
 
 	CPlayer *pPlayer = &Player_aPlayer[ m_nPossessionPlayerIndex ];
 
-	if ( pPlayer->m_fUnitTargetingAssistance == 0.f ) {
+	if ( _TargetingAssistance( pPlayer ) == 0.f ) {
 		// This player does not have targeting assistance enabled, so don't do anything
 		return FALSE;
 	}
