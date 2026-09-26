@@ -502,7 +502,7 @@ int main( int argc, char **argv )
 	Fang_ConfigDefs.pszFile_MasterFilePathName = _szMasterFile;
 	Fang_ConfigDefs.pszMovie_BasePathName = _szMovieDir;
 	Fang_ConfigDefs.nAudio_MaxSoundBytes = 1024 * (36 * 1024);
-	Fang_ConfigDefs.nAMem_FastAuxiliaryMemoryBytes = 4048000;
+	Fang_ConfigDefs.nAMem_FastAuxiliaryMemoryBytes = 8192000;	// the DX maximum: two 1 MB checkpoint streams plus data streaming
 	Fang_ConfigDefs.nWorld_MaxIntersects = 3500;
 	Fang_ConfigDefs.bCheckPoint_StartupSystem = TRUE;
 	Fang_ConfigDefs.nText_MaxCharsPerFrame = 550;

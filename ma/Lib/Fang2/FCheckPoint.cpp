@@ -21,7 +21,12 @@
 #include "FCheckPoint.h"
 #include "fclib.h"
 
+#if FANG_PLATFORM_WIN && FANG_WINGC
+// The GameCube's 304 KB was an ARAM budget; retail saves reach ~308 KB (wewhchase01 overflowed).
+#define _CHECKPOINT_STREAM_SIZE		( 1024 * 1024 )
+#else
 #define _CHECKPOINT_STREAM_SIZE		( 1024 * 304 )
+#endif
 #define _CHECKPOINT_MEM_BUFFER_SIZE	( 1024 )	// size of buffer to hold pending reads/writes to storage
 #define _STREAM_ALIGNMENT_BYTES		( 32 )		// alignment boundry requirement of CFMemAccessor
 #define _MAX_WRITE_RETRY			( 8 )		// number of time to try to write to storage before failing
