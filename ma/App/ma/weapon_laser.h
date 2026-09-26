@@ -174,6 +174,10 @@ private:
 	//
 	//////////////////////////////////////////////////////////////////////
 
+#if FANG_WINGC
+	s32 m_anMuzzleBoneIndex[EUK_COUNT_LASER];		// Retail muzzle bone per EUK mesh (-1 = use fDistFromWeaponOrigToMuzzle)
+#endif
+
 	FForceHandle_t m_hForce;						// Force feedback handle so we can kill it when we need to
 
 	// EUK-level-specific:
@@ -250,6 +254,9 @@ private:
 
 	void _ClearDataMembers( void );
 	static void _TracerKilledCallback( TracerDef_t *pTracerDef, TracerKillReason_e nKillReason, const FCollImpact_t *pImpact );
+#if FANG_WINGC
+	static BOOL _ReadRetailProperties( void );
+#endif
 
 	FCLASS_STACKMEM_ALIGN( CWeaponLaser );
 } FCLASS_ALIGN_SUFFIX;

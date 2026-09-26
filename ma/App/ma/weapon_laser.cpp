@@ -93,7 +93,21 @@ CFTexInst CWeaponLaser::m_aTracerTexInst[EUK_COUNT_LASER];
 
 #if FANG_WINGC
 static BOOL _bUserPropsAvailable = FALSE;
+
+// Retail values without a slot in _UserProps_t (see _ReadRetailProperties).
+static f32 _aRetailTracerColor[CWeapon::EUK_COUNT_LASER][4];
+static cchar *_apszRetailMuzzleBone[CWeapon::EUK_COUNT_LASER];
 #endif
+
+// The source's third laser level is a continuous beam. The retail GameCube L3 fires
+// tracers through the same path as the other levels, so the WINGC build does too.
+static FINLINE BOOL _UsesL3Beam( u32 nLevel ) {
+#if FANG_WINGC
+	return FALSE;
+#else
+	return nLevel == 2;
+#endif
+}
 
 
 // This table describes to fgamedata how our user property table is to be interpreted:
@@ -291,6 +305,120 @@ const FGameDataMap_t CWeaponLaser::m_aUserPropMapTable[] = {
 };
 
 
+#if FANG_WINGC
+// The retail w_laser.csv tables have 73 fields (charge/burst redesign) where this source
+// expects 23. Their meaning comes from the retail main.dol: its FGameDataMap_t "LaserL1"
+// vocabulary gives each field's type and range, and retail CWeaponLaser code shows where
+// the values go (tools/dol_vocab.py, tools/dol_xref.py). Confirmed uses:
+//   0 mesh, 1 muzzle bone, 2 tracer texture, 3-6 tracer RGBA, 7 clip (reserve is forced
+//   infinite), 8 rounds/sec, 10/11/12/13 tracer speed/length/width/max range,
+//   14 max and 46 min target-assist distance, 43 weapon cull distance, 44 recoil.
+// 59 and 71 are the damage profile and decal by vocabulary type. The charged burst
+// (fields 19-28, 60-64, 67-72) and particle/sound-group effects are not implemented.
+BOOL CWeaponLaser::_ReadRetailProperties( void ) {
+	// Retail source field for each entry of m_aUserPropVocab, or -1 if it has none.
+	static const s8 anRetailField[] = {
+		0,	// apszMeshName[_MESH_WEAPON]
+		7,	// fClipAmmoMax
+		-1,	// fReserveAmmoMax: retail InitSystem stores INFINITE_AMMO
+		8,	// fRoundsPerSec, fOORoundsPerSec
+		43,	// fWeaponCullDist: retail ClassHierarchyBuild MeshInit.fCullDist
+		-1,	// fRocketsInPoolCount: unused by this runtime
+		13,	// fMaxLiveRange: Info_t and TracerDef_t::fMaxTailDist_WS
+		44,	// fUnitRecoil: Info_t
+		-1,	// fRocketCullDist: unused by this runtime
+		-1,	// fRechargeRate, fOORechargeRate: derived below
+		10,	// fRocketSpeed: TracerDef_t::fSpeed_WS
+		11,	// fTracerLength: TracerDef_t::fLength_WS
+		12,	// fTracerWidth: TracerDef_t::fWidth_WS
+		-1,	// fDistFromWeaponOrigToMuzzle: retail uses the field 1 bone
+		46,	// fMinTargetAssistDist: Info_t
+		14,	// fMaxTargetAssistDist: Info_t
+		2,	// pszL12_TexName: retail tracer texture
+		-1,	// pszMuzzleTex: unused by this runtime
+		-1,	// fMuzzleWidth: retail muzzle flashes are particles (fields 47-50)
+		-1,	// fMuzzleHeight
+		59,	// pszDamageProfile
+		-1,	// hFiringSound: retail uses sound groups (fields 65-70)
+		71,	// hDecalDef
+	};
+	static const FGameData_TableEntry_t RetailString = {
+		FGAMEDATA_VAR_TYPE_STRING | FGAMEDATA_FLAGS_STRING_PTR_TO_MAIN_STR_TBL, sizeof(char *), F32_DATATABLE_0, F32_DATATABLE_0 };
+	static const FGameData_TableEntry_t RetailFloat = {
+		FGAMEDATA_VAR_TYPE_FLOAT | FGAMEDATA_FLAGS_FLOAT_X, sizeof(f32), F32_DATATABLE_0, F32_DATATABLE_0 };
+
+	FMemFrame_t Frame = fmem_GetFrame();
+	FGameDataFileHandle_t hFile = fgamedata_LoadFileToFMem( _USER_PROP_FILENAME );
+	BOOL bOK = hFile != FGAMEDATA_INVALID_FILE_HANDLE;
+
+	for( u32 nLevel=0; bOK && nLevel<EUK_COUNT_LASER; ++nLevel ) {
+		FGameDataTableHandle_t hTable = fgamedata_GetFirstTableHandle( hFile, m_aUserPropMapTable[nLevel].pszTableName );
+		if( hTable == FGAMEDATA_INVALID_TABLE_HANDLE || fgamedata_GetNumFields( hTable ) != 73 ) {
+			bOK = FALSE;
+			break;
+		}
+
+		_UserProps_t *pProps = &m_aUserProps[nLevel];
+		u8 *pDest = (u8 *)pProps;
+		u32 nOffset = 0, nEntry = 0;
+		for( ; bOK && m_aUserPropVocab[nEntry].GetDataType() != FGAMEDATA_VAR_TYPE_COUNT; ++nEntry ) {
+			const FGameData_TableEntry_t *pEntry = &m_aUserPropVocab[nEntry];
+			if( nEntry >= sizeof(anRetailField) / sizeof(anRetailField[0]) || nOffset + pEntry->nBytesForData > sizeof(_UserProps_t) ) {
+				bOK = FALSE;
+				break;
+			}
+			if( anRetailField[nEntry] >= 0 ) {
+				bOK = fgamedata_GetFieldFromTable( hTable, anRetailField[nEntry], pEntry, pDest + nOffset );
+			}
+			nOffset += pEntry->nBytesForData;
+		}
+		if( !bOK || nEntry != sizeof(anRetailField) / sizeof(anRetailField[0]) || nOffset != sizeof(_UserProps_t) ) {
+			bOK = FALSE;
+			break;
+		}
+
+		// Retail extras: muzzle bone, tracer color, and the energy refill step (every
+		// field 39 seconds, add field 40 of a full unit) used to derive the recharge rate.
+		f32 fRefillSecs = 0.0f, fRefillUnit = 0.0f;
+		bOK = fgamedata_GetFieldFromTable( hTable, 1, &RetailString, &_apszRetailMuzzleBone[nLevel] ) &&
+			fgamedata_GetFieldFromTable( hTable, 39, &RetailFloat, &fRefillSecs ) &&
+			fgamedata_GetFieldFromTable( hTable, 40, &RetailFloat, &fRefillUnit );
+		for( u32 i=0; bOK && i<4; ++i ) {
+			bOK = fgamedata_GetFieldFromTable( hTable, 3 + i, &RetailFloat, &_aRetailTracerColor[nLevel][i] );
+		}
+		if( !bOK ) {
+			break;
+		}
+
+		pProps->fReserveAmmoMax = -1.0f;
+		pProps->fRocketsInPoolCount = 30.0f;		// retail tracer group size
+		pProps->fRocketCullDist = pProps->fWeaponCullDist;
+		pProps->fDistFromWeaponOrigToMuzzle = 0.0f;
+		pProps->pszMuzzleTex = NULL;
+		pProps->fMuzzleWidth = 0.0f;
+		pProps->fMuzzleHeight = 0.0f;
+		pProps->hFiringSound = FSNDFX_INVALID_FX_HANDLE;
+		if( fRefillSecs > 0.0f && fRefillUnit > 0.0f ) {
+			pProps->fRechargeRate = pProps->fClipAmmoMax * fRefillUnit / fRefillSecs;
+		}
+
+		// These feed divisions and countdown loops; reject values that would stall them.
+		if( !(pProps->fClipAmmoMax >= 1.0f) || !(pProps->fRoundsPerSec > 0.0f) || !(pProps->fRechargeRate > 0.0f) ||
+			!(pProps->fRocketSpeed > 0.0f) || !(pProps->fMaxLiveRange > 0.0f) || !pProps->apszMeshName[_MESH_WEAPON] ) {
+			bOK = FALSE;
+			break;
+		}
+		pProps->fOORechargeRate = 1.0f / pProps->fRechargeRate;
+	}
+
+	fmem_ReleaseFrame( Frame );
+	if( bOK ) {
+		DEVPRINTF( "CWeaponLaser: loaded %d retail variants (charged burst not implemented).\n", EUK_COUNT_LASER );
+	}
+	return bOK;
+}
+#endif
+
 
 BOOL CWeaponLaser::InitSystem( void ) {
 	Info_t *pInfo;
@@ -305,10 +433,14 @@ BOOL CWeaponLaser::InitSystem( void ) {
 #endif
 
 	// Read the user properties for all EUK levels of this weapon...
+#if FANG_WINGC
+	if( !_ReadRetailProperties() ) {
+#else
 	if( !fgamedata_ReadFileUsingMap( m_aUserPropMapTable, _USER_PROP_FILENAME ) ) {
+#endif
 		DEVPRINTF( "CWeaponLaser::InitSystem(): Could not read user properties from file '%s'.\n", _USER_PROP_FILENAME );
 #if FANG_WINGC
-		DEVPRINTF( "CWeaponLaser::InitSystem(): Disabling laser entities because the retail GameCube table uses an unsupported schema.\n" );
+		DEVPRINTF( "CWeaponLaser::InitSystem(): Disabling laser entities because the retail GameCube table could not be mapped.\n" );
 		fres_ReleaseFrame( ResFrame );
 		return TRUE;
 #else
@@ -323,7 +455,7 @@ BOOL CWeaponLaser::InitSystem( void ) {
 
 	// Do this for each EUK level...
 	for( i=0; i<EUK_COUNT_LASER; i++ ) {
-		if(i != 2)
+		if( !_UsesL3Beam( i ) )
 		{
 			m_aoTracerDef[i].pUser = NULL;				// This will get set at the point of spawning the tracers.
 			m_aoTracerDef[i].pFcnKillCallback = _TracerKilledCallback;
@@ -507,7 +639,17 @@ BOOL CWeaponLaser::ClassHierarchyBuild( void ) {
 			pResourceData->m_pWorldMesh->SetLineOfSightFlag(FALSE); //pgm added this so that weapons never block los tests
 		}
 
-		if(uMeshEUK == 2)
+#if FANG_WINGC
+		m_anMuzzleBoneIndex[i] = -1;
+		if( _apszRetailMuzzleBone[uMeshEUK] && pResourceData->m_pWorldMesh->m_pMesh ) {
+			m_anMuzzleBoneIndex[i] = pResourceData->m_pWorldMesh->FindBone( _apszRetailMuzzleBone[uMeshEUK] );
+			if( m_anMuzzleBoneIndex[i] < 0 ) {
+				DEVPRINTF( "CWeaponLaser::ClassHierarchyBuild(): Muzzle bone '%s' not found in L%d mesh; firing from the weapon origin.\n", _apszRetailMuzzleBone[uMeshEUK], i + 1 );
+			}
+		}
+#endif
+
+		if( _UsesL3Beam( uMeshEUK ) )
 		{
 			m_apL3_LaserBeam[0] = CLaserBeam::GetLaserBeam();
 			m_apL3_LaserBeam[1] = CLaserBeam::GetLaserBeam();
@@ -611,6 +753,11 @@ void CWeaponLaser::_ClearDataMembers( void ) {
 	m_vecL3_EndPoint.Zero();
 	m_apL3_LaserBeam[0] = NULL;
 	m_apL3_LaserBeam[1] = NULL;
+#if FANG_WINGC
+	for( u32 i=0; i<EUK_COUNT_LASER; ++i ) {
+		m_anMuzzleBoneIndex[i] = -1;
+	}
+#endif
 }
 
 
@@ -811,6 +958,14 @@ void CWeaponLaser::ClassHierarchySetUpgradeLevel( u32 nPreviousUpgradeLevel ) {
 void CWeaponLaser::ComputeMuzzlePoint_WS( CFVec3A *pMuzzlePoint_WS ) const {
 	FASSERT( IsCreated() );
 
+#if FANG_WINGC
+	// The weapon mesh is created without a bone palette, so use the at-rest muzzle bone.
+	const s32 nBone = m_anMuzzleBoneIndex[m_nUpgradeLevel];
+	if( nBone >= 0 ) {
+		m_MtxToWorld.MulPoint( *pMuzzlePoint_WS, m_pResourceData->m_pWorldMesh->m_pMesh->pBoneArray[nBone].AtRestBoneToModelMtx.m_vPos );
+		return;
+	}
+#endif
 	pMuzzlePoint_WS->Mul( m_MtxToWorld.m_vFront, m_aUserProps[m_nUpgradeLevel].fDistFromWeaponOrigToMuzzle ).Add( m_MtxToWorld.m_vPos );
 }
 
@@ -846,7 +1001,7 @@ u32 CWeaponLaser::TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, const
 	}
 
 	u32 uLowerThreshold;
-	if((m_nUpgradeLevel == 2) && (!m_bFiredLastFrame))
+	if( _UsesL3Beam( m_nUpgradeLevel ) && (!m_bFiredLastFrame))
 	{
 		uLowerThreshold = 10;
 	}
@@ -861,7 +1016,7 @@ u32 CWeaponLaser::TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, const
 		return(0);
 	}
 
-	if((m_nUpgradeLevel != 2) && (m_fSecondsCountdownTimer > 0.0f))
+	if( !_UsesL3Beam( m_nUpgradeLevel ) && (m_fSecondsCountdownTimer > 0.0f))
 	{
 		// Can't fire another round yet...
 		return(0);
@@ -945,7 +1100,8 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 		vFireUnitDir.Unitize();
 
 
-		switch(m_nUpgradeLevel)
+		// Levels other than the L3 beam share the tracer case.
+		switch( _UsesL3Beam( m_nUpgradeLevel ) ? 2 : 0 )
 		{
 			case 2:
 			{
@@ -1004,7 +1160,12 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 			default:
 			{
 				m_aoTracerDef[m_nUpgradeLevel].pUser = this;
+#if FANG_WINGC
+				m_aoTracerDef[m_nUpgradeLevel].ColorRGBA.Set( _aRetailTracerColor[m_nUpgradeLevel][0], _aRetailTracerColor[m_nUpgradeLevel][1],
+															  _aRetailTracerColor[m_nUpgradeLevel][2], _aRetailTracerColor[m_nUpgradeLevel][3] );
+#else
 				m_aoTracerDef[m_nUpgradeLevel].ColorRGBA.OpaqueWhite();
+#endif
 				m_aoTracerDef[m_nUpgradeLevel].UnitDir_WS = vFireUnitDir;
 				m_aoTracerDef[m_nUpgradeLevel].TailPos_WS = vecMuzzlePoint;
 //				m_aoTracerDef[m_nUpgradeLevel].ppCollSkipTrackers = &m_pOwnerBot->m_pWorldMesh;
@@ -1081,7 +1242,7 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 
 		//////////////////////////////////////////////////////////////////////
 		// Update timer variables and do any appropriate energy depletion.
-		switch(m_nUpgradeLevel)
+		switch( _UsesL3Beam( m_nUpgradeLevel ) ? 2 : 0 )
 		{
 			case 2:
 			{
