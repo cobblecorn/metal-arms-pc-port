@@ -194,6 +194,10 @@ FMesh_t *fdx8load_Create( FMesh_t *pLoadMesh, cchar *pszResName )
 
 	for ( i = 0; i < pDX8Mesh->nVBCount; i++ )
 	{
+#if FANG_WINGC
+		// The diffuse index table lives in the retained block, like aVB itself.
+		__FIXUP_NEW_MESH_POINTER( pDX8Mesh->aVB[i].pGCDiffuseIndex, u16 );
+#endif
 		__FIXUP_LOAD_MESH_POINTER( pDX8Mesh->aVB[i].pLMUVStream, FDX8LightMapST_t );
 		
 		if ( pDX8Mesh->aVB[i].pLMUVStream )

@@ -181,6 +181,14 @@ struct FDX8VB_t
 	DWORD hVertexShader;			// Handle to the vertex shader this VB is currently attached to (or FVF code if nInfoIndex is not -1)
 
 	IDirect3DVertexBuffer8 *pDXVB;	// Pointer to the actual DX vertex buffers
+
+#if FANG_WINGC
+	// Meshes converted from GameCube data (port/gcmesh.cpp): for each vertex, the GameCube diffuse
+	// index it was built from (0xffff: the display list used a constant color). A world color stream
+	// (baked vertex lighting) holds one color per GameCube diffuse index; CFMeshInst::SetColorStreams()
+	// uses this to spread it over the converted VBs. NULL for VBs that are never drawn (collision).
+	u16 *pGCDiffuseIndex;
+#endif
 };
 
 

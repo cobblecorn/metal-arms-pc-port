@@ -111,6 +111,9 @@ typedef struct FDX8Mesh_s
 	u16			*anIndicesCount;			// Number of indices used by this mesh in each IB
 	void		**apDXIB;					// Pointer to an array of index buffers (array of u16s)
 
+#if FANG_WINGC
+	u32			nGCDiffuseCount;			// Colors a GameCube color stream must hold (VB 0's diffuse count, as the GameCube checked)
+#endif
 } FDX8Mesh_t;
 
 

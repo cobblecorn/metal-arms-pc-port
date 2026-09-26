@@ -31,6 +31,7 @@ struct DLPlan_t
 	u32 nVertexOffset;
 	u32 nLightMapOffset;
 	u32 nBasisOffset;
+	u32 nDiffuseIndexOffset; // Retained: u16 GameCube diffuse index per vertex (color stream remap)
 	s32 nVertexFormat;
 	u32 nSegmentIdx;
 	u8 anSegBones[FDATA_VW_COUNT_PER_VTX]; // Bone order of the bound segment (weighted formats only)
@@ -89,6 +90,7 @@ struct WriteContext_t
 	u8 *pVertexData;
 	u8 *pLightMapData;
 	u8 *pBasisData;
+	u16 *pDiffuseIndex;
 	u16 *pIndices;
 	u32 nWrittenVertices;
 	u32 nWrittenIndices;
@@ -410,6 +412,8 @@ static BOOL _WalkDL(const u8 *pFile, u32 nFileBytes, const FGCVB_t *pVB, const F
 					GCM_FAIL();
 				const u16 nRow = (u16)pWrite->nWrittenVertices++;
 				anCommandRows.push_back(nRow);
+				if (pWrite->pDiffuseIndex)
+					pWrite->pDiffuseIndex[nRow] = (pDL->nFlags & FGCDL_FLAGS_CONSTANT_COLOR) ? (u16)0xffff : Attr.nDiffuse;
 				const u32 nPositionOffset = _Offset(pVB->pPosition) + (u32)Attr.nPosition * pVB->nPosStride;
 				if (!_Range(nPositionOffset, pVB->nPosStride, nFileBytes))
 					GCM_FAIL();
@@ -1306,6 +1310,11 @@ BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData
 			!_TakeBytes(&nCurrent, (u32)Plans.size(), sizeof(void *), &nIBsOffset) ||
 			!_TakeBytes(&nCurrent, (u32)Plans.size(), sizeof(u16), &nIBCountsOffset))
 			goto Reject;
+		// Per-vertex GameCube diffuse indices are read when world objects apply their baked lighting
+		// (CFMeshInst::SetColorStreams), after fdx8load_Create(), so they live in the retained block.
+		for (u32 i = 0; i < Plans.size(); i++)
+			if (!_TakeBytes(&nCurrent, Plans[i].nVertexCount, sizeof(u16), &Plans[i].nDiffuseIndexOffset))
+				goto Reject;
 		// Rebuilt collision leaf data must survive fdx8load_Create(), so it lives in the retained block.
 		for (u32 i = 0; i < CollLeaves.size(); i++)
 			if (!_TakeBytes(&nCurrent, _CollLeafBytes(CollLeaves[i].nTriCount), 1, &CollLeaves[i].nNewOffset))
@@ -1366,6 +1375,10 @@ BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData
 		pDXMesh->apCollVertBuffer = NULL;
 		pDXMesh->anIndicesCount = (u16 *)(uintptr_t)nIBCountsOffset;
 		pDXMesh->apDXIB = (void **)(uintptr_t)nIBsOffset;
+		// On the GameCube a color stream must hold VB 0's diffuse count of colors; once set, every
+		// display list (of any VB) reads its colors from it by its own diffuse indices
+		// (fGCmesh.cpp SetColorStreams, fgcDisplayList.cpp).
+		pDXMesh->nGCDiffuseCount = pGCMesh->nVBCount ? pVBs[0].nDiffuseCount : 0;
 
 		FDX8MeshMaterial_t *pDXMaterials = (FDX8MeshMaterial_t *)(pOutput + nDXMaterialsOffset);
 		FDX8MeshCluster_t *pClusters = (FDX8MeshCluster_t *)(pOutput + nClustersOffset);
@@ -1403,6 +1416,7 @@ BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData
 			pDXVB->nLockOffset = 0;
 			pDXVB->nLockBytes = 0;
 			pDXVB->pDXVB = (IDirect3DVertexBuffer8 *)(uintptr_t)Plan.nVertexOffset;
+			pDXVB->pGCDiffuseIndex = (u16 *)(uintptr_t)Plan.nDiffuseIndexOffset;
 
 			WriteContext_t Write = {};
 			Write.pFile = pOutput;
@@ -1413,6 +1427,7 @@ BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData
 			Write.pVertexData = pOutput + Plan.nVertexOffset;
 			Write.pLightMapData = Plan.nLightMapOffset ? pOutput + Plan.nLightMapOffset : NULL;
 			Write.pBasisData = pOutput + Plan.nBasisOffset;
+			Write.pDiffuseIndex = (u16 *)(pOutput + Plan.nDiffuseIndexOffset);
 			Write.pIndices = (u16 *)(pOutput + Plan.nIndexOffset);
 			Write.nSTCount = pMaterial->nBaseSTSets > 1 ? 2 : 1;
 			Write.bWeighted = Plan.bWeighted;
@@ -1456,6 +1471,7 @@ BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData
 			pDXVB->pLMUVStream = NULL;
 			pDXVB->pBasisStream = NULL;
 			pDXVB->nInfoIndex = (s8)FDX8VB_TYPE_C1;
+			pDXVB->pGCDiffuseIndex = NULL;
 			pDXVB->bDynamic = FALSE;
 			pDXVB->bSoftwareVP = FALSE;
 			pDXVB->bLocked = FALSE;

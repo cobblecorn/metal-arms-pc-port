@@ -259,6 +259,61 @@ void CFMeshInst::SetColorStreams( u32 nStreamCount, ColorStream_t *paStreams )
 
 	FASSERT( m_pMesh && m_pMesh->pMeshIS );
 
+#if FANG_WINGC
+	// GameCube data: the stream holds one color (RGBA8) per GameCube diffuse index; on the GameCube
+	// it replaced the mesh's diffuse array. Build one DX color stream per converted VB from the
+	// diffuse index each vertex was built from (FDX8VB_t::pGCDiffuseIndex).
+	{
+		FDX8Mesh_t *pMeshIS = m_pMesh->pMeshIS;
+		if ( nStreamCount == 1 && pMeshIS->nGCDiffuseCount && paStreams[0].paVertexColors &&
+			 paStreams[0].nColorCount == pMeshIS->nGCDiffuseCount )
+		{
+			const u32 *pnSource = (const u32 *)paStreams[0].paVertexColors;
+			const u32 nSourceCount = paStreams[0].nColorCount;
+			FResFrame_t GCFrame = fres_GetFrame();
+			IDirect3DVertexBuffer8 **papVB = (IDirect3DVertexBuffer8 **)fres_AllocAndZero( sizeof( IDirect3DVertexBuffer8 * ) * pMeshIS->nVBCount );
+			BOOL bOK = ( papVB != NULL );
+			for ( i = 0; bOK && i < pMeshIS->nVBCount; i++ )
+			{
+				const FDX8VB_t *pVB = &pMeshIS->aVB[i];
+				if ( !pVB->pGCDiffuseIndex || !pVB->nVtxCount )
+				{
+					continue;	// never drawn (collision)
+				}
+				DWORD *pnDest = NULL;
+				if ( FDX8_pDev->CreateVertexBuffer( sizeof( DWORD ) * pVB->nVtxCount, D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED, &papVB[i] ) != D3D_OK ||
+					 papVB[i]->Lock( 0, 0, (void **)&pnDest, 0 ) != D3D_OK || !pnDest )
+				{
+					bOK = FALSE;
+					break;
+				}
+				for ( u32 v = 0; v < pVB->nVtxCount; v++ )
+				{
+					const u16 nIndex = pVB->pGCDiffuseIndex[v];
+					const u32 nRGBA = ( nIndex < nSourceCount ) ? pnSource[nIndex] : 0xffffffff;
+					pnDest[v] = ( nRGBA >> 8 ) | ( nRGBA << 24 );	// GameCube RGBA8 to D3D ARGB
+				}
+				papVB[i]->Unlock();
+			}
+			if ( bOK )
+			{
+				m_papColorStreams = papVB;
+				m_nColorStreamCount = pMeshIS->nVBCount;
+				m_nFlags |= FMESHINST_FLAG_VERT_RADIOSITY;
+				return;
+			}
+			DEVPRINTF( "CFMeshInst::SetColorStreams() - Mesh %s : Could not build the DX color streams.  Color streams ignored.\n", m_pMesh->szName );
+			for ( i = 0; papVB && i < pMeshIS->nVBCount; i++ )
+			{
+				FDX8_SAFE_RELEASE( papVB[i] );
+			}
+			fres_ReleaseFrame( GCFrame );
+			m_nFlags &= ~(FMESHINST_FLAG_NOLIGHT_AMBIENT|FMESHINST_FLAG_NOLIGHT_DYNAMIC|FMESHINST_FLAG_LM|FMESHINST_FLAG_VERT_RADIOSITY);
+			return;
+		}
+	}
+#endif
+
 	if ( nStreamCount != m_pMesh->pMeshIS->nVBCount )
 	{
 		DEVPRINTF( "CFMeshInst::SetColorStreams() - Mesh %s : Color stream data assumes %d VB's, mesh data has %d.  Color streams ignored.\n", m_pMesh->szName, nStreamCount, m_pMesh->pMeshIS->nVBCount );
