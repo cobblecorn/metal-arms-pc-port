@@ -175,16 +175,50 @@ def find_maps(dol, names):
     return found
 
 
+def scan_vocabs(dol, field_count, pattern):
+    """Yield (addr, entries) for every vocabulary array in the data sections.
+
+    Vocabularies used directly (fgamedata_GetTableData) have no named map entry. Match
+    them by field count and an optional type pattern (s=string, f=float, ?=any)."""
+    for a, o, s, is_data in dol.sections:
+        if not is_data:
+            continue
+        rel = 0
+        while rel + 8 <= s:
+            vocab = read_vocab(dol, a + rel)
+            # Only report arrays that start at an entry boundary: the previous word pair
+            # must not itself be a valid non-terminator entry.
+            if vocab and len(vocab) == field_count:
+                prev = struct.unpack_from(">IHBB", dol.data, o + rel - 8) if rel >= 8 else None
+                if prev is None or not valid_entry(*prev) or prev[0] & 0xFF == TYPE_COUNT:
+                    types = "".join("f" if e[0] & 0xFF == TYPE_FLOAT else "s" for e in vocab)
+                    if not pattern or all(p in ("?", t) for p, t in zip(pattern, types)):
+                        yield a + rel, vocab
+                rel += 8 * (len(vocab) + 1)
+                continue
+            rel += 4
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dol")
-    ap.add_argument("tables", nargs="+", help="table names used by FGameDataMap_t arrays (e.g. LaserL1)")
+    ap.add_argument("tables", nargs="*", help="table names used by FGameDataMap_t arrays (e.g. LaserL1)")
+    ap.add_argument("--scan", type=int, metavar="N", help="list every vocabulary with N fields (for unnamed tables)")
+    ap.add_argument("--pattern", help="with --scan: field types, s=string f=float ?=any (e.g. sfff??????ff)")
     ap.add_argument("--output", help="write the report here instead of stdout")
     args = ap.parse_args()
 
     dol = Dol(open(args.dol, "rb").read())
     f32_table, where = find_f32_table(dol)
     out = []
+    if args.scan:
+        for addr, vocab in scan_vocabs(dol, args.scan, args.pattern):
+            out.append("\nvocab 0x%08x fields %d" % (addr, len(vocab)))
+            offset = 0
+            for i, (flags, nbytes, lo, hi) in enumerate(vocab):
+                out.append("  %2d +%-4d %08x %s" % (i, offset, flags, decode_entry(flags, nbytes, lo, hi, f32_table)))
+                offset += nbytes
+
     if where:
         out.append("afDataTable at 0x%08x (%s source values): %s" % (
             where[0], "matches" if where[1] else "DIFFERS FROM", ", ".join("%g" % v for v in where[2])))
