@@ -51,7 +51,7 @@ Visual Studio 2022 (x86 tools), CMake 3.20+, Python 3. 32-bit only.
 
 All options are in `PORTING.md` and at the top of `port/main_win.cpp` (`-level`, `-mission`,
 `-world-only`, `-res`, `-fullscreen`, `-no-audio`, `-shots`, `-mouse-sensitivity`, `-aim-assist`,
-`-input-layout`, `-save-dir`). `-mission <world>` is the normal way to test a campaign level.
+`-input-layout`, `-save-dir`, `-debug-info` for the on-screen script monitors and debug overlays). `-mission <world>` is the normal way to test a campaign level.
 
 ## Debugging (Windows)
 

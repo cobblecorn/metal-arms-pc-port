@@ -21,7 +21,7 @@ Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see belo
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-save-dir <dir>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-no-audio] [-debug-info] [-save-dir <dir>]
 
 `-level <world>` starts the generic debug level path using `Level01` configuration.
 `-mission <world>` resolves a registered single-player mission and uses its own configuration,
