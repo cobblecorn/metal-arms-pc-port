@@ -13,6 +13,7 @@
 //   -res WxH        window/screen resolution (default: 1280x960)
 //   -fullscreen     run fullscreen instead of in a window
 //   -no-audio       skip sound effect and music setup
+//   -dev-menu       boot into the development launcher (level picker) instead of the retail front end
 //   -debug-info     draw the game's debug overlays: on-screen script messages and errors (errors
 //                   pause the game), frame rate, checkpoint and AI debug drawing. Scripts always log.
 //   -mission <name> load a registered single-player world with its mission data
@@ -32,6 +33,7 @@
 #include "floop.h"
 #include "ffile.h"
 #include "gameloop.h"
+#include "launcher.h"
 #include "pc_input.h"
 
 #include <windows.h>
@@ -63,6 +65,7 @@ static int _nReqWidth = 1280, _nReqHeight = 960;
 static bool _bFullscreen = false;
 static bool _bNoAudio = false;
 static bool _bDebugInfo = false;
+static bool _bDevMenu = false;
 
 static FILE *_pLog = NULL;
 static DWORD _nMainThreadId = 0;
@@ -328,7 +331,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-debug-info] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-save-dir <dir>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-save-dir <dir>]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -354,6 +357,7 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
 		else if( !_stricmp( pszArg, "-no-audio" ) )				_bNoAudio = true;
 		else if( !_stricmp( pszArg, "-debug-info" ) )				_bDebugInfo = true;
+		else if( !_stricmp( pszArg, "-dev-menu" ) )					_bDevMenu = true;
 		else if( !_stricmp( pszArg, "-mouse-sensitivity" ) && bHasValue ) {
 			char *pEnd;
 			const char *pszValue = argv[++i];
@@ -528,6 +532,7 @@ int main( int argc, char **argv )
 	// script monitors cover gameplay and a script error pauses the game until Jump is pressed, so
 	// they are opt-in; scripts log messages and errors either way.
 	Gameloop_bDrawDebugInfo = _bDebugInfo;
+	Launcher_bShowDevBootMenu = _bDevMenu;
 
 	if( !ffile_LogSetFilename( "ma_port_asset_log.txt" ) )
 	{

@@ -31,6 +31,10 @@
 // allows us to not include the picklevel code when we boot directly into the wrappers
 #define LAUNCHER_INCLUDE_DEV_MENU						!LAUNCHER_GO_DIRECTLY_TO_RETAIL_WRAPPERS
 
+// Desktop port: TRUE shows the development boot menu (-dev-menu); otherwise development builds boot
+// into the retail front end like the shipped game.
+extern BOOL Launcher_bShowDevBootMenu;
+
 
 // set 1 of the following TRUE to control what is offered on the E3 wrapper screen
 // If neither are set, but LAUNCHER_GO_DIRECTLY_TO_E3_WRAPPERS is TRUE, the single 

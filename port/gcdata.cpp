@@ -425,7 +425,7 @@ static BOOL _ConvertCam( void *pData, u32 nBytes, cchar *pszResName )
 	BOOL bValid = nFKeys && nTKeys && nOKeys && nKeyTimes;
 	for( u32 i = 0; bValid && i < 7; i++ )
 	{
-		bValid = _IsArrayRangeValid( anOffset[i], anCount[i], anStride[i], nBytes ) && ( anOffset[i] & (i == 6 ? 15 : 1) ) == 0;
+		bValid = _IsArrayRangeValid( anOffset[i], anCount[i], anStride[i], nBytes ) && ( anOffset[i] & (i >= 1 && i <= 3 ? 1 : 3) ) == 0;	// retail aligns quaternions to 8, not 16
 	}
 	for( u32 i = 1; bValid && i <= 3; i++ )
 	{

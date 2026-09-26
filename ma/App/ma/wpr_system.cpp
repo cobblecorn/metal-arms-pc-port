@@ -3165,22 +3165,37 @@ static BOOL _InitUnLockInfo( _MPLevelUnlockInfo_t *pUnLockInfo, FGameDataTableHa
 	FMATH_CLAMP( pUnLockInfo->nNumFreebies, 0, LEVEL_MULTIPLAYER_COUNT );
 	nNumUnlockFields = LEVEL_MULTIPLAYER_COUNT - pUnLockInfo->nNumFreebies;
 
+#if FANG_WINGC
+	// The retail game shipped 14 multiplayer levels; this source has 15 (WE13multi13 is not on the
+	// disc). The retail table has one chip count per locked level in retail order, i.e. for this
+	// source's levels up to 12 and then 14 and 15. Level 13 gets a count that can never be reached.
+	const u32 nMissingLevel = LEVEL_MULTIPLAYER_13 - LEVEL_MULTIPLAYER_1;
+	const BOOL bRetailLayout = ( nNumEntries == nNumUnlockFields ) && ( nMissingLevel >= pUnLockInfo->nNumFreebies );
+	if( nNumEntries != (nNumUnlockFields + 1) && !bRetailLayout ) {
+#else
 	// make sure that there are a proper number of elements in the table
 	if( nNumEntries != (nNumUnlockFields + 1) ) {
+#endif
 		DEVPRINTF( "Wrappers : The table named '%s' does not have the proper number of elements.\n", pszTableName );
 		return FALSE;
 	}
-	
+
 	// allocate enough room for the unlock data
 	pUnLockInfo->panChipsToUnlock = (u8 *)fres_Alloc( sizeof( u8 ) * nNumUnlockFields );
 	if( !pUnLockInfo->panChipsToUnlock ) {
 		DEVPRINTF( "Wrappers : Could not allocate %d u8s for the MP level unlock info, out of memory.\n", nNumUnlockFields );
 		return FALSE;
 	}
-	
+
 	// read the unlock data in
 	nIndex = 1;
 	for( i=0; i < nNumUnlockFields; i++ ) {
+#if FANG_WINGC
+		if( bRetailLayout && i == nMissingLevel - pUnLockInfo->nNumFreebies ) {
+			pUnLockInfo->panChipsToUnlock[i] = 255;
+			continue;
+		}
+#endif
 		pUnLockInfo->panChipsToUnlock[i] = (u8)( *(f32 *)fgamedata_GetPtrToFieldData( hTable, nIndex, nDataType ) );
 		nIndex++;
 	}

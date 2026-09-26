@@ -78,6 +78,9 @@ static GameInitInfo_t *_pCurrentGameInit = NULL;
 static GamepadMap_e _anOldMappings[GAMEPAD_MAX_PORT_COUNT];
 static BOOL8 _bMenuControllerMappingSet = FALSE;
 static BOOL8 _bWrapperBootupParameter;
+
+// Desktop port: development builds boot into the retail front end unless this is set (-dev-menu).
+BOOL Launcher_bShowDevBootMenu = FALSE;
 static BOOL8 _bLaunchRealWrappersFromLoadingScreen;
 static u8 _nFrameCounter;
 
@@ -168,6 +171,13 @@ BOOL launcher_EnterMenus( LauncherFrom_e nFrom ) {
 		// go directly to the e3 menu (it will handle the demo version too)
 		_ScheduleMenu( _MENU_TYPE_E3 );
 #else
+	#if defined(MA_PC_INPUT)
+		if( !Launcher_bShowDevBootMenu ) {
+			// As the shipped game does: straight to the retail front end.
+			_ScheduleMenu( _MENU_TYPE_LANGUAGESELECT, TRUE );
+			break;
+		}
+	#endif
 		// development mode, offer the choice of boot modes
 		_nCurState = nFrom;
 		_ScheduleMenu( _MENU_TYPE_BOOTUP );
