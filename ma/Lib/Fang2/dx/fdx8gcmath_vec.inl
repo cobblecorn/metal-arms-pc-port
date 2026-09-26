@@ -550,8 +550,21 @@ FINLINE CFVec3A &CFVec3A::Unitize( void ) { v3.Unitize(); return *this; }
 
 FINLINE f32 CFVec3A::UnitAndMag( const CFVec3A &rV ) { return rV.v3.ExtractUnitAndMag( v3 ); }
 FINLINE f32 CFVec3A::UnitAndInvMag( const CFVec3A &rV ) { return rV.v3.ExtractUnitAndInvMag( v3 ); }
-FINLINE f32 CFVec3A::SafeUnitAndMag( const CFVec3A &rV ) { return rV.v3.SafeExtractUnitAndMag( v3 ); }
-FINLINE f32 CFVec3A::SafeUnitAndInvMag( const CFVec3A &rV ) { return rV.v3.SafeExtractUnitAndInvMag( v3 ); }
+// As retail GameCube (gc/fGCmath_vec.inl): a zero-length rV is copied to this (so it reads as zero)
+// and -1 is returned; the CFVec3 helpers these used would leave this unchanged.
+FINLINE f32 CFVec3A::SafeUnitAndMag( const CFVec3A &rV ) {
+	const f32 fMag = rV.Mag();
+	if( fMag == 0.0f ) { Set( rV ); return -1.0f; }
+	Mul( rV, fmath_Inv( fMag ) );
+	return fMag;
+}
+FINLINE f32 CFVec3A::SafeUnitAndInvMag( const CFVec3A &rV ) {
+	const f32 fMag = rV.Mag();
+	if( fMag == 0.0f ) { Set( rV ); return -1.0f; }
+	const f32 fOOMag = fmath_Inv( fMag );
+	Mul( rV, fOOMag );
+	return fOOMag;
+}
 
 FINLINE f32 CFVec3A::DistXZ( const CFVec3A &rV ) const { return (rV.v3-v3).MagXZ(); }
 FINLINE f32 CFVec3A::DistSqXZ( const CFVec3A &rV ) const { return (rV.v3-v3).MagXZ2(); }
