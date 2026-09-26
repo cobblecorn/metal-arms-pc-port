@@ -77,7 +77,7 @@ cutscene_Handle_t cutscene_AcquireHandle( cchar* pszMovieFilename, BOOL bPrepend
 	char szFullFilename[ 64 ];
 	szFullFilename[ 0 ] = NULL;
 	if( bPrependPlatformPrefix ) {
-#if FANG_PLATFORM_GC
+#if FANG_PLATFORM_GC || FANG_WINGC		// the Windows port plays the retail GameCube movies
 		fclib_strcpy( szFullFilename, "GC_" );
 #else
 		fclib_strcpy( szFullFilename, "XB_" );

@@ -99,6 +99,15 @@ private:
 	typedef enum
 	{
 		LIMB_TYPE_HEAD,							// The bot's head
+#if FANG_WINGC
+		// The retail elite guard can lose more limbs; bp_elitegrd.csv limbinfo order.
+		LIMB_TYPE_LEFT_LEG,
+		LIMB_TYPE_RIGHT_LEG,
+		LIMB_TYPE_LEFT_ARM,
+		LIMB_TYPE_RIGHT_ARM,
+		LIMB_TYPE_RIBS_LEFT,
+		LIMB_TYPE_RIBS_RIGHT,
+#endif
 		LIMB_TYPE_COUNT
 	} LimbType_e;
 
