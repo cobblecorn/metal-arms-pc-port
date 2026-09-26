@@ -549,6 +549,29 @@ BOOL CFMeshInst::DrawMaterialLight_P( FViewportPlanesMask_t nCrossesPlanesMask, 
 		fsh_ExecuteCurrent( FMesh_bRenderShadows, nShadowID );
 #if FANG_WINGC
 		_PortLogD3DState( bFastPass ? "LIGHT-FAST" : "LIGHT", m_pMesh->szName, (u32)(pMaterial - m_pMesh->aMtl) );
+		{
+			// Port diagnostic: segment/bone bindings of the player mesh.
+			static u32 _nLoggedGlitch = 0;
+			if ( _nLoggedGlitch < 3 && fclib_stricmp( m_pMesh->szName, "grdggltch00" ) == 0 && nPass == 0 )
+			{
+				_nLoggedGlitch++;
+				FDX8MeshMaterial_t *pDXMat = (FDX8MeshMaterial_t *)pMaterial->pPlatformData;
+				DEVPRINTF( "PORT-GLITCH mtl=%u clusters=%u bones=%u usedBones=%u segs=%u instFlags=%08x palette=%p posMtx=(%.1f,%.1f,%.1f) scale=%.3f\n",
+					(u32)(pMaterial - m_pMesh->aMtl), (u32)pDXMat->nClusterCount, (u32)m_pMesh->nBoneCount, (u32)m_pMesh->nUsedBoneCount,
+					(u32)m_pMesh->nSegCount, (u32)m_nFlags, m_apBoneMtxPalette, m_PosMtx.m_vPos.x, m_PosMtx.m_vPos.y, m_PosMtx.m_vPos.z, m_fMatrixScale );
+				for ( u32 c = 0; c < pDXMat->nClusterCount && c < 6; c++ )
+				{
+					const FDX8MeshCluster_t *pC = &pDXMat->aCluster[c];
+					const FMeshSeg_t *pS = &m_pMesh->aSeg[pC->nSegmentIdx];
+					const u32 nBone = pS->nBoneMtxCount ? pS->anBoneMtxIndex[0] : 0xff;
+					const CFMtx43A *pBoneMtx = (m_apBoneMtxPalette && nBone < m_pMesh->nBoneCount) ? m_apBoneMtxPalette[nBone] : NULL;
+					DEVPRINTF( "PORT-GLITCH   cluster %u: seg=%u segBones=%u bone=%u tris=%u vb=%u part=%u lod=%u boneMtxPos=(%.1f,%.1f,%.1f) right=(%.2f,%.2f,%.2f)\n",
+						c, (u32)pC->nSegmentIdx, (u32)pS->nBoneMtxCount, nBone, (u32)pC->TriList.nTriCount, (u32)pC->nVBIndex, (u32)pC->nPartID, (u32)pC->nLODID,
+						pBoneMtx ? pBoneMtx->m_vPos.x : 0.0f, pBoneMtx ? pBoneMtx->m_vPos.y : 0.0f, pBoneMtx ? pBoneMtx->m_vPos.z : 0.0f,
+						pBoneMtx ? pBoneMtx->m_vRight.x : 0.0f, pBoneMtx ? pBoneMtx->m_vRight.y : 0.0f, pBoneMtx ? pBoneMtx->m_vRight.z : 0.0f );
+				}
+			}
+		}
 #endif
 
 		// Progress through all the clusters for this material, submitting for render the relevant ones

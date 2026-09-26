@@ -399,11 +399,43 @@ FINLINE CFMtx43A &CFMtx43A::Set( const f32 &ff00, const f32 &ff01, const f32 &ff
 	return *this;
 }
 
-FINLINE CFMtx43A &CFMtx43A::Mul( const CFMtx43A &rM1, const CFMtx43A &rM2 ) { m44a.Mul( rM1.m44a, rM2.m44a ); return *this; }
-FINLINE CFMtx43A &CFMtx43A::Mul( const CFMtx43A &rM ) { m44a.m44 *= rM.m44a.m44; return *this; }
+// Port: affine concatenation, matching the SSE versions in fdx8math_mtx.inl. this = rM1 * rM2
+// (rM2 applied first): each row of rM2 is re-expressed in rM1's basis, and the position row also
+// gets rM1's translation. These used to go through CFMtx44's 4x4 product, which scales rM1's
+// translation by rM2.m_vPos.w - but the w lanes of a CFMtx43A are not maintained in this build
+// (the constructor zeroes them), so every parent translation was dropped. That left bone
+// palettes in model space, drawing boned meshes (e.g. Glitch) at the world origin.
+// The temporaries make these safe when the destination aliases an operand.
+FINLINE CFMtx43A &CFMtx43A::Mul( const CFMtx43A &rM1, const CFMtx43A &rM2 ) {
+	f32 aafResult[4][3];
+	for( u32 i = 0; i < 4; i++ ) {
+		const f32 fX = rM2.aa[i][0], fY = rM2.aa[i][1], fZ = rM2.aa[i][2];
+		for( u32 j = 0; j < 3; j++ ) {
+			aafResult[i][j] = fX*rM1.aa[0][j] + fY*rM1.aa[1][j] + fZ*rM1.aa[2][j] + ( i == 3 ? rM1.aa[3][j] : 0.0f );
+		}
+	}
+	for( u32 i = 0; i < 4; i++ ) {
+		aa[i][0] = aafResult[i][0]; aa[i][1] = aafResult[i][1]; aa[i][2] = aafResult[i][2]; aa[i][3] = 0.0f;
+	}
+	return *this;
+}
+FINLINE CFMtx43A &CFMtx43A::Mul( const CFMtx43A &rM ) { return Mul( *this, rM ); }
 
-FINLINE CFMtx43A &CFMtx43A::Mul33( const CFMtx43A &rM1, const CFMtx43A &rM2 ) { FASSERT_NOW; return *this; }	// TBD
-FINLINE CFMtx43A &CFMtx43A::Mul33( const CFMtx43A &rM ) { FASSERT_NOW; return *this; }	// TBD
+// Rotation-only concatenation; the destination keeps its own position (as the SSE version).
+FINLINE CFMtx43A &CFMtx43A::Mul33( const CFMtx43A &rM1, const CFMtx43A &rM2 ) {
+	f32 aafResult[3][3];
+	for( u32 i = 0; i < 3; i++ ) {
+		const f32 fX = rM2.aa[i][0], fY = rM2.aa[i][1], fZ = rM2.aa[i][2];
+		for( u32 j = 0; j < 3; j++ ) {
+			aafResult[i][j] = fX*rM1.aa[0][j] + fY*rM1.aa[1][j] + fZ*rM1.aa[2][j];
+		}
+	}
+	for( u32 i = 0; i < 3; i++ ) {
+		aa[i][0] = aafResult[i][0]; aa[i][1] = aafResult[i][1]; aa[i][2] = aafResult[i][2]; aa[i][3] = 0.0f;
+	}
+	return *this;
+}
+FINLINE CFMtx43A &CFMtx43A::Mul33( const CFMtx43A &rM ) { return Mul33( *this, rM ); }
 
 //
 //

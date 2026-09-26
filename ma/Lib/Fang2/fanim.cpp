@@ -2376,6 +2376,29 @@ void CFAnimCombiner::ComputeMtxPalette( BOOL bAllowOffscreenOptimizations/*=FALS
 		_ComputeMtxPalette( m_pMeshInst->m_pMesh->nRootBoneIndex, m_pMeshInst->m_Xfm.m_MtxF, nTranslatorBoneIndexToSkip, pDestTranslatorBoneIndex );
 		m_nFlags &= ~EXECUTE_BUFFER_REBUILD_NEEDED;
 	}
+
+#if FANG_WINGC
+	{
+		// Port diagnostic: does the palette end up in world space for the player mesh?
+		static u32 _nLogged = 0;
+		if ( _nLogged < 4 && fclib_stricmp( m_pMeshInst->m_pMesh->szName, "grdggltch00" ) == 0 )
+		{
+			_nLogged++;
+			FMesh_t *pMesh = m_pMeshInst->m_pMesh;
+			const u32 nRoot = pMesh->nRootBoneIndex;
+			const CFMtx43A *pRootMtx = m_pMeshInst->GetBoneMtxPalette()[nRoot];
+			const CFMtx43A *pBone2 = pMesh->nBoneCount > 2 ? m_pMeshInst->GetBoneMtxPalette()[2] : NULL;
+			DEVPRINTF( "PORT-ANIM root=%u bones=%u rootChildren=%u rootChildStart=%u xfm=(%.1f,%.1f,%.1f) rootPal=(%.1f,%.1f,%.1f) bone2Pal=(%.1f,%.1f,%.1f) boneCount(comb)=%u\n",
+				nRoot, (u32)pMesh->nBoneCount,
+				nRoot < pMesh->nBoneCount ? (u32)pMesh->pBoneArray[nRoot].Skeleton.nChildBoneCount : 0xffff,
+				nRoot < pMesh->nBoneCount ? (u32)pMesh->pBoneArray[nRoot].Skeleton.nChildArrayStartIndex : 0xffff,
+				m_pMeshInst->m_Xfm.m_MtxF.m_vPos.x, m_pMeshInst->m_Xfm.m_MtxF.m_vPos.y, m_pMeshInst->m_Xfm.m_MtxF.m_vPos.z,
+				pRootMtx ? pRootMtx->m_vPos.x : 0.0f, pRootMtx ? pRootMtx->m_vPos.y : 0.0f, pRootMtx ? pRootMtx->m_vPos.z : 0.0f,
+				pBone2 ? pBone2->m_vPos.x : 0.0f, pBone2 ? pBone2->m_vPos.y : 0.0f, pBone2 ? pBone2->m_vPos.z : 0.0f,
+				(u32)m_nBoneCount );
+		}
+	}
+#endif
 }
 
 void CFAnimCombiner::_ComputeDefaultMtxPalette( u32 nBoneIndex, const CFMtx43A &rParentMtx, u32 nTranslatorBoneIndexToSkip/*=0xffffffff*/, CFMtx43A *pDestTranslatorBoneIndex/*=NULL*/ ) {

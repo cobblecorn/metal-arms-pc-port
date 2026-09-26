@@ -391,6 +391,20 @@ void CCamBot::Work_3rdPerson( BOOL bCollide ) {
 #endif
 
 	
+#if FANG_WINGC
+	{
+		// Port diagnostic: where the bot camera wants to be.
+		static u32 _nCalls = 0;
+		if( (_nCalls++ % 240) == 30 ) {
+			DEVPRINTF( "PORT-CAMBOT bot=(%.1f,%.1f,%.1f) lookat=(%.1f,%.1f,%.1f) desired=(%.1f,%.1f,%.1f) yaw=%.2f pitch=%.2f frontXZ=(%.2f,%.2f)\n",
+				m_pBot->MtxToWorld()->m_vPos.x, m_pBot->MtxToWorld()->m_vPos.y, m_pBot->MtxToWorld()->m_vPos.z,
+				m_LookAtPoint_WS.x, m_LookAtPoint_WS.y, m_LookAtPoint_WS.z,
+				m_DesiredPos_WS.x, m_DesiredPos_WS.y, m_DesiredPos_WS.z,
+				m_pBot->m_fMountYaw_WS, m_fPitch, m_pBot->m_MountUnitFrontXZ_WS.x, m_pBot->m_MountUnitFrontXZ_WS.z );
+		}
+	}
+#endif
+
 	////////////////////////////////
 	// compute our lookat direction
 	m_UnitLookDir_WS = m_LookAtPoint_WS;
@@ -604,6 +618,17 @@ void CCamBot::Work_3rdPerson( BOOL bCollide ) {
 		vCamPos_WS = m_DesiredPos_WS;
 	}
 	
+#if FANG_WINGC
+	{
+		static u32 _nCalls = 0;
+		if( (_nCalls++ % 240) == 30 ) {
+			DEVPRINTF( "PORT-CAMBOT final=(%.1f,%.1f,%.1f) min=(%.1f,%.1f,%.1f) unitDist=%.3f collide=%d impacts=%u\n",
+				vCamPos_WS.x, vCamPos_WS.y, vCamPos_WS.z, m_MinCamPos_WS.x, m_MinCamPos_WS.y, m_MinCamPos_WS.z,
+				m_fLastUnitDist, (int)bCollide, (u32)FColl_nImpactCount );
+		}
+	}
+#endif
+
 	/////////////////////////
 	// compute the camera xfm
 	m_pCameraData->m_Xfm.BuildLookatFromDirVec( vCamPos_WS.v3, m_UnitLookDir_WS.v3, CFVec3::m_UnitAxisY );

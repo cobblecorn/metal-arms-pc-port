@@ -121,6 +121,10 @@ typedef enum
 // Global variables:
 //////////////////////////////////////////////////////////////////////////////////////
 
+#if FANG_WINGC
+u32 _nPortRSFrame = 0;	// Port diagnostic frame counter
+#endif
+
 BOOL FRS_bRenderFlags = FRS_RENDER_NONE
 		#if _RENDER_LIGHTING_PASS
 			| FRS_RENDER_PASS_LIGHTING
@@ -1627,7 +1631,20 @@ void frs_FlushRenderLists( void )
 			while ( pEntry )
 			{
 				FASSERT( pEntry->pMeshInst );
-				
+
+				#if FANG_WINGC
+				{
+					// Port diagnostic: non-world meshes drawn in one frame, with their world position.
+					extern u32 _nPortRSFrame;
+					if ( _nPortRSFrame == 900 )
+					{
+						const CFVec3A &vPos = pEntry->pMeshInst->m_Xfm.m_MtxF.m_vPos;
+						DEVPRINTF( "PORT-RSMESH %s mtl=%u pos=(%.1f,%.1f,%.1f) flags=%08x\n", pEntry->pMeshInst->m_pMesh->szName,
+							(u32)(pEntry->pMaterial - pEntry->pMeshInst->m_pMesh->aMtl), vPos.x, vPos.y, vPos.z, (u32)pEntry->pMeshInst->m_nFlags );
+					}
+				}
+				#endif
+
 				// Setup lights for this mesh
 				if ( !(pEntry->pMeshInst->m_nFlags & FMESHINST_FLAG_SURFACEONLY) )
 				{
@@ -1781,10 +1798,10 @@ void frs_FlushRenderLists( void )
 	#if FANG_WINGC
 	{
 		// Port diagnostic: how many materials went through each pass.
-		static u32 _nFrame = 0;
-		if ( (++_nFrame % 600) == 1 )
+		extern u32 _nPortRSFrame;
+		if ( (++_nPortRSFrame % 600) == 1 )
 		{
-			DEVPRINTF( "PORT-RS frame %u: flags=%08x lighting=%u surface=%u\n", _nFrame, (u32)FRS_bRenderFlags, (u32)nLightingMaterials, (u32)nSurfaceMaterials );
+			DEVPRINTF( "PORT-RS frame %u: flags=%08x lighting=%u surface=%u\n", _nPortRSFrame, (u32)FRS_bRenderFlags, (u32)nLightingMaterials, (u32)nSurfaceMaterials );
 		}
 	}
 	#endif
