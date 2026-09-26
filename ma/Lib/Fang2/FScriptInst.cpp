@@ -49,16 +49,30 @@ BOOL CFScriptInst::Init( CFScript *pScript, void *pObject )
 	m_fDisabledCtdn = 0.0f;
 	fang_MemZero( &m_oAMX, sizeof(AMX) );
 
-	if( amx_Init( &m_oAMX, pScript->m_pProgram ) != AMX_ERR_NONE ) {
+	int nAMXError = amx_Init( &m_oAMX, pScript->m_pProgram );
+	if( nAMXError != AMX_ERR_NONE ) {
+		DEVPRINTF( "CFScriptInst::Init: amx_Init failed for '%s' (error %d).\n", pScript->m_szScriptFileName, nAMXError );
 		return FALSE;
 	}
 
 	amx_Register(&m_oAMX, core_Natives, -1);
 	amx_Register(&m_oAMX, console_Natives, -1);
-	amx_Register(&m_oAMX, CFScriptSystem::m_paNativeFunc, CFScriptSystem::m_uNumNatives);
+	if( amx_Register(&m_oAMX, CFScriptSystem::m_paNativeFunc, CFScriptSystem::m_uNumNatives) != AMX_ERR_NONE ) {
+		// Retail scripts may import natives this source snapshot lacks. Keep the
+		// script (as the original did) and name them; amx_Callback fails such a
+		// call with AMX_ERR_NOTFOUND instead of calling through a NULL pointer.
+		const AMX_HEADER *pHdr = (const AMX_HEADER *)m_oAMX.base;
+		const AMX_FUNCSTUB *pFunc = (const AMX_FUNCSTUB *)(m_oAMX.base + pHdr->natives);
+		for( int i=0; i<pHdr->num_natives; ++i, ++pFunc ) {
+			if( pFunc->address == 0 ) {
+				DEVPRINTF( "CFScriptInst::Init: '%s' imports unimplemented native '%s'.\n", pScript->m_szScriptFileName, pFunc->name );
+			}
+		}
+	}
 
 	// An OnInit entry point is mandatory.
 	if( amx_FindPublic(&m_oAMX, "OnInit", (int *)&m_nOnInitIdx) != AMX_ERR_NONE ) {
+		DEVPRINTF( "CFScriptInst::Init: mandatory OnInit missing in '%s'.\n", pScript->m_szScriptFileName );
 		return FALSE;
 	}
 	amx_FindPublic( &m_oAMX, "Work", (int *)&m_nWorkIdx );

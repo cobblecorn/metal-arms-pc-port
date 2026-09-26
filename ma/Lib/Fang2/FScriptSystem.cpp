@@ -342,6 +342,8 @@ BOOL CFScriptSystem::AttachObjectToScript(const char *pszScriptFileName, void *p
 		// We could not find the script already in the pool ...
 		// Load the script.
 		FASSERT(uCurScriptIdx != FSCRIPTSYSTEM_MAXUNIQUESCRIPTS);
+		if(uCurScriptIdx >= FSCRIPTSYSTEM_MAXUNIQUESCRIPTS || m_uNumScriptInsts >= FSCRIPTSYSTEM_MAXSCRIPTSINSTS)
+			return(FALSE);
 		if(!m_paScriptPool[uCurScriptIdx].LoadFromFile(pszScriptFileName))
 			return(FALSE);
 		m_uNumScripts++;
@@ -358,14 +360,21 @@ BOOL CFScriptSystem::AttachObjectToScript(const char *pszScriptFileName, void *p
 		u32 uCurScriptInstIdx = 0;
 		CFScript *pScript = &(m_paScriptPool[uCurScriptIdx]);
 
-		while(m_paScriptInstList[uCurScriptInstIdx].m_pScript != pScript)
+		while(uCurScriptInstIdx < m_uNumScriptInsts && m_paScriptInstList[uCurScriptInstIdx].m_pScript != pScript)
 		{
-			FASSERT(uCurScriptInstIdx < m_uNumScriptInsts);
 			uCurScriptInstIdx++;
+		}
+		if(uCurScriptInstIdx == m_uNumScriptInsts)
+		{
+			// The script loaded but its first instance failed to initialize. amx_Init
+			// has already modified the shared program image, so it cannot be retried.
+			return(FALSE);
 		}
 
 		// Initialize the next CFScriptInst with the previous script instance.
 		FASSERT(m_uNumScriptInsts != FSCRIPTSYSTEM_MAXSCRIPTSINSTS);
+		if(m_uNumScriptInsts >= FSCRIPTSYSTEM_MAXSCRIPTSINSTS)
+			return(FALSE);
 		if(!m_paScriptInstList[m_uNumScriptInsts].InitClone(&(m_paScriptInstList[uCurScriptInstIdx]), pObject))
 			return(FALSE);
 	}

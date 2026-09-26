@@ -250,10 +250,17 @@ int AMXAPI amx_Flags(AMX *amx,uint16_t *flags)
 int AMXAPI amx_Callback(AMX *amx, cell index, cell *result, cell *params)
 {
   AMX_HEADER *hdr=(AMX_HEADER *)amx->base;
-  AMX_FUNCSTUB *func=(AMX_FUNCSTUB *)(amx->base+(int)hdr->natives+(int)index*sizeof(AMX_FUNCSTUB));
-  AMX_NATIVE f=(AMX_NATIVE)func->address;
-  assert(f!=NULL);
-  assert(index<hdr->num_natives);
+  AMX_FUNCSTUB *func;
+  AMX_NATIVE f;
+  /* an out-of-range index or a native that amx_Register() could not bind
+   * aborts the script instead of calling through a bad pointer
+   */
+  if (index<0 || index>=hdr->num_natives)
+    return AMX_ERR_INDEX;
+  func=(AMX_FUNCSTUB *)(amx->base+(int)hdr->natives+(int)index*sizeof(AMX_FUNCSTUB));
+  f=(AMX_NATIVE)func->address;
+  if (f==NULL)
+    return AMX_ERR_NOTFOUND;
 
   /* Note:
    *   params[0] == number of parameters passed to the native function
