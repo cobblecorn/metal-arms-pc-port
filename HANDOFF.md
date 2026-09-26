@@ -100,8 +100,12 @@ Working (verified by runs or by the user, see `PORTING.md` for detail):
 - Many retail schema changes mapped from `main.dol` (weapons, bots, goodies, materials, debris,
   sentries, AA gun, scout, corrosive boss, Spy vs Spy).
 
-Changed from a cloud session, **not yet verified in a run** (details and checks in
-`CLOUD_SESSION_LOG.md`):
+Changed from a cloud session (details in `CLOUD_SESSION_LOG.md`). Built with MSVC and run on
+2026-09-26: it compiles cleanly; `wewchold_01`'s failed load now exits cleanly (it crashed before);
+the save directory is logged at startup; `wecdsneak01`, `webccolis04` (script errors 6 -> 0),
+`wesrrepair1`, `wesccorros1`, `wessstatn01`, `wewhchase01`, `wewccomm_03`, `weshhangr01` and
+`-level wecdsneak01` load and run. **Still unverified**: the save flow itself (create, load, rename,
+delete, in-game save, kill mid-save), which needs the menus.
 
 - PC save backend rewrite: `%APPDATA%\Metal Arms PC Port\Saves` (`-save-dir`), safe file names,
   atomic writes, `ValidateProfile` now reports missing profiles.
@@ -111,16 +115,15 @@ Changed from a cloud session, **not yet verified in a run** (details and checks 
 
 ## Open work, roughly in priority order
 
-1. **Verify the cloud-session changes above** (saves especially: create, load, rename, delete, in-game
-   save; kill the game mid-save).
+1. **Verify the save flow** from the menus (create, load, rename, delete, in-game save; kill the game
+   mid-save). The rest of the cloud-session changes are verified (see above).
 2. `wewchold_01` (Hold Your Ground): the retail `Mini_Game` table has 104 fields where the source
    expects 62, so the level fails to load. Map it from `main.dol` like the other schemas.
 3. `CFQuatTang3::Calculate` NaN (scripted carts in `WEDTtown_01`, `wessstatn02`): a zero XZ tangent is
    unitized. Check the path tangent input.
 4. User confirmations pending: chase-level AI driver (probably fixed by the XZ math fix), RAT controls,
-   vehicle reticle, dialog balance, throwables. Keys: the source traces to Q = weapons list,
-   R = throwables list, E = action (`PORTING.md` controls); an earlier run was reported as
-   Q = throwables, E = weapons, so hold each once and note what opens.
+   vehicle reticle, dialog balance, throwables, and the new keys: Q = throwables list, R = weapons list
+   (tap to reload), E = action, with lists opening after a 0.5 s hold (`PORTING.md` controls).
 5. Mouse-driven menus: follow `docs/mouse-menus-design.md` (clickable button prompts first).
 6. Remaining black scenery surfaces.
 7. Failed-load teardown beyond what `CLOUD_SESSION_LOG.md` entries 5 and 10 cover: systems
