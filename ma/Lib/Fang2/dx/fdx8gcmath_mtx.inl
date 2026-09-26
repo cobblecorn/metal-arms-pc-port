@@ -765,4 +765,17 @@ FINLINE void CFMtx43A::GetPitchYawRoll( f32 &rfPitchDegrees, f32 &rfYawDegrees, 
 }
 
 
+
+//--------------------------------------------------------------------
+// Port additions (see fdx8gcmath_vec.inl).
+//--------------------------------------------------------------------
+
+// this = rM * this. (Mul(rM) is this = this * rM.) The destination aliases an
+// operand, so go through a temporary.
+FINLINE CFMtx43A &CFMtx43A::RevMul( const CFMtx43A &rM ) {
+	CFMtx43A mtxTemp;
+	mtxTemp.Mul( rM, *this );
+	return Set( mtxTemp );
+}
+
 #endif	// FANG_WINGC

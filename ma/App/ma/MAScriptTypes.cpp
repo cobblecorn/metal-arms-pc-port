@@ -63,7 +63,7 @@
 #include "gstring.h"
 
 cell AMX_NATIVE_CALL Bot_SetBuddyCtrl(AMX *pAMX, cell *aParams);
-extern AIBrain_TalkModeCB( u32 uTalkModeCBControl, void *pvData1, void *pvData2 );
+extern BOOL AIBrain_TalkModeCB( u32 uTalkModeCBControl, void *pvData1, void *pvData2 );
 
 
 AMX_NATIVE_INFO MAScriptTypes_aMAEventNatives[] =

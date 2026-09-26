@@ -914,5 +914,74 @@ FINLINE u32 CFVec3A::GenKey( void ) const {
 	return (*(u32 *)&x) ^ (*(u32 *)&y) ^ (*(u32 *)&z);
 }
 
+
+//--------------------------------------------------------------------
+// Port additions.
+//
+// The GameCube build (gc/fGCmath_vec.inl) and the SSE build (fdx8math_vec.inl)
+// implement these, but this GC-layout PC configuration was only ever used by the
+// data tools, which never called them. The game runtime does, so they are supplied
+// here as plain scalar code identical in behavior to the GC reference.
+//--------------------------------------------------------------------
+
+FINLINE CFVec3A &CFVec3A::CrossVecWithY( const CFVec3A &rV ) {
+	x = -rV.z;
+	y = 0.0f;
+	z = rV.x;
+	return *this;
+}
+
+FINLINE CFVec3A &CFVec3A::UnitCrossVecWithY( const CFVec3A &rV ) {
+	return CrossVecWithY( rV ).UnitizeXZ();
+}
+
+FINLINE CFVec3A &CFVec3A::UnitCrossYWithVec( const CFVec3A &rV ) {
+	return CrossYWithVec( rV ).UnitizeXZ();
+}
+
+// Reflects this vector about rNormal. Works with non-normalized vectors.
+FINLINE CFVec3A &CFVec3A::Reflect( const CFVec3A &rNormal ) {
+	CFVec3A vTemp;
+	vTemp.Mul( rNormal, -2.0f * Dot( rNormal ) );
+	Add( vTemp );
+	return *this;
+}
+
+FINLINE CFVec3A &CFVec3A::ReceiveReflection( const CFVec3A &rV, const CFVec3A &rNormal ) {
+	Mul( rNormal, -2.0f * rV.Dot( rNormal ) ).Add( rV );
+	return *this;
+}
+
+// Projects this vector onto the plane defined by unit vector rvNormal.
+FINLINE CFVec3A &CFVec3A::PlanarProjection( const CFVec3A &rvNormal ) {
+	CFVec3A vTemp;
+	vTemp = rvNormal;
+	vTemp.Mul( rvNormal.Dot( *this ) );
+	Sub( vTemp );
+	return *this;
+}
+
+FINLINE CFVec3A &CFVec3A::ReceivePlanarProjection( const CFVec3A &rV, const CFVec3A &rvNormal ) {
+	Set( rvNormal );
+	Mul( rvNormal.Dot( rV ) );
+	Negate();
+	Add( rV );
+	return *this;
+}
+
+// TRUE if this vector is within the yaw/pitch cones around vCenter/vUp (both normalized).
+FINLINE BOOL CFVec3A::InYawPitchRange( const CFVec3A &vCenter, const CFVec3A &vUp, const f32 fYawCos, const f32 fPitchCos ) {
+	CFVec3A vProjected;
+	vProjected.ReceivePlanarProjection( *this, vUp );
+
+	if( vCenter.Dot( vProjected ) < fYawCos ) {
+		return FALSE;
+	}
+	if( Dot( vProjected ) < fPitchCos ) {
+		return FALSE;
+	}
+	return TRUE;
+}
+
 #endif	// FANG_WINGC
 

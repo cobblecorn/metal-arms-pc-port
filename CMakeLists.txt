@@ -38,7 +38,7 @@ function(ma_common_settings tgt)
     )
     target_compile_options(${tgt} PRIVATE
         $<$<COMPILE_LANGUAGE:C,CXX>:/W3 /MP /permissive /Zc:strictStrings- /Zc:wchar_t->
-        $<$<COMPILE_LANGUAGE:C,CXX>:/wd4996 /wd4244 /wd4267 /wd4305 /wd4018 /wd4101 /wd4102 /wd4800 /wd4390>
+        $<$<COMPILE_LANGUAGE:C,CXX>:/wd4996 /wd4244 /wd4267 /wd4305 /wd4018 /wd4101 /wd4102 /wd4800 /wd4390 /wd5208 /wd4091>
     )
     target_include_directories(${tgt} PRIVATE
         ${CMAKE_SOURCE_DIR}/port/compat            # d3d8/d3dx8 shims (D3D9 backend)
@@ -87,7 +87,25 @@ target_link_libraries(fang2 PUBLIC smallamx)
 # The game (compile check first; the MFC launcher gets replaced later)
 # ---------------------------------------------------------------------------
 set(MA_GAME_SOURCES ${MA_SOURCES})
+# ma/App/ma/win is the MFC launcher/tools shell; it is replaced rather than ported.
+list(FILTER MA_GAME_SOURCES EXCLUDE REGEX "^ma/App/ma/win/")
 add_library(ma_game STATIC ${MA_GAME_SOURCES})
 ma_common_settings(ma_game)
 target_include_directories(ma_game PRIVATE ${MA_ROOT}/App/ma ${MA_ROOT}/App/ma/win)
 target_link_libraries(ma_game PUBLIC fang2)
+
+# ---------------------------------------------------------------------------
+# The executable: plain Win32 entry point (replaces the MFC launcher)
+# ---------------------------------------------------------------------------
+add_executable(ma_port port/main_win.cpp port/screenshot_port.cpp)
+ma_common_settings(ma_port)
+target_include_directories(ma_port PRIVATE ${MA_ROOT}/App/ma ${MA_ROOT}/App/ma/win)
+target_link_libraries(ma_port PRIVATE
+    ma_game fang2 smallamx
+    ${MA_ROOT}/Lib/Bink/binkw32.lib
+    d3d9 dinput8 dxguid dsound winmm ws2_32 msacm32
+    user32 gdi32 advapi32 ole32 shell32 comdlg32)
+add_custom_command(TARGET ma_port POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${MA_ROOT}/App/ma/win/binkw32.dll $<TARGET_FILE_DIR:ma_port>
+    COMMENT "Copying binkw32.dll")

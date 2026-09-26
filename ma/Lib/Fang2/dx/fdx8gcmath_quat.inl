@@ -1176,5 +1176,46 @@ FINLINE CFTQuatA &CFTQuatA::ReceiveSlerpOf( const f32 &fUnitSlerp0, const f32 &f
 	return *this;
 }
 
+
+//--------------------------------------------------------------------
+// Port additions (see fdx8gcmath_vec.inl): implemented for the GC and SSE
+// builds, needed by the game runtime, absent from this GC-layout PC config.
+//--------------------------------------------------------------------
+
+FINLINE CFQuatA &CFQuatA::Set( const CFVec3A &rV ) {	// Important: This must set the quat's W to 0
+	x = rV.x;
+	y = rV.y;
+	z = rV.z;
+	w = 0.0f;
+	return *this;
+}
+
+FINLINE CFQuatA &CFQuatA::BuildQuatRotX( const f32 &fRadiansToRotateBy ) {
+	f32 fSin;
+	fmath_SinCos( 0.5f*fRadiansToRotateBy, &fSin, &w );
+	x = fSin;
+	y = 0.0f;
+	z = 0.0f;
+	return *this;
+}
+
+FINLINE CFQuatA &CFQuatA::BuildQuatRotY( const f32 &fRadiansToRotateBy ) {
+	f32 fSin;
+	fmath_SinCos( 0.5f*fRadiansToRotateBy, &fSin, &w );
+	x = 0.0f;
+	y = fSin;
+	z = 0.0f;
+	return *this;
+}
+
+FINLINE CFQuatA &CFQuatA::BuildQuatRotZ( const f32 &fRadiansToRotateBy ) {
+	f32 fSin;
+	fmath_SinCos( 0.5f*fRadiansToRotateBy, &fSin, &w );
+	x = 0.0f;
+	y = 0.0f;
+	z = fSin;
+	return *this;
+}
+
 #endif	// FANG_WINGC
 
