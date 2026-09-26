@@ -91,7 +91,7 @@ differences remain; nothing is linked.
 ## 4. GameCube-layout math audit (`tools/mathdiff/`, `dx/fdx8gcmath_vec.inl`, `dx/fdx8gcmath_mtx.inl`)
 
 **Why.** The WINGC build runs `dx/fdx8gcmath_*.inl`, scalar code that was tools-only in the original
-project and never ran in the shipped game. One bug there already froze turret yaw (HANDOFF section 24).
+project and never ran in the shipped game. One bug there already froze turret yaw (`docs/handoff-history.md` section 24).
 A text diff against `gc/fGCmath_*.inl` is useless (paired-single assembly), so this compares behaviour.
 
 **What.** `tools/mathdiff/mathdiff.py` generates a program that calls every inline method both
@@ -131,7 +131,7 @@ Requires `clang gcc-multilib g++-multilib`.
 
 ## 5. Failed level loads: tear down before releasing memory (`ma/App/ma/game.cpp`)
 
-**Why.** HANDOFF section 24: after a level fails to load (e.g. `wewchold_01`'s Mini_Game table),
+**Why.** `docs/handoff-history.md` section 24: after a level fails to load (e.g. `wewchold_01`'s Mini_Game table),
 teardown "trips over other objects left in the released frame".
 
 **Cause.** `_PostWorldLoadGameInit()` took a resource frame before creating the player bots, and on
@@ -193,3 +193,15 @@ A design for mouse-driven front-end menus, from reading `wpr_system.cpp`, `wpr_d
 - pointer art options (menu font arrow glyphs, the reticle textures, or a search of retail `tfm*`/`tfh*`
   textures), since the consoles had no pointer;
 - rules so mouse and pads coexist, a step-by-step plan, and what to verify in a run.
+
+## 8. HANDOFF.md rewritten as a current-state guide
+
+The old `HANDOFF.md` (905 lines of chronological session addenda, sections 1-24) contradicted itself:
+"never push" alongside the private remote, blockers long since fixed, two sections numbered 13, and a
+commit trailer naming one specific model. It moved **verbatim** to `docs/handoff-history.md` (with a
+note at the top), so nothing was lost. The new `HANDOFF.md` has:
+- the repository rules (retail data check, pushing, trailers, CRLF);
+- the layout, build/run, debugging and retail-data tools;
+- a section for Linux/cloud sessions;
+- what works, what is changed but unverified, a prioritized open list (including the resolved
+  checkpoint and emitter items from section 24 removed), and the pitfalls that cost time before.
