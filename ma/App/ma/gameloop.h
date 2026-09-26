@@ -104,6 +104,7 @@ typedef struct {
 	u32 *pauInputEmulationMap;    // DX8 only, ignored on other platforms.
 	u8 *pszInputEmulationDevName; // DX8 only, ignored on other platforms.
 	BOOL bInstallAudio;
+	BOOL bLoadRegisteredMission; // Port: resolve quick-launch world through the mission registry.
 	BOOL bLoadWorldOnly; // Port diagnostic: load a world resource, then exit before localized game setup.
 	BOOL bPlayerDeath;
 	BOOL bDebugAI;
@@ -191,6 +192,7 @@ extern void gameloop_EnableOverlayDrawElements( BOOL bEnableHUD, BOOL bEnableDeb
 
 // call to get the level name to skip to
 extern cchar *gameloop_GetSkipLevelName( void );
+extern BOOL gameloop_GetSkipLevelUseMissionData( void );
 
 extern void gameloop_ResetIdleTimer();
 extern void gameloop_EnableIdleTimer( BOOL bEnable );

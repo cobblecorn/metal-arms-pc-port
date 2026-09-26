@@ -583,6 +583,10 @@ cchar *gameloop_GetSkipLevelName( void ) {
 	return _InitParms.pszInputFilename;
 }
 
+BOOL gameloop_GetSkipLevelUseMissionData( void ) {
+	return _InitParms.bLoadRegisteredMission;
+}
+
 void gameloop_ResetIdleTimer() {
 	_fIdleTimer = 0.0f;
 }

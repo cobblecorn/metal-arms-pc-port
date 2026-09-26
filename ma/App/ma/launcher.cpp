@@ -26,6 +26,7 @@
 #include "fviewport.h"
 #include "ftext.h"
 #include "game.h"
+#include "level.h"
 #include "player.h"
 #include "gamesave.h"
 #include "fperf.h"
@@ -657,6 +658,22 @@ static BOOL _StartQuickSkipLevel( BOOL bLoadTestMode ) {
 		playerprofile_Set( i, NULL );
 	}
 	
+	if( gameloop_GetSkipLevelUseMissionData() ) {
+		for( s32 index=0; index<Level_nCount; ++index ) {
+			const Level_t &mission = Level_aInfo[index];
+			if( mission.pszWorldResName && !fclib_stricmp( mission.pszWorldResName, pszLevelName ) &&
+				mission.nLevel >= 0 && mission.nLevel < LEVEL_SINGLE_PLAYER_COUNT ) {
+				DEVPRINTF( "Mission launch: %s, world=%s, data=%s, materials=%s.\n",
+					mission.pszTitle, mission.pszWorldResName, mission.pszCSVFile, mission.pszMaterialCSVFile );
+				if( !game_LoadLevel( mission.pszTitle, FALSE, NULL ) ) return FALSE;
+				gameloop_ShowFPS( TRUE );
+				return TRUE;
+			}
+		}
+		DEVPRINTF( "Mission launch: no registered single-player mission for world '%s'.\n", pszLevelName );
+		return FALSE;
+	}
+
 	// load the selected level...
 	if( !game_LoadGenericDebugLevel( pszLevelName ) ) {
 		return FALSE;

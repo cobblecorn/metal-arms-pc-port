@@ -714,6 +714,7 @@ void CMa_winDlg::OnButtonRun() {
 		// fill in a gameloop init parms struct to start the gameloop
 		GameloopInitParm_t GameloopParms;
 		GameloopParms.bLoadWorldOnly = FALSE;
+		GameloopParms.bLoadRegisteredMission = FALSE;
 		GameloopParms.fTargetFPS = GAMELOOP_DEFAULT_TARGET_FPS;
 		GameloopParms.bSkipLevelSelect = m_bSkipLevelSelect;
 		GameloopParms.bViewBounds = ( ((CButton *)GetDlgItem( IDC_VIEW_BOUNDS ))->GetCheck() == 1 );

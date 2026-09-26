@@ -21,10 +21,20 @@ Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see belo
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world>] [-world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>]
 
-`-level <world>` starts the normal generic level path. `-world-only <world>` loads and converts
-the WLD resource, then exits before localized setup and gameplay entity creation.
+`-level <world>` starts the generic debug level path using `Level01` configuration.
+`-mission <world>` resolves a registered single-player mission and uses its own configuration,
+material table and normal level-loading path. Unknown/unregistered worlds fail explicitly.
+`-world-only <world>` loads and converts the WLD resource, then exits before localized setup
+and gameplay entity creation. These three launch modes are mutually exclusive.
+
+For the mission path with engine captures:
+
+    ma_port -data gamedata/files -mission wecdsneak01 -log build/logs/mission.log -shots build/shots-mission -shot-every 1800
+
+Mission launch builds successfully but has not been exercised in-game. Script execution,
+objectives, transitions and saves remain unverified; this is not a complete campaign launch.
 
 `tools/mst_list.py` lists/extracts a `.mst` master file (GameCube byte order).
 `tools/gamedata_dump.py` inspects extracted binary `.csv` game-data tables as indexed JSON;
@@ -133,8 +143,10 @@ environment variables remain available.
       approximation that needs review.
 - [ ] Convert scripts (`.sma`) and other runtime resources. Confirmed via
       `CFScriptSystem::LoadScriptsFromFile : No script names found for this level.` that no
-      scripts even attempt to run for the levels tested so far - so whatever else is wrong,
-      it isn't yet a script-conversion problem for these specific levels.
+      scripts were requested by the generic `Level01` launch configuration. The retail
+      `wecdsneak01` configuration does contain scripts; use the new mission path to investigate
+      their actual loading and execution. The old generic-run log does not establish mission
+      script compatibility.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
 - [x] Keyboard controls and direct raw mouse look, confirmed interactively in `wecdsneak01`.
       XInput mapping includes deadzones, separate triggers, focus handling, and hotplug support.

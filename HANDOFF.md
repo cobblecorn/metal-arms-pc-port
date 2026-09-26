@@ -682,3 +682,30 @@ computed from validated integers. The limited-ammo flags still skip the requeste
 Debug build succeeded (`build/logs/inventory-slots-build.log`). No runtime replay or automated
 tests were run. This fixes serialized item-name filtering; runtime weapon creation failures
 remain governed by the earlier weapon-selection guards. Q/E behavior remains unconfirmed.
+
+
+## 20. ADDENDUM (2026-09-26) - registered mission launch
+
+The generic `-level` path always loads the `Level01` CSV and generic materials. This explains
+why the existing no-script-names log does not tell us whether retail mission scripts work.
+Decoded `wecdsneak01.csv` with `gamedata_dump.py`; its `scripts` table contains script names
+(report under ignored `build/logs/night-sneak-scripts.json`). The source registry already maps
+this world to the Night Sneak configuration and material table.
+
+New `-mission <world>` sets a separate game-init flag. Quick launch resolves a registered
+single-player world (case-insensitive) and calls `game_LoadLevel(title, FALSE, NULL)`, the same
+normal load path used by the developer level selector. This loads mission metadata, scripts,
+inventory, materials and post-world AI setup. Unknown worlds fail without falling back to the
+generic configuration. `-level`, `-mission` and `-world-only` are mutually exclusive. The old
+Windows launcher initializes the new flag false; console static init structures default false.
+
+Debug build succeeded: `build/logs/mission-launch-build.log`. No game launch, fresh engine
+snapshot or runtime test was performed. Next runtime invocation can retain the capture flow:
+
+```powershell
+.\build\Debug\ma_port.exe -data gamedata\files -mission wecdsneak01 -log build\logs\mission.log -shots build\shots-mission -shot-every 1800
+```
+
+This is a mission debugging entry point, not complete profile/campaign progression. Script
+bytecode/native binding compatibility, mission startup, objectives and level transitions remain
+unproven. Do not claim that the previous generic scene demonstrates any of those requirements.

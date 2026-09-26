@@ -6,12 +6,13 @@
 // runs the game on its own thread. This thread owns the render window, so it just
 // pumps messages until the game asks to exit.
 //
-// Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource>] [-world-only <world-resource>] [-log <file>]
+// Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource>] [-world-only <world-resource>] [-log <file>]
 //
 //   -data <dir>     directory holding the game's data (default: gamedata\files)
 //   -mst <file>     master file name inside the data dir (default: mettlearms_gc.mst)
 //   -res WxH        window/screen resolution (default: 1280x960)
 //   -fullscreen     run fullscreen instead of in a window
+//   -mission <name> load a registered single-player world with its mission data
 //   -level <name>    launch a world directly as a generic debug level
 //   -world-only <name> load a world resource, then exit before game/audio setup
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
@@ -48,6 +49,7 @@ static char _szMasterFile[MAX_PATH * 2];		// full path
 static char _szMovieDir[MAX_PATH * 2];
 static char _szLogFile[MAX_PATH];
 static char _szStartLevel[64];
+static char _szMission[64];
 static char _szWorldOnly[64];
 static int _nReqWidth = 1280, _nReqHeight = 960;
 static bool _bFullscreen = false;
@@ -243,6 +245,7 @@ static bool _ParseArgs( int argc, char **argv )
 	strcpy( _szMasterName, _DEFAULT_MASTER_FILE );
 	strcpy( _szLogFile, _DEFAULT_LOG_FILE );
 	_szStartLevel[0] = 0;
+	_szMission[0] = 0;
 	_szWorldOnly[0] = 0;
 
 	for( int i = 1; i < argc; i++ )
@@ -254,6 +257,7 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-mst" ) && bHasValue )			strncpy( _szMasterName, argv[++i], MAX_PATH - 1 );
 		else if( !_stricmp( pszArg, "-log" ) && bHasValue )			strncpy( _szLogFile, argv[++i], MAX_PATH - 1 );
 		else if( !_stricmp( pszArg, "-level" ) && bHasValue )		strncpy( _szStartLevel, argv[++i], sizeof(_szStartLevel) - 1 );
+		else if( !_stricmp( pszArg, "-mission" ) && bHasValue )		strncpy( _szMission, argv[++i], sizeof(_szMission) - 1 );
 		else if( !_stricmp( pszArg, "-world-only" ) && bHasValue )	strncpy( _szWorldOnly, argv[++i], sizeof(_szWorldOnly) - 1 );
 		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
 		else if( !_stricmp( pszArg, "-mouse-sensitivity" ) && bHasValue ) {
@@ -283,9 +287,9 @@ static bool _ParseArgs( int argc, char **argv )
 			return false;
 		}
 	}
-	if( _szStartLevel[0] && _szWorldOnly[0] )
+	if( (!!_szStartLevel[0] + !!_szWorldOnly[0] + !!_szMission[0]) > 1 )
 	{
-		_Log( "Choose either -level or -world-only.\n" );
+		_Log( "Choose only one of -level, -mission, or -world-only.\n" );
 		_Usage();
 		return false;
 	}
@@ -420,14 +424,15 @@ int main( int argc, char **argv )
 	memset( &_GameInitParms, 0, sizeof(_GameInitParms) );
 
 	_GameInitParms.fTargetFPS = GAMELOOP_DEFAULT_TARGET_FPS;
-	_GameInitParms.bSkipLevelSelect = _szStartLevel[0] != 0;
+	_GameInitParms.bSkipLevelSelect = _szStartLevel[0] != 0 || _szMission[0] != 0;
+	_GameInitParms.bLoadRegisteredMission = _szMission[0] != 0;
 	_GameInitParms.nAnimPlaybackRate = GAMELOOP_DEFAULT_ANIM_PLAYBACK;
 	_GameInitParms.bViewBounds = GAMELOOP_DEFAULT_VIEW_BOUNDS;
 	_GameInitParms.bShowFPS = FALSE;
 	_GameInitParms.bDrawScreenSafeArea = FALSE;
 	_GameInitParms.nPlatform = GAMELOOP_PLATFORM_GC;			// the retail data set is the GameCube one
 	_GameInitParms.nMaxSoundMgrSounds = GAMELOOP_DEFAULT_MAX_SOUNDS;
-	_GameInitParms.pszInputFilename = _szStartLevel[0] ? _szStartLevel : NULL;	// Non-empty = quick launch this world as a generic debug level.
+	_GameInitParms.pszInputFilename = _szMission[0] ? _szMission : (_szStartLevel[0] ? _szStartLevel : NULL);
 	_GameInitParms.pszScreenShotDir = GAMELOOP_DEFAULT_SCREENSHOT_DIR;
 	_GameInitParms.BGColorRGB.Black();
 	_GameInitParms.pExitFunc = _GameloopExit;
