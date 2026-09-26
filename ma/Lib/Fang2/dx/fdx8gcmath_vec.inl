@@ -123,7 +123,17 @@ FINLINE f32 CFVec4A::MagSqXZ( void ) const { return v3.MagXZ2(); }
 FINLINE f32 CFVec4A::InvMagXZ( void ) const { return v3.InvMagXZ(); }
 FINLINE f32 CFVec4A::InvMagSqXZ( void ) const { return v3.InvMagXZ2(); }
 
-FINLINE CFVec4A &CFVec4A::ReceiveUnitXZ( const CFVec4A &rV ) { v3 = rV.v3.UnitXZ(); return *this; }
+// As on the GameCube (gc/fGCmath_vec.inl) and the SSE build: y and w are zeroed. CFVec3::UnitXZ() keeps y.
+FINLINE CFVec4A &CFVec4A::ReceiveUnitXZ( const CFVec4A &rV ) {
+	f32 fInvMagXZ = rV.v3.InvMagXZ();
+
+	x = rV.x * fInvMagXZ;
+	y = 0.0f;
+	z = rV.z * fInvMagXZ;
+	w = 0.0f;
+
+	return *this;
+}
 FINLINE CFVec4A &CFVec4A::UnitizeXZ( void ) { v3.UnitizeXZ(); return *this; }
 
 FINLINE f32 CFVec4A::UnitAndMagXZ( const CFVec4A &rV ) {

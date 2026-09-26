@@ -52,6 +52,11 @@ build (Linux/cloud): clang against MinGW-w64 headers with flags that mimic the M
 catches type errors and wrong API use, not everything MSVC would; it never links or runs.
 `python3 tools/syntax_check.py --changed HEAD` checks the C/C++ files changed since HEAD.
 
+`tools/mathdiff/mathdiff.py` runs the GC-layout math (`dx/fdx8gcmath_*.inl`, the scalar code this
+build uses) and the shipped SSE math (`dx/fdx8math_*.inl`) on the same inputs as 32-bit Linux programs
+and reports methods whose results differ. Known differences are documented in the tool; each was
+checked against the retail GameCube code (`gc/fGCmath_*.inl`). Run it after changing the GC-layout math.
+
 ## Saves
 
 Player profiles are saved in `%APPDATA%\Metal Arms PC Port\Saves` (override with `-save-dir <dir>`

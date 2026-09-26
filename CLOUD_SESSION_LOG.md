@@ -87,3 +87,44 @@ differences remain; nothing is linked.
 - `.gitignore`: ignore `__pycache__/`; untracked the accidentally committed
   `tools/__pycache__/mst_list.cpython-312.pyc`.
 - `PORTING.md`: `-save-dir` in the usage line, a Saves section, the checker, and the save status.
+
+## 4. GameCube-layout math audit (`tools/mathdiff/`, `dx/fdx8gcmath_vec.inl`, `dx/fdx8gcmath_mtx.inl`)
+
+**Why.** The WINGC build runs `dx/fdx8gcmath_*.inl`, scalar code that was tools-only in the original
+project and never ran in the shipped game. One bug there already froze turret yaw (HANDOFF section 24).
+A text diff against `gc/fGCmath_*.inl` is useless (paired-single assembly), so this compares behaviour.
+
+**What.** `tools/mathdiff/mathdiff.py` generates a program that calls every inline method both
+`fdx8gcmath_*.inl` (GC layout) and `fdx8math_*.inl` (shipped SSE/x87 PC/Xbox code) define, 366 methods
+of CFVec3A/CFVec4A/CFMtx43A/CFMtx44A/CFQuatA/CFTQuatA (all but constructors), plus the out-of-line
+`CFMtx43A::ReceiveInverse`/`Invert`, on the same deterministic inputs, builds it for both layouts as
+32-bit Linux code, runs both, and diffs the results. Clang needs two adjustments to build the SSE
+code, both in the tool only: an MSVC-style `__m128` (the intrinsics map to the real SSE instructions),
+and `mov reg, <reference parameter>` in inline assembly rewritten to `lea` (MSVC loads the reference's
+address; clang loads the object).
+
+Every difference was checked by hand against the retail GameCube code, which is what this port should
+match.
+
+**Fixed (GC layout disagreed with retail GC and with SSE):**
+- `CFVec4A::ReceiveUnitXZ` kept `y` from the argument and left `w` untouched; retail zeroes both.
+  Current callers use `CFVec3A` (correct), so this was latent.
+- `CFMtx44A::Mul( rM, fVal )` went through `CFMtx44::operator*( f32 )`, which returns a `CFMtx43` and
+  drops the `w` column (`[3][3]` became 0). Now scales all 16 elements. No current game callers.
+
+**Explained, left alone (13; listed in `KNOWN_DIFFERENCES` in the tool):**
+- `CFVec3A` XZ normalize (`UnitAndMagXZ`, `SafeUnitAndMagXZ`, `SafeUnitAndInvMagXZ`): retail GC sets
+  `y = 0`, as the GC layout does; the SSE code keeps `y`.
+- `CFVec4A` XZ normalize variants: commented out in retail GC, so no game code relies on them.
+- `CFMtx43A::Mul33( rM, f )`: retail GC copies `rM`'s position, as the GC layout does.
+- Shipped SSE bugs (Xbox/PC only; the GC layout matches retail GC): `CFVec4A::Sub( rV, f )` computes
+  `f - rV`; `CFMtx44A::MulPoint`/`MulDir` on `CFVec4A` read `x, y` where they should read `z, w`.
+
+The quaternion methods, matrix inverse and everything else agree within float tolerance (the SSE code
+uses ~12-bit `rcpps`/`rsqrtps` approximations).
+
+**Checked.** The tool reported both bugs before the fix and not after; syntax check of files that include
+the math. **Verify in a run:** nothing specific to look for (no current callers of the fixed methods).
+
+**Use it.** `python3 tools/mathdiff/mathdiff.py` (about 90 s); run it after touching `fdx8gcmath_*.inl`.
+Requires `clang gcc-multilib g++-multilib`.

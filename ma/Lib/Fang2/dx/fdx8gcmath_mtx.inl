@@ -132,7 +132,16 @@ FINLINE CFMtx44A &CFMtx44A::Set( const f32 &ff00, const f32 &ff01, const f32 &ff
 
 FINLINE CFMtx44A &CFMtx44A::Mul( const CFMtx44A &rM1, const CFMtx44A &rM2 ) { m44 = rM1.m44 * rM2.m44; return *this; }
 FINLINE CFMtx44A &CFMtx44A::Mul( const CFMtx44A &rM ) { m44 *= rM.m44; return *this; }
-FINLINE CFMtx44A &CFMtx44A::Mul( const CFMtx44A &rM, const f32 &fVal ) { m44 = rM.m44 * fVal; return *this; }
+// Scales all 16 elements, as on the GameCube and the SSE build. Not m44 * fVal: CFMtx44::operator*( f32 )
+// returns a CFMtx43, which drops the w column.
+FINLINE CFMtx44A &CFMtx44A::Mul( const CFMtx44A &rM, const f32 &fVal ) {
+	m_vRight.Mul( rM.m_vRight, fVal );
+	m_vUp.Mul( rM.m_vUp, fVal );
+	m_vFront.Mul( rM.m_vFront, fVal );
+	m_vPos.Mul( rM.m_vPos, fVal );
+
+	return *this;
+}
 FINLINE CFMtx44A &CFMtx44A::Mul( const f32 &fVal ) { m44 *= fVal; return *this; }
 
 FINLINE CFVec3A &CFMtx44A::MulPoint( CFVec3A &rRV, const CFVec3A &rV ) const { rRV.v3 = m44.MultPoint( rV.v3 ); return rRV; }
