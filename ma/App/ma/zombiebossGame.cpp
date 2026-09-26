@@ -95,7 +95,7 @@ void CZombieBossGame::_Work( void )
 	
 	if (m_nState == _STATE_ACTIVE)
 	{
-		if (m_pMozerCage->NormHealth() <= 0.0f)
+		if (m_pMozerCage && m_pMozer && m_pMozerCage->NormHealth() <= 0.0f)
 		{
 			if (m_pMozer->NormHealth() > 0.0f)
 			{
@@ -168,6 +168,16 @@ BOOL CZombieBossGame::Create( void )
 		goto _ExitWithError;
 	}
 	m_pBossBot = (CBotZombieBoss*)pEntity;
+
+#if FANG_WINGC
+	// The retail GameCube CZombieBossGame looks up only the boss and ends the level when its
+	// death is over; the retail world has no 'mozer01' and the cage/Mozer lose rule is gone.
+	m_pMozerCage = NULL;
+	m_pMozer = NULL;
+	m_nState = _STATE_ACTIVE;
+	m_fTimer = 0.0f;
+	return TRUE;
+#endif
 
 	pEntity = CEntity::Find( "mozercage" );
 	if (!pEntity)
