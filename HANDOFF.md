@@ -602,3 +602,44 @@ The source nevertheless contains both matching defects:
 Debug `ma_port` build succeeds (`build/logs/weapon-selection-build.log`). No runtime replay or
 new tests were run for this change. Throwable selection/throwing still needs interactive
 confirmation, as does the Q/E menu discrepancy. The build was not launched automatically.
+
+
+## 17. ADDENDUM (2026-09-26) - retail weapon schema investigation
+
+Added `tools/gamedata_dump.py`, a read-only decoder of serialized big-endian Fang game-data
+files. It checks file size, offset ranges, table indices, field types, terminators, and finite
+floats; emits indexed, typed JSON fields. These `.csv` assets are binary, not spreadsheet CSV.
+The decoder follows `FDataGamFile_Header_t`, `FDataGamFile_Table_t`, and `FDataGamFile_Field_t`
+in `fdata.h`. Reports contain asset data: keep them under ignored `build/`, never stage them.
+
+Decoded both extracted retail assets successfully:
+
+```powershell
+python tools/gamedata_dump.py gamedata/mst/w_blaster.csv --output build/logs/blaster-retail-schema.json
+python tools/gamedata_dump.py gamedata/mst/w_laser.csv --output build/logs/laser-retail-schema.json
+```
+
+Evidence and next implementation requirements (all field indices zero-based):
+
+- Blaster: three tables, `blasterl1` through `blasterl3`, each 45 fields. The source vocabulary
+  expects 43 fields. Retail fields 0-37 have the expected type sequence; 38 and 39 are extra
+  floats with semantics not yet established. The four sound-group names and decal occupy
+  40-44, corresponding to source fields 38-42. Do not treat matching types as proof that every
+  numeric field's meaning is unchanged.
+- Retail has no `BlasterMil` or `BlasterMil_Possessed` tables. The source reserves five EUK
+  slots. `fgamedata_ReadFileUsingMap` only visits tables present in the file and does not
+  require every map entry to exist. Simply skipping the two extra floats would leave two
+  variants zeroed while returning success. `_ComputeCartridgeShellMatrices` subsequently
+  divides by their zero clip counts; other loops load their null mesh names. Handle missing
+  variants throughout initialization, resources, creation and upgrade selection, without
+  inventing military values by copying a player variant.
+- Laser: all five expected table names exist, each with 73 fields. The old vocabulary expects
+  23 fields. Field 1 is a bone-name string where the old code expects clip ammo. This is a
+  structural redesign, not a tail-field extension. Do not enable the old loader by dropping
+  arbitrary fields. Later retail strings include charge/burst/ricochet sound groups absent
+  from the old property structure; their presence suggests additional mechanics but does not
+  establish their numeric schema or runtime behavior.
+
+No weapon loader was enabled in this investigation. Both remain explicitly unavailable until
+compatible mapping and resource handling are implemented. No game process was launched or
+terminated, and no tests were added or run. The decoder was used to inspect the two real assets.

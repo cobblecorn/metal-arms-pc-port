@@ -27,6 +27,8 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
 the WLD resource, then exits before localized setup and gameplay entity creation.
 
 `tools/mst_list.py` lists/extracts a `.mst` master file (GameCube byte order).
+`tools/gamedata_dump.py` inspects extracted binary `.csv` game-data tables as indexed JSON;
+write reports under ignored `build/` because they contain retail asset values.
 
 ## Desktop controls
 
