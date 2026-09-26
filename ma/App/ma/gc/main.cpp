@@ -199,6 +199,7 @@ static void* GCmain( void *pParam )
 	_GameInitParms.VidWin.fUnitFSAA = 0.0f;
 	_GameInitParms.VidWin.nSwapInterval = 0;
 	_GameInitParms.bInstallAudio = TRUE;
+	_GameInitParms.bLoadWorldOnly = FALSE;
 	_GameInitParms.bDemoLaunched = FALSE;
 	_GameInitParms.uTimeoutInterval = 0;
 

@@ -1,8 +1,10 @@
 #include "gcdata.h"
 
 #include "fdata.h"
+#include "fanim.h"
 #include "fparticle.h"
 #include "fres.h"
+#include "fvis.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -21,6 +23,166 @@ static u32 _ReadBE32( const u8 *pData )
 static BOOL _IsRangeValid( u32 nOffset, u32 nLength, u32 nTotalBytes )
 {
 	return nOffset <= nTotalBytes && nLength <= nTotalBytes - nOffset;
+}
+
+static BOOL _IsArrayRangeValid( u32 nOffset, u32 nCount, u32 nStride, u32 nTotalBytes )
+{
+	if( nCount && (!nOffset || !nStride || nCount > 0xffffffffu / nStride) ) return FALSE;
+	return _IsRangeValid( nOffset, nCount * nStride, nTotalBytes );
+}
+
+static void _ConvertBE16Array( void *pData, u32 nCount )
+{
+	u8 *pBytes = (u8 *)pData;
+	for( u32 i=0; i<nCount; i++ )
+	{
+		u16 nValue = _ReadBE16( pBytes + i * sizeof(u16) );
+		memcpy( pBytes + i * sizeof(u16), &nValue, sizeof(nValue) );
+	}
+}
+
+static void _ConvertBE32Array( void *pData, u32 nCount )
+{
+	u8 *pBytes = (u8 *)pData;
+	for( u32 i=0; i<nCount; i++ )
+	{
+		u32 nValue = _ReadBE32( pBytes + i * sizeof(u32) );
+		memcpy( pBytes + i * sizeof(u32), &nValue, sizeof(nValue) );
+	}
+}
+
+static BOOL _ConvertAnimation( void *pData, u32 nBytes, cchar *pszResName )
+{
+	if( !pData || nBytes < sizeof(FAnim_t) ) return FALSE;
+	u8 *pBytes = (u8 *)pData;
+	const u16 nFlags = _ReadBE16( pBytes + offsetof(FAnim_t, nFlags) );
+	const u16 nBoneCount = _ReadBE16( pBytes + offsetof(FAnim_t, nBoneCount) );
+	const u32 nBoneOffset = _ReadBE32( pBytes + offsetof(FAnim_t, pBoneArray) );
+	const u32 nKnownFlags = FANIM_BONEFLAGS_COMP_TRANSLATION | FANIM_BONEFLAGS_COMP_ORIENTATION |
+		FANIM_BONEFLAGS_8BIT_SECS | FANIM_BONEFLAGS_16BIT_SECS | FANIM_BONEFLAGS_8BIT_FRAMECOUNT;
+	if( (nFlags & ~nKnownFlags) ||
+		((nFlags & FANIM_BONEFLAGS_8BIT_SECS) && (nFlags & FANIM_BONEFLAGS_16BIT_SECS)) ||
+		!nBoneCount || nBoneCount > FDATA_MAX_BONE_COUNT ||
+		!_IsArrayRangeValid( nBoneOffset, nBoneCount, sizeof(FAnimBone_t), nBytes ) ||
+		nBoneOffset < sizeof(FAnim_t) )
+	{
+		DEVPRINTF( "gcdata: invalid GameCube animation header in '%s'.\n", pszResName ? pszResName : "(unnamed)" );
+		return FALSE;
+	}
+
+	const u32 nBoneArrayEnd = nBoneOffset + (u32)nBoneCount * sizeof(FAnimBone_t);
+	const u32 nTimeStride = (nFlags & FANIM_BONEFLAGS_8BIT_SECS) ? 1 :
+		((nFlags & FANIM_BONEFLAGS_16BIT_SECS) ? 2 : 4);
+	const u32 nTransStride = (nFlags & FANIM_BONEFLAGS_COMP_TRANSLATION) ? 6 : 12;
+	const u32 nOrientStride = (nFlags & FANIM_BONEFLAGS_COMP_ORIENTATION) ? 8 : 16;
+	struct _TrackRange_t { u32 nStart, nEnd; };
+	_TrackRange_t aTrackRange[FDATA_MAX_BONE_COUNT * 6];
+	u32 nTrackRangeCount = 0;
+
+	for( u32 i=0; i<nBoneCount; i++ )
+	{
+		const u32 nBonePos = nBoneOffset + i * sizeof(FAnimBone_t);
+		const u32 nNameOffset = _ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, pszName) );
+		const u16 anKeyCount[3] = {
+			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nSKeyCount) ),
+			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nTKeyCount) ),
+			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nOKeyCount) )
+		};
+		const u32 anTimeOffset[3] = {
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paSKeyUnitTime) ),
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paTKeyUnitTime) ),
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paOKeyUnitTime) )
+		};
+		const u32 anDataOffset[3] = {
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paSKeyData) ),
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paTKeyData) ),
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paOKeyData) )
+		};
+		const u32 anDataStride[3] = { 4, nTransStride, nOrientStride };
+
+		if( !nNameOffset || nNameOffset < nBoneArrayEnd || nNameOffset >= nBytes ||
+			!memchr( pBytes + nNameOffset, 0, nBytes - nNameOffset ) )
+		{
+			DEVPRINTF( "gcdata: invalid bone name in GameCube animation '%s' (bone %u).\n", pszResName ? pszResName : "(unnamed)", i );
+			return FALSE;
+		}
+
+		for( u32 k=0; k<3; k++ )
+		{
+			const u32 nCount = anKeyCount[k];
+			const u32 nTimeBytes = nCount * nTimeStride;
+			const u32 nDataBytes = nCount * anDataStride[k];
+			u32 nDataAlignment = 4;
+			if( k == 1 && (nFlags & FANIM_BONEFLAGS_COMP_TRANSLATION) ) nDataAlignment = 2;
+			if( k == 2 && (nFlags & FANIM_BONEFLAGS_COMP_ORIENTATION) ) nDataAlignment = 2;
+			if( nCount < 2 || ((nFlags & FANIM_BONEFLAGS_8BIT_FRAMECOUNT) && nCount >= 256) ||
+				!_IsArrayRangeValid( anTimeOffset[k], nCount, nTimeStride, nBytes ) ||
+				!_IsArrayRangeValid( anDataOffset[k], nCount, anDataStride[k], nBytes ) ||
+				anTimeOffset[k] < nBoneArrayEnd || anDataOffset[k] < nBoneArrayEnd ||
+				(anTimeOffset[k] % nTimeStride) || (anDataOffset[k] % nDataAlignment) )
+			{
+				DEVPRINTF( "gcdata: invalid key data in GameCube animation '%s' (bone %u track %u).\n", pszResName ? pszResName : "(unnamed)", i, k );
+				return FALSE;
+			}
+			aTrackRange[nTrackRangeCount].nStart = anTimeOffset[k];
+			aTrackRange[nTrackRangeCount++].nEnd = anTimeOffset[k] + nTimeBytes;
+			aTrackRange[nTrackRangeCount].nStart = anDataOffset[k];
+			aTrackRange[nTrackRangeCount++].nEnd = anDataOffset[k] + nDataBytes;
+		}
+	}
+
+	for( u32 i=0; i<nTrackRangeCount; i++ )
+		for( u32 j=i+1; j<nTrackRangeCount; j++ )
+			if( aTrackRange[i].nStart < aTrackRange[j].nEnd && aTrackRange[j].nStart < aTrackRange[i].nEnd )
+			{
+				DEVPRINTF( "gcdata: overlapping key arrays in GameCube animation '%s'.\n", pszResName ? pszResName : "(unnamed)" );
+				return FALSE;
+			}
+
+	FAnim_t *pAnim = (FAnim_t *)pData;
+	pAnim->ChangeEndian();
+	FAnimBone_t *pBoneArray = (FAnimBone_t *)(pBytes + nBoneOffset);
+	for( u32 i=0; i<nBoneCount; i++ )
+	{
+		FAnimBone_t *pBone = &pBoneArray[i];
+		const u32 nBonePos = nBoneOffset + i * sizeof(FAnimBone_t);
+		const u16 anKeyCount[3] = {
+			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nSKeyCount) ),
+			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nTKeyCount) ),
+			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nOKeyCount) )
+		};
+		const u32 anTimeOffset[3] = {
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paSKeyUnitTime) ),
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paTKeyUnitTime) ),
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paOKeyUnitTime) )
+		};
+		const u32 anDataOffset[3] = {
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paSKeyData) ),
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paTKeyData) ),
+			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paOKeyData) )
+		};
+		pBone->ChangeEndian();
+
+		if( nTimeStride == 2 )
+			for( u32 k=0; k<3; k++ ) _ConvertBE16Array( pBytes + anTimeOffset[k], anKeyCount[k] );
+		else if( nTimeStride == 4 )
+			for( u32 k=0; k<3; k++ ) _ConvertBE32Array( pBytes + anTimeOffset[k], anKeyCount[k] );
+
+		_ConvertBE32Array( pBytes + anDataOffset[0], anKeyCount[0] );
+		if( nFlags & FANIM_BONEFLAGS_COMP_TRANSLATION ) _ConvertBE16Array( pBytes + anDataOffset[1], anKeyCount[1] * 3 );
+		else _ConvertBE32Array( pBytes + anDataOffset[1], anKeyCount[1] * 3 );
+		if( nFlags & FANIM_BONEFLAGS_COMP_ORIENTATION ) _ConvertBE16Array( pBytes + anDataOffset[2], anKeyCount[2] * 4 );
+		else _ConvertBE32Array( pBytes + anDataOffset[2], anKeyCount[2] * 4 );
+	}
+
+	static u32 nLoggedAnimations = 0;
+	if( nLoggedAnimations < 12 )
+	{
+		DEVPRINTF( "gcdata: converted GameCube animation '%s' (%u bones, flags 0x%04x).\n",
+			pszResName ? pszResName : "(unnamed)", nBoneCount, nFlags );
+		nLoggedAnimations++;
+	}
+	return TRUE;
 }
 
 static BOOL _ConvertCsv( void *pData, u32 nBytes )
@@ -179,6 +341,275 @@ static BOOL _ConvertFpr( void *pData, u32 nBytes, cchar *pszResName )
 	pBytes[2] = (u8)(FPARTICLE_FILE_VERSION >> 8);
 	pBytes[3] = (u8)FPARTICLE_FILE_VERSION;
 	((FParticleDef_t *)pData)->ChangeEndian();
+	return TRUE;
+}
+
+BOOL gcdata_ConvertWorldHeader( void *pData, u32 nHeaderBytes, u32 nFileBytes )
+{
+	if( !pData || nHeaderBytes != sizeof(FData_WorldFileHeader_t) ) return FALSE;
+	const u8 *pBytes = (const u8 *)pData;
+	const u32 nSerializedBytes = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nNumBytes) );
+	const u32 nNumMeshes = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nNumMeshes) );
+	const u32 nMeshInitOffset = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nOffsetToMeshInits) );
+	const u32 nMeshSizeOffset = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nOffsetToMeshSizes) );
+	const u32 nMeshBytes = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nMeshBytes) );
+	const u32 nWorldOffset = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nWorldOffset) );
+	const u32 nWorldBytes = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nWorldBytes) );
+	const u32 nStreamingOffset = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nStreamingDataOffset) );
+	const u32 nStreamingBytes = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nStreamingDataBytes) );
+	const u32 nInitOffset = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nInitOffsets) );
+	const u32 nInitBytes = _ReadBE32( pBytes + offsetof(FData_WorldFileHeader_t, nInitBytes) );
+	if( nSerializedBytes != nFileBytes || nNumMeshes > nFileBytes / sizeof(u32) ||
+		!_IsArrayRangeValid( nMeshInitOffset, nNumMeshes, sizeof(u32), nFileBytes ) ||
+		!_IsArrayRangeValid( nMeshSizeOffset, nNumMeshes, sizeof(u32), nFileBytes ) ||
+		!_IsRangeValid( nWorldOffset, nWorldBytes, nFileBytes ) ||
+		!_IsRangeValid( nStreamingOffset, nStreamingBytes, nFileBytes ) ||
+		!_IsRangeValid( nInitOffset, nInitBytes, nFileBytes ) || nMeshBytes > nFileBytes )
+	{
+		DEVPRINTF( "gcdata: invalid GameCube world header (bytes=%u/%u meshes=%u).\n",
+			nSerializedBytes, nFileBytes, nNumMeshes );
+		return FALSE;
+	}
+
+	((FData_WorldFileHeader_t *)pData)->ChangeEndian();
+	return TRUE;
+}
+
+BOOL gcdata_ConvertWorldVisData( void *pData, u32 nBytes )
+{
+	u8 *pBytes = (u8 *)pData;
+	if( !pBytes || nBytes < sizeof(FVisData_t) ) return FALSE;
+
+	const u32 nPortalCount = _ReadBE16( pBytes + offsetof(FVisData_t, nPortalCount) );
+	const u32 nCellCount = _ReadBE16( pBytes + offsetof(FVisData_t, nCellCount) );
+	const u32 nVolumeCount = _ReadBE16( pBytes + offsetof(FVisData_t, nVolumeCount) );
+	const u32 nLightCount = _ReadBE16( pBytes + offsetof(FVisData_t, nLightCount) );
+	const u32 nTreeNodeCount = _ReadBE16( pBytes + offsetof(FVisData_t, CellTree) + offsetof(FVisCellTree_t, nNodeCount) );
+	const u32 nTreeOffset = _ReadBE32( pBytes + offsetof(FVisData_t, CellTree) + offsetof(FVisCellTree_t, paNodes) );
+	const u32 nPortalOffset = _ReadBE32( pBytes + offsetof(FVisData_t, paPortals) );
+	const u32 nVolumeOffset = _ReadBE32( pBytes + offsetof(FVisData_t, paVolumes) );
+	const u32 nCellOffset = _ReadBE32( pBytes + offsetof(FVisData_t, paCells) );
+	const u32 nLightOffset = _ReadBE32( pBytes + offsetof(FVisData_t, paLights) );
+
+	if( nPortalCount > FVIS_MAX_PORTAL_COUNT || nVolumeCount > FVIS_MAX_VOLUME_COUNT ||
+		nLightCount > FVIS_MAX_LIGHTS ||
+		!_IsArrayRangeValid( nTreeOffset, nTreeNodeCount, sizeof(FVisCellTreeNode_t), nBytes ) ||
+		!_IsArrayRangeValid( nPortalOffset, nPortalCount, sizeof(FVisPortal_t), nBytes ) ||
+		!_IsArrayRangeValid( nVolumeOffset, nVolumeCount, sizeof(FVisVolume_t), nBytes ) ||
+		!_IsArrayRangeValid( nCellOffset, nCellCount, sizeof(FVisCell_t), nBytes ) ||
+		!_IsArrayRangeValid( nLightOffset, nLightCount, sizeof(FLightInit_t), nBytes ))
+	{
+		DEVPRINTF( "gcdata: invalid GameCube world visibility header (portals=%u volumes=%u cells=%u).\n",
+			nPortalCount, nVolumeCount, nCellCount );
+		return FALSE;
+	}
+
+	for( u32 i = 0; i < nVolumeCount; i++ )
+	{
+		const u8 *pVolume = pBytes + nVolumeOffset + i * sizeof(FVisVolume_t);
+		const u32 nPortalIndices = _ReadBE32( pVolume + offsetof(FVisVolume_t, paPortalIndices) );
+		const u32 nVolumePortals = pVolume[offsetof(FVisVolume_t, nPortalCount)];
+		if( !_IsArrayRangeValid( nPortalIndices, nVolumePortals, sizeof(u16), nBytes ) )
+		{
+			DEVPRINTF( "gcdata: invalid GameCube world volume portal list %u.\n", i );
+			return FALSE;
+		}
+	}
+	for( u32 i = 0; i < nCellCount; i++ )
+	{
+		const u8 *pCell = pBytes + nCellOffset + i * sizeof(FVisCell_t);
+		const u32 nPlanes = pCell[offsetof(FVisCell_t, nPlaneCount)];
+		const u32 nPlaneOffset = _ReadBE32( pCell + offsetof(FVisCell_t, paBoundingPlanes) );
+		if( !_IsArrayRangeValid( nPlaneOffset, nPlanes, sizeof(FVisPlane_t), nBytes ) )
+		{
+			DEVPRINTF( "gcdata: invalid GameCube world cell plane list %u.\n", i );
+			return FALSE;
+		}
+	}
+
+	FVisData_t *pVisData = (FVisData_t *)pData;
+	pVisData->ChangeEndian();
+	FVisCellTreeNode_t *pTreeNodes = nTreeNodeCount ? (FVisCellTreeNode_t *)(pBytes + nTreeOffset) : NULL;
+	for( u32 i = 0; i < nTreeNodeCount; i++ ) pTreeNodes[i].ChangeEndian();
+	FVisPortal_t *pPortals = nPortalCount ? (FVisPortal_t *)(pBytes + nPortalOffset) : NULL;
+	for( u32 i = 0; i < nPortalCount; i++ ) pPortals[i].ChangeEndian();
+	FVisVolume_t *pVolumes = nVolumeCount ? (FVisVolume_t *)(pBytes + nVolumeOffset) : NULL;
+	for( u32 i = 0; i < nVolumeCount; i++ )
+	{
+		FVisVolume_t *pVolume = &pVolumes[i];
+		const u32 nPortalIndices = _ReadBE32( (const u8 *)pVolume + offsetof(FVisVolume_t, paPortalIndices) );
+		const u32 nVolumePortals = ((const u8 *)pVolume)[offsetof(FVisVolume_t, nPortalCount)];
+		u16 *pIndices = nVolumePortals ? (u16 *)(pBytes + nPortalIndices) : NULL;
+		for( u32 j = 0; j < nVolumePortals; j++ ) pIndices[j] = fang_ConvertEndian( pIndices[j] );
+		pVolume->ChangeEndian();
+	}
+	FVisCell_t *pCells = nCellCount ? (FVisCell_t *)(pBytes + nCellOffset) : NULL;
+	for( u32 i = 0; i < nCellCount; i++ )
+	{
+		FVisCell_t *pCell = &pCells[i];
+		const u32 nPlanes = ((const u8 *)pCell)[offsetof(FVisCell_t, nPlaneCount)];
+		const u32 nPlaneOffset = _ReadBE32( (const u8 *)pCell + offsetof(FVisCell_t, paBoundingPlanes) );
+		FVisPlane_t *pPlanes = nPlanes ? (FVisPlane_t *)(pBytes + nPlaneOffset) : NULL;
+		for( u32 j = 0; j < nPlanes; j++ ) pPlanes[j].ChangeEndian();
+		pCell->ChangeEndian();
+	}
+	FLightInit_t *pLights = nLightCount ? (FLightInit_t *)(pBytes + nLightOffset) : NULL;
+	for( u32 i = 0; i < nLightCount; i++ ) pLights[i].ChangeEndian();
+	DEVPRINTF( "gcdata: converted GameCube world visibility (%u portals, %u volumes, %u cells).\n",
+		nPortalCount, nVolumeCount, nCellCount );
+	return TRUE;
+}
+
+BOOL gcdata_ConvertWorldInitData( void *pData, u32 nBytes )
+{
+	u8 *pBytes = (u8 *)pData;
+	if( !pBytes || nBytes < sizeof(FData_WorldInitHeader_t) ) return FALSE;
+	const u32 nShapeCount = _ReadBE32( pBytes + offsetof(FData_WorldInitHeader_t, nNumInitStructs) );
+	const u32 nShapeArrayOffset = sizeof(FData_WorldInitHeader_t);
+	if( nShapeCount > (nBytes - nShapeArrayOffset) / sizeof(CFWorldShapeInit) )
+	{
+		DEVPRINTF( "gcdata: invalid GameCube world init header (shapes=%u bytes=%u).\n", nShapeCount, nBytes );
+		return FALSE;
+	}
+	const u32 nFixedShapeBytes = nShapeCount * sizeof(CFWorldShapeInit);
+	const u32 nShapeDataBytes = nBytes - nShapeArrayOffset;
+	for( u32 i = 0; i < nShapeCount; i++ )
+	{
+		const u8 *pShape = pBytes + nShapeArrayOffset + i * sizeof(CFWorldShapeInit);
+		const u32 nType = _ReadBE32( pShape + offsetof(CFWorldShapeInit, m_nShapeType) );
+		const u32 nShapeOffset = _ReadBE32( pShape + offsetof(CFWorldShapeInit, m_pShape) );
+		const u32 nGameDataOffset = _ReadBE32( pShape + offsetof(CFWorldShapeInit, m_pGameData) );
+		u32 nShapeBytes = 0;
+		if( nType >= FWORLD_SHAPETYPE_COUNT )
+		{
+			DEVPRINTF( "gcdata: invalid GameCube world shape type %u at %u.\n", nType, i );
+			return FALSE;
+		}
+		switch( nType )
+		{
+			case FWORLD_SHAPETYPE_POINT: nShapeBytes = 0; break;
+			case FWORLD_SHAPETYPE_LINE: nShapeBytes = sizeof(CFWorldShapeLine); break;
+			case FWORLD_SHAPETYPE_SPLINE: nShapeBytes = sizeof(CFWorldShapeSpline); break;
+			case FWORLD_SHAPETYPE_BOX: nShapeBytes = sizeof(CFWorldShapeBox); break;
+			case FWORLD_SHAPETYPE_SPHERE: nShapeBytes = sizeof(CFWorldShapeSphere); break;
+			case FWORLD_SHAPETYPE_CYLINDER: nShapeBytes = sizeof(CFWorldShapeCylinder); break;
+			case FWORLD_SHAPETYPE_MESH: nShapeBytes = sizeof(CFWorldShapeMesh); break;
+		}
+		if( nShapeBytes && (nShapeOffset < nFixedShapeBytes ||
+			!_IsArrayRangeValid( nShapeOffset, 1, nShapeBytes, nShapeDataBytes )) )
+		{
+			DEVPRINTF( "gcdata: invalid GameCube world shape data offset %u at %u.\n", nShapeOffset, i );
+			return FALSE;
+		}
+		if( nGameDataOffset && (nGameDataOffset < nFixedShapeBytes ||
+			!_IsArrayRangeValid( nGameDataOffset, 1, sizeof(FDataGamFile_Header_t), nShapeDataBytes )) )
+		{
+			DEVPRINTF( "gcdata: invalid GameCube world shape game data offset %u at %u.\n", nGameDataOffset, i );
+			return FALSE;
+		}
+		if( nType == FWORLD_SHAPETYPE_SPLINE )
+		{
+			const u8 *pSpline = pBytes + nShapeArrayOffset + nShapeOffset;
+			const u32 nPointCount = _ReadBE32( pSpline + offsetof(CFWorldShapeSpline, m_nPointCount) );
+			const u32 nPointOffset = _ReadBE32( pSpline + offsetof(CFWorldShapeSpline, m_pPtArray) );
+			if( (nPointCount && nPointOffset < nFixedShapeBytes) ||
+				!_IsArrayRangeValid( nPointOffset, nPointCount, sizeof(CFVec3), nShapeDataBytes ) )
+			{
+				DEVPRINTF( "gcdata: invalid GameCube world spline points at shape %u.\n", i );
+				return FALSE;
+			}
+		}
+		if( nType == FWORLD_SHAPETYPE_MESH )
+		{
+			const u8 *pMesh = pBytes + nShapeArrayOffset + nShapeOffset;
+			const u32 nStreamCount = pMesh[offsetof(CFWorldShapeMesh, m_nColorStreamCount)];
+			const u32 nStreamOffset = _ReadBE32( pMesh + offsetof(CFWorldShapeMesh, m_paColorStreams) );
+			if( nStreamCount > 32 || (nStreamCount && nStreamOffset < nFixedShapeBytes) ||
+				!_IsArrayRangeValid( nStreamOffset, nStreamCount, sizeof(ColorStream_t), nShapeDataBytes ) )
+			{
+				DEVPRINTF( "gcdata: invalid GameCube world mesh color streams at shape %u.\n", i );
+				return FALSE;
+			}
+			for( u32 j = 0; j < nStreamCount; j++ )
+			{
+				const u8 *pStream = pBytes + nShapeArrayOffset + nStreamOffset + j * sizeof(ColorStream_t);
+				const u32 nColorCount = _ReadBE16( pStream + offsetof(ColorStream_t, nColorCount) );
+				const u32 nColorOffset = _ReadBE32( pStream + offsetof(ColorStream_t, paVertexColors) );
+				if( (nColorCount && nColorOffset < nFixedShapeBytes) ||
+					!_IsArrayRangeValid( nColorOffset, nColorCount, sizeof(u32), nShapeDataBytes ) )
+				{
+					DEVPRINTF( "gcdata: invalid GameCube world mesh vertex colors at shape %u.\n", i );
+					return FALSE;
+				}
+			}
+		}
+	}
+
+	FData_WorldInitHeader_t *pHeader = (FData_WorldInitHeader_t *)pData;
+	CFWorldShapeInit *pShapes = (CFWorldShapeInit *)(pHeader + 1);
+	for( u32 i = 0; i < nShapeCount; i++ )
+	{
+		CFWorldShapeInit *pShape = &pShapes[i];
+		const u32 nType = _ReadBE32( (const u8 *)pShape + offsetof(CFWorldShapeInit, m_nShapeType) );
+		const u32 nShapeOffset = _ReadBE32( (const u8 *)pShape + offsetof(CFWorldShapeInit, m_pShape) );
+		const u32 nGameDataOffset = _ReadBE32( (const u8 *)pShape + offsetof(CFWorldShapeInit, m_pGameData) );
+		if( nShapeOffset )
+		{
+			u8 *pShapeData = (u8 *)pShapes + nShapeOffset;
+			switch( nType )
+			{
+				case FWORLD_SHAPETYPE_LINE:
+					((CFWorldShapeLine *)pShapeData)->ChangeEndian();
+					break;
+				case FWORLD_SHAPETYPE_SPLINE:
+				{
+					CFWorldShapeSpline *pSpline = (CFWorldShapeSpline *)pShapeData;
+					const u32 nPointCount = _ReadBE32( (const u8 *)pSpline + offsetof(CFWorldShapeSpline, m_nPointCount) );
+					const u32 nPointOffset = _ReadBE32( (const u8 *)pSpline + offsetof(CFWorldShapeSpline, m_pPtArray) );
+					CFVec3 *pPoints = nPointCount ? (CFVec3 *)((u8 *)pShapes + nPointOffset) : NULL;
+					for( u32 j = 0; j < nPointCount; j++ ) pPoints[j].ChangeEndian();
+					pSpline->ChangeEndian();
+					break;
+				}
+				case FWORLD_SHAPETYPE_BOX: ((CFWorldShapeBox *)pShapeData)->ChangeEndian(); break;
+				case FWORLD_SHAPETYPE_SPHERE: ((CFWorldShapeSphere *)pShapeData)->ChangeEndian(); break;
+				case FWORLD_SHAPETYPE_CYLINDER: ((CFWorldShapeCylinder *)pShapeData)->ChangeEndian(); break;
+				case FWORLD_SHAPETYPE_MESH:
+				{
+					CFWorldShapeMesh *pMesh = (CFWorldShapeMesh *)pShapeData;
+					const u32 nStreamCount = ((const u8 *)pMesh)[offsetof(CFWorldShapeMesh, m_nColorStreamCount)];
+					const u32 nStreamOffset = _ReadBE32( (const u8 *)pMesh + offsetof(CFWorldShapeMesh, m_paColorStreams) );
+					ColorStream_t *pStreams = nStreamCount ? (ColorStream_t *)((u8 *)pShapes + nStreamOffset) : NULL;
+					for( u32 j = 0; j < nStreamCount; j++ )
+					{
+						ColorStream_t *pStream = &pStreams[j];
+						const u32 nColorCount = _ReadBE16( (const u8 *)pStream + offsetof(ColorStream_t, nColorCount) );
+						const u32 nColorOffset = _ReadBE32( (const u8 *)pStream + offsetof(ColorStream_t, paVertexColors) );
+						u32 *pColors = nColorCount ? (u32 *)((u8 *)pShapes + nColorOffset) : NULL;
+						for( u32 k = 0; k < nColorCount; k++ ) pColors[k] = fang_ConvertEndian( pColors[k] );
+						pStream->nVBIndex = fang_ConvertEndian( pStream->nVBIndex );
+						pStream->nColorCount = fang_ConvertEndian( pStream->nColorCount );
+						pStream->paVertexColors = fang_ConvertEndian( pStream->paVertexColors );
+					}
+					pMesh->ChangeEndian();
+					break;
+				}
+			}
+		}
+		if( nGameDataOffset )
+		{
+			const u32 nGameDataBytes = _ReadBE32( pBytes + nShapeArrayOffset + nGameDataOffset + offsetof(FDataGamFile_Header_t, nBytesInFile) );
+			if( !_IsRangeValid( nGameDataOffset, nGameDataBytes, nShapeDataBytes ) ||
+				!_ConvertCsv( (u8 *)pShapes + nGameDataOffset, nGameDataBytes ) )
+			{
+				DEVPRINTF( "gcdata: invalid GameCube world shape game data at shape %u.\n", i );
+				return FALSE;
+			}
+		}
+		pShape->ChangeEndian();
+	}
+	pHeader->ChangeEndian();
+	DEVPRINTF( "gcdata: converted GameCube world init (%u shapes).\n", nShapeCount );
 	return TRUE;
 }
 
@@ -492,6 +923,10 @@ BOOL gcdata_Convert( cchar *pszExtension, cchar *pszResName, void *pData, u32 nB
 			DEVPRINTF( "gcdata: converted GameCube CSV resource (%u bytes).\n", nBytes );
 			bLoggedFirstCsv = TRUE;
 		}
+	}
+	else if( pszExtension && strcmp( pszExtension, "mtx" ) == 0 )
+	{
+		if( !_ConvertAnimation( pData, nBytes, pszResName ) ) return FALSE;
 	}
 	else if( pszExtension && strcmp( pszExtension, "fpr" ) == 0 )
 	{

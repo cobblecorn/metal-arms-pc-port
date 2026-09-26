@@ -517,6 +517,10 @@ static BOOL _ResLoadCreate( FResHandle_t hRes, void *pLoadedBase, u32 nLoadedByt
 	if( !_bModuleInited ) {
 		return FALSE;
 	}
+	if( !FAudio_bModuleInstalled ) {
+		DEVPRINTF( "fsndfx _ResLoadCreate(): Skipping sound fx bank '%s' because audio is not installed.\n", pszResName );
+		return FALSE;
+	}
 
 	if( _nNumLoadedBanks >= _MAX_LOADED_SFX_BANKS ) {
 		DEVPRINTF( "fsndfx _ResLoadCreate(): Too many Sound Fx Banks loaded already, the current max is %d.\n", _MAX_LOADED_SFX_BANKS );

@@ -86,6 +86,10 @@ CWeaponBlaster::_UserProps_t	CWeaponBlaster::m_aUserProps[EUK_COUNT_BLASTER];
 CWeaponBlaster::_SystemData_t	CWeaponBlaster::m_aSystemData[EUK_COUNT_BLASTER];
 //SmokeTrailAttrib_t CWeaponBlaster::m_SmokeTrailAttrib;
 
+#if FANG_WINGC
+static BOOL _bUserPropsAvailable = FALSE;
+#endif
+
 
 // This table describes to fgamedata how our user property table is to be interpreted:
 const FGameData_TableEntry_t CWeaponBlaster::m_aUserPropVocab[] = {
@@ -397,13 +401,26 @@ BOOL CWeaponBlaster::InitSystem( void )
 	FResFrame_t ResFrame = fres_GetFrame();
 
 	fang_MemZero( m_aUserProps, sizeof(m_aUserProps) );
+#if FANG_WINGC
+	_bUserPropsAvailable = FALSE;
+#endif
 
 	// Read the user properties for all EUK levels of this weapon...
 	if( !fgamedata_ReadFileUsingMap( m_aUserPropMapTable, _USER_PROP_FILENAME ) )
 	{
 		DEVPRINTF( "CWeaponBlaster::InitSystem(): Could not read user properties from file '%s'.\n", _USER_PROP_FILENAME );
+#if FANG_WINGC
+		DEVPRINTF( "CWeaponBlaster::InitSystem(): Disabling blaster entities because the retail GameCube table uses an unsupported schema.\n" );
+		fres_ReleaseFrame( ResFrame );
+		return TRUE;
+#else
 		goto _ExitWithError;
+#endif
 	}
+
+#if FANG_WINGC
+	_bUserPropsAvailable = TRUE;
+#endif
 
 	// Do this for each EUK level...
 	for( i=0; i<EUK_COUNT_BLASTER; i++ )
@@ -554,6 +571,13 @@ CWeaponBlaster::~CWeaponBlaster() {
 
 
 BOOL CWeaponBlaster::Create( cchar *pszEntityName, const CFMtx43A *pMtx, cchar *pszAIBuilderName ) {
+	#if FANG_WINGC
+		if( !_bUserPropsAvailable ) {
+			DEVPRINTF( "CWeaponBlaster::Create(): Skipping '%s'; compatible blaster properties are unavailable.\n", pszEntityName ? pszEntityName : "<unnamed>" );
+			return FALSE;
+		}
+	#endif
+
 	// Get pointer to the leaf class's builder object...
 	CWeaponBlasterBuilder *pBuilder = (CWeaponBlasterBuilder *)GetLeafClassBuilder();
 

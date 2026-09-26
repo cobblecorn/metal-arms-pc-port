@@ -739,6 +739,7 @@ void fang_Assert( cchar *pszFile, int nLine, cchar *pszExpr ) {
 	#define __MAX_MSG_LEN 200
 	static char szMsgString[__MAX_MSG_LEN+1];
 	int nReturnValue;
+	DEVPRINTF( "*** FANG ASSERTION FAILURE *** File: %s Line: %i Expression: %s\n", pszFile, nLine, pszExpr );
 
 	_snprintf( szMsgString, __MAX_MSG_LEN, "*** FANG ASSERTION FAILURE ***\n\nFile: %s\nLine: %i\nExpression: %s\n\nClick Ok to continue or Cancel to abort.", pszFile, nLine, pszExpr );
 

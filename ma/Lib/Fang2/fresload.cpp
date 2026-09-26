@@ -942,6 +942,10 @@ static FVisGeoHeader_t* _LoadMeshPortionOfWorld( FFileHandle hFile, FData_WorldF
 		fang_Free( pMeshInit );
 		goto _LoadMeshPortionError;
 	}
+	for( i = 0; i < pWorldFileHeader->nNumMeshes; i++ )
+	{
+		((u32 *)pMeshInit)[i] = fang_ConvertEndian( ((u32 *)pMeshInit)[i] );
+	}
 
 	// Read the mesh init header...
 	pMeshSizes = (u32 *)fres_Alloc( nMeshInitBytes );
@@ -956,6 +960,17 @@ static FVisGeoHeader_t* _LoadMeshPortionOfWorld( FFileHandle hFile, FData_WorldF
 		_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_READ_ERROR );
 		fang_Free( pMeshSizes );
 		goto _LoadMeshPortionError;
+	}
+	for( i = 0; i < pWorldFileHeader->nNumMeshes; i++ )
+	{
+		pMeshSizes[i] = fang_ConvertEndian( pMeshSizes[i] );
+		if( pMeshSizes[i] == 0 || ((u32 *)pMeshInit)[i] > pWorldFileHeader->nNumBytes ||
+			pMeshSizes[i] > pWorldFileHeader->nNumBytes - ((u32 *)pMeshInit)[i] )
+		{
+			DEVPRINTF( "fresload: invalid GameCube world mesh range %u in '%s'.\n", i, pszResName );
+			_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_DATA_ERROR );
+			goto _LoadMeshPortionError;
+		}
 	}
 
 	// Setup the geo header	
@@ -1133,9 +1148,14 @@ static FVisData_t* _LoadWorldPortionOfWorld( FFileHandle hFile, FData_WorldFileH
 	}
 
 	// Read in the world portion...
-	if( _ReadFromFilePosition( hFile, pWorld, pWorldFileHeader->nWorldBytes, pWorldFileHeader->nWorldOffset ) < 0 ) 
+	if( _ReadFromFilePosition( hFile, pWorld, pWorldFileHeader->nWorldBytes, pWorldFileHeader->nWorldOffset ) < 0 )
 	{
 		_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_READ_ERROR );
+		goto _LoadWorldPortionError;
+	}
+	if( !gcdata_ConvertWorldVisData( pWorld, pWorldFileHeader->nWorldBytes ) )
+	{
+		_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_DATA_ERROR );
 		goto _LoadWorldPortionError;
 	}
 
@@ -1222,6 +1242,10 @@ static BOOL _InitWorldObjects( FFileHandle hFile, FData_WorldFileHeader_t *pWorl
 		_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_READ_ERROR );
 		goto _ExitWithError;
 	}
+	if( !gcdata_ConvertWorldInitData( pWorldInitHeader, pWorldFileHeader->nInitBytes ) ) {
+		_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_DATA_ERROR );
+		goto _ExitWithError;
+	}
 
 	// Init the world game objects...
 	pShapeInitArray = (CFWorldShapeInit *)(pWorldInitHeader + 1);
@@ -1281,9 +1305,15 @@ static void *_LoadWorldResourceFromFile( cchar *pszPathName, cchar *pszResName, 
 	}
 	
 	// Read the file header...
-	if ( ffile_Read( hFile, sizeof(FData_WorldFileHeader_t), &WorldFileHeader ) < 0 ) 
+	if ( ffile_Read( hFile, sizeof(FData_WorldFileHeader_t), &WorldFileHeader ) < 0 )
 	{
 		_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_READ_ERROR );
+		goto _LoadWorldExitWithError;
+	}
+	s32 nWorldFileBytes = ffile_GetFileSize( hFile );
+	if( nWorldFileBytes < 0 || !gcdata_ConvertWorldHeader( &WorldFileHeader, sizeof(WorldFileHeader), (u32)nWorldFileBytes ) )
+	{
+		_CallLogCallback( NULL, psResType, pszResName, pszPathName, FRESLOAD_LOGINFO_DATA_ERROR );
 		goto _LoadWorldExitWithError;
 	}
 	if( _pFcnProgressCallback ) {

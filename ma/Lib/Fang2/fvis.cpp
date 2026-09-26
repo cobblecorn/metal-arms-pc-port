@@ -154,6 +154,8 @@ static BOOL8 _bToolVisData;
 static BOOL8 _bEnableFog;
 
 static u32  _nFVisCurrDataBufferSlot;
+static u8 *_pHostWorldStreamingData;
+static u32 _nHostWorldStreamingDataBytes;
 
 // World light info
 //static FLightInit_t *_pAmbientLightInit;
@@ -382,9 +384,15 @@ BOOL fvis_ModuleStartup( void )
 //
 //
 //
-void fvis_ModuleShutdown( void ) 
+void fvis_ModuleShutdown( void )
 {
 	FASSERT( _bModuleInitialized );
+	if( _pHostWorldStreamingData )
+	{
+		fang_Free( _pHostWorldStreamingData );
+		_pHostWorldStreamingData = NULL;
+		_nHostWorldStreamingDataBytes = 0;
+	}
 
 	if ( _paDirLights )
 	{
@@ -594,7 +602,7 @@ static void _ResDestroyWorldCallback( void *pBase )
 //
 //
 //
-BOOL fvis_InitWorldStreamingData( void *pStreamingData, u32 nSize ) 
+BOOL fvis_InitWorldStreamingData( void *pStreamingData, u32 nSize )
 {
 #if FANG_PLATFORM_GC
 	if ( FDS_StreamMgr.StoreRawData( pStreamingData, nSize, FDS_LOCATION_ARAM ) )
@@ -602,8 +610,30 @@ BOOL fvis_InitWorldStreamingData( void *pStreamingData, u32 nSize )
 		return TRUE;
 	}
 #endif // FANG_PLATFORM_GC
-	
+	#if FANG_WINGC
+	if( !pStreamingData || nSize == 0 ) return FALSE;
+	u8 *pCopy = (u8 *)fang_MallocAndZero( nSize, 32 );
+	if( !pCopy ) return FALSE;
+	fang_MemCopy( pCopy, pStreamingData, nSize );
+	if( _pHostWorldStreamingData ) fang_Free( _pHostWorldStreamingData );
+	_pHostWorldStreamingData = pCopy;
+	_nHostWorldStreamingDataBytes = nSize;
+	return TRUE;
+	#endif // FANG_WINGC
 	return FALSE;
+}
+
+const void *fvis_GetWorldStreamingData( u32 nOffset, u32 nSize )
+{
+#if FANG_WINGC
+	if( !_pHostWorldStreamingData || nOffset > _nHostWorldStreamingDataBytes ||
+		nSize > _nHostWorldStreamingDataBytes - nOffset ) return NULL;
+	return _pHostWorldStreamingData + nOffset;
+#else
+	nOffset;
+	nSize;
+	return NULL;
+#endif
 }
 
 

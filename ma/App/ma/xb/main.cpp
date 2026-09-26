@@ -233,6 +233,7 @@ int main( int argc, char *argv[] ) {
 	#endif
 
 	_GameInitParms.bInstallAudio = TRUE;
+	_GameInitParms.bLoadWorldOnly = FALSE;
 
 extern long _fexception_Handler( struct _EXCEPTION_POINTERS *pExceptionInfo );
 extern long _fexception_Production_Handler( struct _EXCEPTION_POINTERS *pExceptionInfo );

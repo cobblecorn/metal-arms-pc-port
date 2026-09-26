@@ -149,7 +149,9 @@
 #define _EXPLOSION_GROUPS_FILENAME	"explsn_grps"
 
 static cchar *_pszGamePhrasesTableName = "common_phrases";
-#if FANG_PLATFORM_DX
+#if FANG_WINGC
+	static cchar *_pszPlatformPhrasesTableName = "gc_phrases";
+#elif FANG_PLATFORM_DX
 	static cchar *_pszPlatformPhrasesTableName = "xbox_phrases";
 #elif FANG_PLATFORM_GC
 	static cchar *_pszPlatformPhrasesTableName = "gc_phrases";
@@ -2088,10 +2090,13 @@ BOOL _LoadPhraseTable( void ) {
 	}
 	// get the number of fields in the table
 	i = fgamedata_GetNumFields( hTable );
-	if( i != GAMEPHRASE_NUM_COMMON_STRINGS ) {
-		DEVPRINTF( "game::_LoadPhrasesTable() : The phrases table in '%s' didn't contain %d strings as expected.\n", _pszGamePhrasesTableName, GAMEPHRASE_NUM_COMMON_STRINGS );
+	if( i < GAMEPHRASE_NUM_COMMON_STRINGS ) {
+		DEVPRINTF( "game::_LoadPhrasesTable() : The phrases table in '%s' has %d strings; %d are required.\n", _pszGamePhrasesTableName, i, GAMEPHRASE_NUM_COMMON_STRINGS );
 		goto _EXIT_WITH_ERROR;
-	}	
+	}
+	if( i > GAMEPHRASE_NUM_COMMON_STRINGS ) {
+		DEVPRINTF( "game::_LoadPhrasesTable() : Ignoring %d trailing phrases in newer table '%s'.\n", i - GAMEPHRASE_NUM_COMMON_STRINGS, _pszGamePhrasesTableName );
+	}
 	// walk the string table adding each string to the string table and recording a ptr to them
 	for( i=0; i < GAMEPHRASE_NUM_COMMON_STRINGS; i++ ) {
 		pwszText = (cwchar *)fgamedata_GetPtrToFieldData( hTable, i, nDataType );
@@ -2111,10 +2116,13 @@ BOOL _LoadPhraseTable( void ) {
 	}
 	// get the number of fields in the table
 	i = fgamedata_GetNumFields( hTable );
-	if( i != GAMEPHRASE_NUM_PLATFORM_STRINGS ) {
-		DEVPRINTF( "game::_LoadPhrasesTable() : The phrases table in '%s' didn't contain %d strings as expected.\n", _pszPlatformPhrasesTableName, GAMEPHRASE_NUM_PLATFORM_STRINGS );
+	if( i < GAMEPHRASE_NUM_PLATFORM_STRINGS ) {
+		DEVPRINTF( "game::_LoadPhrasesTable() : The phrases table in '%s' has %d strings; %d are required.\n", _pszPlatformPhrasesTableName, i, GAMEPHRASE_NUM_PLATFORM_STRINGS );
 		goto _EXIT_WITH_ERROR;
-	}	
+	}
+	if( i > GAMEPHRASE_NUM_PLATFORM_STRINGS ) {
+		DEVPRINTF( "game::_LoadPhrasesTable() : Ignoring %d trailing phrases in newer table '%s'.\n", i - GAMEPHRASE_NUM_PLATFORM_STRINGS, _pszPlatformPhrasesTableName );
+	}
 	// walk the string table adding each string to the string table and recording a ptr to them
 	for( i=0; i < GAMEPHRASE_NUM_PLATFORM_STRINGS; i++ ) {
 		pwszText = (cwchar *)fgamedata_GetPtrToFieldData( hTable, i, nDataType );
@@ -2408,12 +2416,12 @@ BOOL game_InitLocalizedResources( void ) {
 	//init the movie system...
 	fmovie2_Install();
 
-	// Load the damage sound effects bank. It will stay loaded the entire game.
-	fresload_Load( FSNDFX_RESTYPE, "Damage" );
-	// Load the weapons sound fx bank, it will stay loaded the entire game.
-	fresload_Load( FSNDFX_RESTYPE, "weapons" );
-	// Nate again: For Glitch backpack and weapon attach sounds.  These should be placed in "weapons".
-	fresload_Load( FSNDFX_RESTYPE, "Glitch" );
+	if( Gameloop_bInstallAudio ) {
+		// Sound effect banks are platform-specific; the current port has no GC decoder.
+		fresload_Load( FSNDFX_RESTYPE, "Damage" );
+		fresload_Load( FSNDFX_RESTYPE, "weapons" );
+		fresload_Load( FSNDFX_RESTYPE, "Glitch" );
+	}
 
 	CFDebrisGroup::LoadAllFromGameData( _DEBRIS_GROUP_FILENAME, _DEBRIS_MESH_SET_FILENAME );
 

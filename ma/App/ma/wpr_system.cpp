@@ -1904,10 +1904,19 @@ static BOOL _Init( void ) {
 	}
 	// get the number of fields in the table
 	i = fgamedata_GetNumFields( hTable );
+	#if FANG_WINGC
+	if( i < WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT ) {
+	#else
 	if( i != WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT ) {
+	#endif
 		DEVPRINTF( "wpr_system::_Init() : The phrases table in '%s' didn't contain %d strings as expected.\n", _pszPhrasesTableName, WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT );
 		goto _EXIT_WITH_ERROR;
 	}
+	#if FANG_WINGC
+	if( i > WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT ) {
+		DEVPRINTF( "wpr_system::_Init() : Ignoring %d trailing phrases in newer table '%s'.\n", i - WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT, _pszPhrasesTableName );
+	}
+	#endif
 	// walk the string table adding each string to the string table and recording a ptr to them
 	for( i=0; i < WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT; i++ ) {
 		pwszText = (cwchar *)fgamedata_GetPtrToFieldData( hTable, i, nDataType );
@@ -1925,10 +1934,19 @@ static BOOL _Init( void ) {
 	}
 	// get the number of fields in the table
 	i = fgamedata_GetNumFields( hTable );
+	#if FANG_WINGC
+	if( i < WPR_DATATYPES_PHRASES_PLATFORM_SPECIFIC_COUNT ) {
+	#else
 	if( i != WPR_DATATYPES_PHRASES_PLATFORM_SPECIFIC_COUNT ) {
+	#endif
 		DEVPRINTF( "wpr_system::_Init() : The phrases table in '%s' didn't contain %d strings as expected.\n", _pszPlatformPhrasesTableName, WPR_DATATYPES_PHRASES_PLATFORM_SPECIFIC_COUNT );
 		goto _EXIT_WITH_ERROR;
 	}
+	#if FANG_WINGC
+	if( i > WPR_DATATYPES_PHRASES_PLATFORM_SPECIFIC_COUNT ) {
+		DEVPRINTF( "wpr_system::_Init() : Ignoring %d trailing phrases in newer table '%s'.\n", i - WPR_DATATYPES_PHRASES_PLATFORM_SPECIFIC_COUNT, _pszPlatformPhrasesTableName );
+	}
+	#endif
 	// walk the string table adding each string to the string table and recording a ptr to them
 	for( i=0; i < WPR_DATATYPES_PHRASES_PLATFORM_SPECIFIC_COUNT; i++ ) {
 		pwszText = (cwchar *)fgamedata_GetPtrToFieldData( hTable, i, nDataType );
@@ -1955,10 +1973,19 @@ static BOOL _Init( void ) {
 	}
 	// get the number of fields in the table
 	i = fgamedata_GetNumFields( hTableNames );
+	#if FANG_WINGC
+	if( i < (WPR_DATATYPES_SCREEN_COUNT*6) ) {
+	#else
 	if( i != (WPR_DATATYPES_SCREEN_COUNT*5) ) {
+	#endif
 		DEVPRINTF( "wpr_system::_Init() : The screen table names table contains %d entries, but %d are expected.\n", i, WPR_DATATYPES_SCREEN_COUNT );
 		goto _EXIT_WITH_ERROR;
-	}	
+	}
+	#if FANG_WINGC
+	if( i > (WPR_DATATYPES_SCREEN_COUNT*6) ) {
+		DEVPRINTF( "wpr_system::_Init() : Ignoring %d trailing screen table entries from newer screens.\n", i - (WPR_DATATYPES_SCREEN_COUNT*6) );
+	}
+	#endif
 
 	//////////////////////////////////////
 	// load the table data for each screen
@@ -1990,7 +2017,11 @@ static BOOL _Init( void ) {
 		///////////////////////////
 		// grab the mesh table name
 		pszTableName = (cchar *)fgamedata_GetPtrToFieldData( hTableNames, nNameTableIndex, nDataType );
+	#if FANG_WINGC
+		nNameTableIndex += 2;
+	#else
 		nNameTableIndex++;
+	#endif
 		if( fclib_stricmp( pszTableName, _pszNoTableUsed ) != 0 ) {
 			// init the mesh layout array
 			if( !wpr_datatypes_InitScreenMeshLayoutArray( hFile, pszTableName, *pScreen, _nNumMeshes, _paMeshInsts ) ) {

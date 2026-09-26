@@ -91,6 +91,10 @@ CDamageProfile *CWeaponLaser::m_apDamageProfile[EUK_COUNT_LASER];
 TracerDef_t CWeaponLaser::m_aoTracerDef[EUK_COUNT_LASER];
 CFTexInst CWeaponLaser::m_aTracerTexInst[EUK_COUNT_LASER];
 
+#if FANG_WINGC
+static BOOL _bUserPropsAvailable = FALSE;
+#endif
+
 
 // This table describes to fgamedata how our user property table is to be interpreted:
 const FGameData_TableEntry_t CWeaponLaser::m_aUserPropVocab[] = {
@@ -296,13 +300,26 @@ BOOL CWeaponLaser::InitSystem( void ) {
 	FResFrame_t ResFrame = fres_GetFrame();
 
 	fang_MemZero( m_aUserProps, sizeof(m_aUserProps) );
+#if FANG_WINGC
+	_bUserPropsAvailable = FALSE;
+#endif
 
 	// Read the user properties for all EUK levels of this weapon...
 	if( !fgamedata_ReadFileUsingMap( m_aUserPropMapTable, _USER_PROP_FILENAME ) ) {
 		DEVPRINTF( "CWeaponLaser::InitSystem(): Could not read user properties from file '%s'.\n", _USER_PROP_FILENAME );
+#if FANG_WINGC
+		DEVPRINTF( "CWeaponLaser::InitSystem(): Disabling laser entities because the retail GameCube table uses an unsupported schema.\n" );
+		fres_ReleaseFrame( ResFrame );
+		return TRUE;
+#else
 		goto _ExitWithError;
 		return FALSE;
+#endif
 	}
+
+#if FANG_WINGC
+	_bUserPropsAvailable = TRUE;
+#endif
 
 	// Do this for each EUK level...
 	for( i=0; i<EUK_COUNT_LASER; i++ ) {
@@ -380,6 +397,13 @@ CWeaponLaser::~CWeaponLaser() {
 
 
 BOOL CWeaponLaser::Create( cchar *pszEntityName, const CFMtx43A *pMtx, cchar *pszAIBuilderName ) {
+	#if FANG_WINGC
+		if( !_bUserPropsAvailable ) {
+			DEVPRINTF( "CWeaponLaser::Create(): Skipping '%s'; compatible laser properties are unavailable.\n", pszEntityName ? pszEntityName : "<unnamed>" );
+			return FALSE;
+		}
+	#endif
+
 	// Get pointer to the leaf class's builder object...
 	CWeaponLaserBuilder *pBuilder = (CWeaponLaserBuilder *)GetLeafClassBuilder();
 

@@ -20,6 +20,7 @@
 #include "fang.h"
 #include "gameloop.h"
 #include "fresload.h"
+#include "fworld.h"
 #if FANG_PLATFORM_WIN
 	#include "dx/fdx8vid.h"
 	#include "win/screenshot.h"
@@ -402,6 +403,15 @@ static BOOL _GameMain( BOOL bExitRequest, void *pParameter );
 static BOOL _InitGameSystems( void );
 static void _UninitGameSystems( void );
 
+static BOOL _WorldOnlyCreateShapeArray( cchar *pszWorldResName, const void *pFixupOffsetBase,
+	const CFWorldShapeInit *pShapeInitArray, u32 nShapeInitCount ) {
+	pszWorldResName;
+	pFixupOffsetBase;
+	pShapeInitArray;
+	nShapeInitCount;
+	return TRUE;
+}
+
 
 
 
@@ -732,6 +742,22 @@ static BOOL _GameInit( void *pParameter ) {
 	if( !_InitGameSystems() ) {
 		// Trouble initializing a game system...
 		goto _ExitGameInitWithError;
+	}
+
+	if( pParm->bLoadWorldOnly ) {
+		FWorldInitShapeArrayCallback_t *pShapeCallback = fworld_SetShapeCreateCallback( _WorldOnlyCreateShapeArray );
+		void *pWorld = fresload_Load( FWORLD_RESTYPE, pParm->pszInputFilename );
+		fworld_SetShapeCreateCallback( pShapeCallback );
+		if( !pWorld ) {
+			DEVPRINTF( "World-only load failed for '%s'.\n", pParm->pszInputFilename );
+			goto _ExitGameInitWithError;
+		}
+		DEVPRINTF( "World-only load completed for '%s'.\n", pParm->pszInputFilename );
+	#if !GAMELOOP_EXTERNAL_DEMO
+		ffile_LogStop();
+	#endif
+		gameloop_ScheduleExit();
+		return TRUE;
 	}
 
 	if( !CDifficulty::LoadData() ) {

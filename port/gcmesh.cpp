@@ -8,6 +8,7 @@
 #include "fsh.h"
 #include "fshaders.h"
 #include "fres.h"
+#include "fvis.h"
 #include "gc/fGCmesh.h"
 #include "gc/fGCdisplaylist.h"
 
@@ -145,10 +146,19 @@ static BOOL _WalkDL(const u8 *pFile, u32 nFileBytes, const FGCVB_t *pVB, const F
 					const FGC_DLCont_t *pDL, ParseStats_t *pStats, WriteContext_t *pWrite)
 {
 	const u32 nBufferOffset = _Offset(pDL->pBuffer);
-	if (!nBufferOffset || !_Range(nBufferOffset, pDL->nSize, nFileBytes))
-		return FALSE;
+	const u8 *pCommandData;
 	if (pDL->nFlags & FGCDL_FLAGS_STREAMING)
-		return FALSE;
+	{
+		pCommandData = (const u8 *)fvis_GetWorldStreamingData(nBufferOffset, pDL->nSize);
+		if (!pCommandData)
+			return FALSE;
+	}
+	else
+	{
+		if (!nBufferOffset || !_Range(nBufferOffset, pDL->nSize, nFileBytes))
+			return FALSE;
+		pCommandData = pFile + nBufferOffset;
+	}
 	if (pDL->nFlags & FGCDL_FLAGS_SKINNED)
 		return FALSE;
 	if (pVB->nFlags & FGCVB_SKINNED)
@@ -171,7 +181,7 @@ static BOOL _WalkDL(const u8 *pFile, u32 nFileBytes, const FGCVB_t *pVB, const F
 	if (!pVB->pPosition || !pVB->pST || (!(pDL->nFlags & FGCDL_FLAGS_CONSTANT_COLOR) && !pVB->pDiffuse))
 		return FALSE;
 
-	const u8 *pCursor = (const u8 *)_At(pFile, nBufferOffset);
+	const u8 *pCursor = pCommandData;
 	const u8 *pEnd = pCursor + pDL->nSize;
 	const u32 nPrimitiveCount = (u32)pDL->nStripCount + pDL->nListCount;
 	const u32 nSTCount = (u32)pMaterial->nBaseSTSets + pMaterial->nLightMapSTSets;

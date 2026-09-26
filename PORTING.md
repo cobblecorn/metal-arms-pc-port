@@ -21,7 +21,10 @@ Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see belo
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-log <file>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world>] [-world-only <world>] [-log <file>]
+
+`-level <world>` starts the normal generic level path. `-world-only <world>` loads and converts
+the WLD resource, then exits before localized setup and gameplay entity creation.
 
 `tools/mst_list.py` lists/extracts a `.mst` master file (GameCube byte order).
 
@@ -35,7 +38,7 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
 | Threading | `fdx8loop.cpp`: the game-loop thread was an MFC `CWinThread`; replaced with a small Win32 thread class with the same lifecycle. |
 | Entry point | `port/main_win.cpp` replaces the MFC "mawin" dialog. Same boot sequence as the Xbox `main.cpp`. |
 | Struct layout | Built with `_FANGDEF_WINGC` (GameCube alignment, no SSE) so structures read from GC data line up in memory. This mode was previously tools-only, so `fdx8gcmath_*.inl` gained 12 math functions the runtime needs (scalar code from the GC reference). |
-| GameCube assets | `port/gcdata.cpp` converts big-endian CSV and version 8 particle records to the source runtime's host-order version 7 layout, and decodes GX tiled TGA images. `port/gcmesh.cpp` expands supported GX display lists into D3D vertex and index buffers. |
+| GameCube assets | `port/gcdata.cpp` converts big-endian CSV, particle, animation, world header, visibility, and world-init records, and decodes GX tiled TGA images. `port/gcmesh.cpp` expands supported GX display lists into D3D vertex and index buffers. |
 | Language | C++ rule changes since 2003: anonymous-union members made implicit copies deleted (`CFSphere`, `CFRect2D`), implicit-int declarations, `Lock(void**)`, modern MASM operand sizes. |
 
 ## Status
@@ -51,10 +54,15 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
       Startup has converted weapon and effect meshes through `gf_emp02.ape`.
 - [x] Adapt the retail version 8 particle layout to the source version 7 runtime layout;
       particle textures now load during startup.
+- [x] Convert WLD headers, visibility trees, shape-init records, and world mesh tables.
+      `-world-only we01multi01` loads 22 meshes, 22 portals, 22 volumes, 22 cells, and 101
+      world-init shapes through the resource loader. Streamed GX display-list data is retained
+      for mesh conversion.
+- [x] Convert retail `.mtx` animation headers, bone records, key-time arrays, and compressed or
+      floating-point tracks. Startup loads character animations during world entity creation.
 - [ ] Extend mesh support to skinned/streaming display lists and translate GameCube
       collision trees. The current adapter drops mesh collision data.
-- [ ] Convert animations (`.mtx`), world files (`.wld`), tables (`.gt`), scripts (`.sma`),
-      fonts, and other runtime resources.
+- [ ] Convert tables (`.gt`), scripts (`.sma`), fonts, and other runtime resources.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
 - [ ] Input: keyboard/mouse and XInput mapping onto the game's pad layer. DirectInput gamepad
       enumeration works; remapping is disabled when no device/map is configured.
@@ -75,6 +83,21 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
 - Retail `Difficulty.csv` has 20 fields in its `Diff` table; this source expects 8 fields
   for four difficulty levels and therefore falls back to its defaults. The retail flamer
   table also has newer tail columns, which are ignored by the older source vocabulary.
+- Retail `w_laser.csv` and `w_blaster.csv` use newer schemas than the source vocabularies. The
+  Windows GC-data build leaves those systems unavailable and skips those entity instances; the
+  player starts without a supported secondary weapon. Other item tables still report unsupported
+  retail collectable names.
+- The wrapper system accepts trailing retail phrases and reads its six-field screen-name stride,
+  selecting the Xbox UI entries and ignoring the two screens this source does not define.
+- A regular `-level we01multi01` launch now passes wrapper and world setup and reaches
+  `END OF BOOTUP`. Audio remains disabled: `fsndfx.cpp` skips parsing GC SFX banks, so sound groups
+  have no loaded sound definitions.
+- The animation adapter bounds-checks offsets, counts, and track ranges. It rejects animations
+  with overlapping track ranges and files with more bones than the source runtime's 127-bone
+  limit; those assets still need a format-specific review.
+- `-world-only` deliberately skips world-shape entity creation. Its diagnostic exits successfully
+  but prints debug allocator warnings for game-system objects during shutdown; it does not
+  represent normal gameplay teardown.
 - The particle adapter is based on the retail corpus layout: each version 8 keyframe has an
   additional 8-byte tail field, removed before the version 7 structures are byte-swapped.
   It validates that both removed fields are zero, plus the shifted texture name, sampling

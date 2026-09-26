@@ -104,6 +104,7 @@ typedef struct {
 	u32 *pauInputEmulationMap;    // DX8 only, ignored on other platforms.
 	u8 *pszInputEmulationDevName; // DX8 only, ignored on other platforms.
 	BOOL bInstallAudio;
+	BOOL bLoadWorldOnly; // Port diagnostic: load a world resource, then exit before localized game setup.
 	BOOL bPlayerDeath;
 	BOOL bDebugAI;
 	u32 nLegServoLevel;

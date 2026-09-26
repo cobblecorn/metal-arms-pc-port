@@ -4042,6 +4042,21 @@ BOOL CBotGlitch::_InitWeaponInventory( CBotBuilder* pBuilder ) {
 			} else {
 				_ChangeWeaponIndex( 0, 1 );
 			}
+#if FANG_WINGC
+			if( !m_apWeapon[0] ) {
+				for( u32 uIndex=0; uIndex<m_WeaponInv[0].m_nWeaponInvCount; uIndex++ ) {
+					if( m_WeaponInv[0].m_apWeapon[uIndex] ) {
+						_ChangeWeaponIndex( 0, uIndex );
+						break;
+					}
+				}
+			}
+			if( !m_apWeapon[0] ) {
+				DEVPRINTF( "CBotGlitch::_InitInventory(): No supported primary weapon is available; continuing unarmed.\n" );
+				m_WeaponInv[0].m_nWeaponInvCount = 0;
+			}
+			else
+#endif
 			m_apWeapon[0]->SetDesiredState( CWeapon::STATE_DEPLOYED );
 		}
 
@@ -4055,6 +4070,12 @@ BOOL CBotGlitch::_InitWeaponInventory( CBotBuilder* pBuilder ) {
 			if( m_apWeapon[1] ) {
 				m_apWeapon[1]->SetDesiredState( CWeapon::STATE_DEPLOYED );
 			}
+#if FANG_WINGC
+			else {
+				DEVPRINTF( "CBotGlitch::_InitInventory(): No supported secondary weapon is available.\n" );
+				m_WeaponInv[1].m_nWeaponInvCount = 0;
+			}
+#endif
 		}
 	}
 

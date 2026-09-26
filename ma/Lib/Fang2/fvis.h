@@ -777,6 +777,7 @@ extern u32 FVis_nShadowBits[32];
 
 extern  BOOL fvis_CreateVisData( FResHandle_t hRes, FVisData_t *pVisData, u32 nMaxIntersects = 0 );
 extern  BOOL fvis_InitWorldStreamingData( void *pStreamingData, u32 nSize );
+extern  const void *fvis_GetWorldStreamingData( u32 nOffset, u32 nSize );
 extern  BOOL fvis_ResolveLoadedVolumeMeshes( FVisGeoHeader_t *pGeoHeader );
 FINLINE void fvis_RegisterSkyBox( CFMeshInst *pSkyBox )
 {

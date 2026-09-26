@@ -7,7 +7,7 @@ Written as a chronological handoff. Older addenda describe the state at that tim
 User goal (set via `/goal`): **"metal arms windows"** = a working native Windows build of *Metal Arms:
 Glitch in the System*, running from the user's retail **GameCube** disc data. A session Stop hook with
 that condition may still be active; it is **not met yet**. Current progress and remaining format gaps
-are recorded in section 10 and `PORTING.md`.
+are recorded in the latest addendum and `PORTING.md`.
 
 The user is nearly out of usage: be efficient, batch tool calls, avoid re-deriving what is here.
 
@@ -245,3 +245,64 @@ values. Remaining major format work is world files, animation, tables, scripts, 
 `PORTING.md` is updated to match. Git remains local on `x86-port`; there is no configured remote,
 and the earlier search found no matching fork under the authenticated account. Never push. If the
 user wants a specific fork updated, ask them for its URL.
+
+## 11. ADDENDUM (session 4, 2026-09-26)
+
+The GC world-resource adapter is implemented and verified against `we01multi01.wld`:
+
+- `port/gcdata.cpp` byte-swaps and range-checks the WLD header, mesh offset/size tables,
+  visibility tree/portal/cell/light records, and world-init shapes and embedded CSV data.
+- `ma/Lib/Fang2/fresload.cpp` invokes the adapters while loading WLDs, validates mesh ranges,
+  and supplies translated visibility and init data to the runtime.
+- `fvis` retains a host copy of the world's streamed GX display lists, and `port/gcmesh.cpp`
+  resolves streaming draw commands from that copy.
+- `ma_port -world-only we01multi01` exits 0 after translating 22 portals, 22 volumes, 22 cells,
+  22 world meshes, and 101 init shapes. This diagnostic uses a temporary no-op shape callback:
+  it verifies the resource conversion path and skips gameplay entity creation.
+- Added `-level <name>` for the full generic debug-level startup path and `-world-only <name>` for
+  the isolated resource load. At this checkpoint, the full path still stopped in `fsndfx.cpp`;
+  session 5 below records the no-audio bypass and progress beyond that point.
+- The diagnostic exits successfully but emits debug allocator warnings for live game-system
+  objects during early teardown. It does not prove normal gameplay teardown or rendering.
+
+Latest Debug Win32 build succeeds with `cmake --build build --config Debug --target ma_port -- -nologo -v:m`.
+The latest world-only run is in `build/logs/wld-world-only.log` and its process output in
+`build/logs/wld-world-only.out`. The next major runtime blocker is the GC sound-bank/audio path;
+after that, resume full level setup and check entity/game-data parsing and rendering.
+
+The local branch remains `x86-port`, with no Git remote or upstream configured. The earlier
+account search found no matching fork. Do not push; ask for the intended fork URL if remote
+synchronization is requested.
+
+## 12. ADDENDUM (session 5, 2026-09-26)
+
+The direct GameCube level launch now passes the wrapper setup and reaches boot completion:
+
+- `port/gcdata.cpp` converts retail `.mtx` animations: big-endian headers and bone records,
+  key-time arrays, scale data, and compressed or floating-point translation/orientation tracks.
+  The converter validates offsets, counts, data bounds, and non-overlapping track ranges before
+  changing bytes. Character animations loaded during `we01multi01` entity creation converted.
+- Retail wrapper phrases have trailing values. `wpr_system.cpp` now accepts the known prefix and
+  ignores trailing phrases in the WINGC build. Retail `Screen_Table_Names` has six fields per
+  screen (text, mesh, and button variants for Xbox/GC), plus two additional screens; the adapter
+  selects Xbox entries and loads the first 35 source screens.
+- With audio disabled, `fsndfx.cpp` returns before parsing GC SFX bank bytes. The loader no longer
+  crashes in the Xbox/PC bank parser. Missing sound definitions are expected until GC audio is
+  implemented.
+- Retail `w_laser.csv` and `w_blaster.csv` do not match this source’s user-property vocabularies.
+  In the WINGC build, their incompatible systems remain unavailable and those entity instances are
+  skipped. `CBotGlitch` handles an inventory hand with no supported weapon without dereferencing a
+  null weapon.
+- `fang_Assert()` now writes the assertion file, line, and expression to the engine log before
+  showing its dialog, so any later runtime assertion is diagnosable in headless launch logs.
+- Debug Win32 build succeeds. The latest `-level we01multi01` run reaches
+  `LOAD MARKER - END OF BOOTUP`; `build/Debug/ma_port.exe` remained running after the log reached
+  that marker. Log: `build/logs/wld-level-assert-log.log`.
+- Remaining port gaps include GC audio, newer weapon and collectable schemas, unsupported
+  streamed/skinned mesh data, GC collision-tree conversion, and save/input/video integration.
+  Animation resources with overlapping track ranges or more than 127 bones are rejected pending
+  format-specific review.
+
+The latest work is local on `x86-port`. There is no configured remote/upstream, and the earlier
+authenticated account search found no matching fork. Continue with local commits and never push;
+ask for the intended fork URL if the user wants remote synchronization.
