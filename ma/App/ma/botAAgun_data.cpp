@@ -249,6 +249,10 @@ const FGameData_TableEntry_t CBotAAGun::m_aBotInfoVocab_Mortar[] = {
 //	f32 fRoundsPerSec;
 //	f32 fOORoundsPerSec;
 	FGAMEDATA_VOCAB_F32_BOUND_XOOX( F32_DATATABLE_1, F32_DATATABLE_60 ),
+#if FANG_WINGC
+// f32 fFiringTime, fOOFiringTime (retail field 2)
+	FGAMEDATA_VOCAB_F32_BOUND_XOOX( F32_DATATABLE_Pt001, F32_DATATABLE_60 ),
+#endif
 
 //	cchar *pszLaunchExplosion;
 	FGAMEDATA_VOCAB_EXPLODE_GROUP,
@@ -283,6 +287,12 @@ const FGameData_TableEntry_t CBotAAGun::m_aBotInfoVocab_Mortar[] = {
 
 // CFSoundGroup *pMortarNoFire;
 	FGAMEDATA_VOCAB_SOUND_GROUP,
+#if FANG_WINGC
+// CDamageProfile *pDetonateDamageProfile (retail field 15)
+	FGAMEDATA_VOCAB_DAMAGE,
+// f32 fRetailField16
+	FGAMEDATA_VOCAB_F32_BOUND( F32_DATATABLE_0, F32_DATATABLE_10000 ),
+#endif
 
 // End of table:
 	FGAMEDATA_VAR_TYPE_COUNT| 0, 0, F32_DATATABLE_0, F32_DATATABLE_0

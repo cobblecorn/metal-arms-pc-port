@@ -147,6 +147,10 @@ private:
 		u32 uPoolCannonsBalls;
 		f32 fRoundsPerSec;
 		f32 fOORoundsPerSec;
+#if FANG_WINGC
+		f32 fFiringTime;					// Retail field 2 (X and 1/X, as CBotMortar's); not used yet
+		f32 fOOFiringTime;
+#endif
 		FExplosion_GroupHandle_t hExplLaunchGroup;
 		FExplosion_GroupHandle_t hExplDetonateGroup;
 		f32 fMinCannonballVelocityXZ;
@@ -159,6 +163,10 @@ private:
 		CFSoundGroup *pMortarFire;
 		CFSoundGroup *pMortarExplode;
 		CFSoundGroup *pMortarNoFire;
+#if FANG_WINGC
+		CDamageProfile *pDetonateDamageProfile;	// Retail field 15 (AAGunMortarDetonate); not used yet
+		f32 fRetailField16;						// Retail field 16, [0, 10000], 0.333 in the retail data; meaning unknown
+#endif
 	} MortarInfo_t;
 
 //----------------------------------------------------------------------------------------------------------------------------------

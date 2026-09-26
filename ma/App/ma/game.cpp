@@ -1889,6 +1889,7 @@ _ExitStartGameWithError:
 			Player_aPlayer[nPlayerNum].m_pEntityCurrent = NULL;
 		}
 		Player_aPlayer[nPlayerNum].m_Reticle.Destroy();
+		Player_aPlayer[nPlayerNum].m_Hud.Destroy( nPlayerNum );	// its meshes live in the frame released below
 	}
 
 	// These pools live in the frame released below; game_UnloadLevel() must not tear them down again.
