@@ -50,6 +50,15 @@ public:
 	public:
 		f32 m_fDeltaUnitSusceptabilityPlayer;		// The delta to apply to the player's hitpoint susceptability during damage result computation
 		f32 m_fDeltaUnitSusceptabilityNPC;			// The delta to apply to the NPC's hitpoint susceptability during damage result computation
+#if FANG_WINGC
+		// Retail additions (Difficulty.csv has 5 fields per level; vocabulary from main.dol). Loaded,
+		// not used yet. Retail reads them at: +8 compared against an object's f32 at +360
+		// (0x800f63b4); +12 in a calculation at 0x8005ff18; +16 added to a float (0x801595d4,
+		// 0x8015de20). Values Easy..Insane: 2/1.5/1/0.25, 120/60/40/20, 0/30/90/180.
+		f32 m_fRetailField2;						// [0, 6]
+		f32 m_fRetailField3;						// [0, 10000]
+		f32 m_fRetailField4;						// [-10000, 10000]
+#endif
 	};
 
 

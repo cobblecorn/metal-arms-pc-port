@@ -55,6 +55,28 @@ const FGameData_TableEntry_t CDifficulty::m_aGameDataVocab[] = {
 	F32_DATATABLE_Neg1,
 	F32_DATATABLE_1,
 
+#if FANG_WINGC
+	// Retail fields 2-4 (see CInfo). Without them the 20-field retail table read as 10 levels and
+	// failed, so every difficulty played the same.
+	FGAMEDATA_VAR_TYPE_FLOAT|
+	FGAMEDATA_FLAGS_FLOAT_X | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO,
+	sizeof( f32 ),
+	F32_DATATABLE_0,
+	F32_DATATABLE_6,
+
+	FGAMEDATA_VAR_TYPE_FLOAT|
+	FGAMEDATA_FLAGS_FLOAT_X | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO,
+	sizeof( f32 ),
+	F32_DATATABLE_0,
+	F32_DATATABLE_10000,
+
+	FGAMEDATA_VAR_TYPE_FLOAT|
+	FGAMEDATA_FLAGS_FLOAT_X | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO,
+	sizeof( f32 ),
+	F32_DATATABLE_Neg10000,
+	F32_DATATABLE_10000,
+#endif
+
 
 	// End of table:
 	FGAMEDATA_VAR_TYPE_COUNT| 0, 0, F32_DATATABLE_0, F32_DATATABLE_0
