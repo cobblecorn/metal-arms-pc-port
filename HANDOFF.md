@@ -533,7 +533,10 @@ This checkpoint adds desktop input:
 - Mouse motion is not multiplied by frame time or limited by the stick's acceleration/overdrive.
   `-mouse-sensitivity <n>` sets degrees per count (default 0.1, valid 0.001-10), before the existing
   look-sensitivity multiplier. `MA_PORT_MOUSE_SENSITIVITY` is the equivalent environment option.
-- Focus loss releases all sampled controls and mouse capture. F1 toggles capture; Escape releases
+- Focus loss releases all sampled controls and mouse capture. Mouse look now captures itself on the
+  first raw mouse movement or click over the client area while the keyboard port is in gameplay
+  (`pcinput_BeginFrame(allowLook)` publishes that to the window thread); menus, Escape, Alt-Tab and
+  any foreground change release it. F1 switches automatic capture off and on. Escape releases
   it and pauses. The old Windows Escape-to-quit shortcut is disabled for the port; use Alt-F4 or
   the window close button. Desktop defaults to non-inverted look when there is no profile.
 - CMake defines `MA_PC_INPUT` for Fang/game targets. The old DirectInput code remains for legacy
@@ -808,10 +811,9 @@ the foreground: a backgrounded loop outlived TaskStop and kept launching windows
 User reports to follow up: RAT vehicle controls broken (WASD dead, mouse steers). No game audio
 (expected; GC MusyX/DSP-ADPCM not implemented). Next priority chosen: audio.
 
-### Audio work in progress (stopped at the usage limit)
+### Audio formats (the implementation is in section 23)
 
-`port/gcaudio.cpp/.h` are written but **not yet in CMake, built or tested**. The formats are verified
-in Python over the whole retail corpus. `snd_init.rdg` is a 24-byte BE header
+The formats were verified in Python over the whole retail corpus. `snd_init.rdg` is a 24-byte BE header
 (proj/pool/sdir bytes+offset) followed by:
 - the MusyX project: 106 SFX groups, table offset at group+28 (project-relative), 10-byte entries
   sfxId/macroId;
@@ -824,11 +826,35 @@ All 1,361 samples are mono DSP-ADPCM. All 106 banks and 1,359 waves resolve exce
 `.sfb` files are the PC `FData_SFxBank_*` structs, big-endian with file-relative offsets (20/16/8/20
 bytes; no shared play cmds; only PLAY cmds).
 
-Remaining steps:
-1. Add `port/gcaudio.cpp` to the fang2 library in CMakeLists.
-2. gcdata.cpp: add an `sfb` case that validates, then byte-swaps header, seqs, cmds and play cmds.
-3. fdx8audio.cpp (WINGC): skip the `xbadpcm.acm` codec load (not on modern Windows), register
-   extension `rdg`, call `gcaudio_Init()` at install, and in `_BankLoadCallback` use
-   `gcaudio_ConvertBank()` in place of the ACM path.
-4. main_win.cpp: set `bInstallAudio = TRUE`; remove the fsndfx "audio not installed" bypass if needed.
-5. Streams (`*.wvs` on disc, speech/music) are a separate format and still to do.
+## 23. ADDENDUM (2026-09-26) - audio, co-op input layout, automatic mouse capture
+
+**Audio works.** The user confirmed sound effects and music by ear, and `tools/audio_meter.ps1`
+(reads a process's Windows audio-session peak meter) showed the game audible in 73 of 74 one-second
+samples during `-mission wecdsneak01`.
+- Sound effects: `port/gcaudio.cpp` indexes snd_init.rdg at install and decodes each retail `.rdg`
+  wave bank to the Windows PCM bank layout in `_BankLoadCallback`; `.sfb` banks are validated and
+  byte-swapped in `gcdata.cpp`. The Xbox ADPCM codec is skipped under WINGC. Audio installs by
+  default; `-no-audio` skips it.
+- Streams (music, speech): the Windows `CFAudioStream` used to be stubs. Under WINGC it now opens
+  `<data dir>\<name>.wvs` (96-byte BE header; 4 KB DSP-ADPCM chunks interleaved per channel; all
+  166 retail files validated), creates one DirectSound buffer for the whole decoded stream, and a
+  worker thread decodes into it while the stream is CREATING. The game waits for STOPPED before
+  Play(), as on the GameCube, and DirectSound plays the buffer itself. Largest file: 8.9 MB of
+  ADPCM, about 31 MB of PCM. Volume/pan follow the Xbox code (no GameCube 0.6 stereo scaling).
+- Not yet verified: speech streams during scripted dialogue, looping N>1, and stream restart on
+  checkpoint reload (`level_RestartAllStreams` destroys and recreates the stream).
+
+**Co-op groundwork.** The user plans to add co-op where the game has none, so single-player
+assumptions in port code should be caught now. `-input-layout shared|separate`
+(`MA_PORT_INPUT_LAYOUT`): shared (default) keeps keyboard/mouse + pad 1 on port 1; separate
+keeps the keyboard/mouse alone on port 1 and pads 1-3 on ports 2-4. Mouse look, mouse aiming and
+aim assist follow `pcinput_KeyboardPort()`. Remaining single-player assumptions to review before
+co-op work: one mouse (only one keyboard/mouse player), `gamepad.cpp` mouse-look gating on the
+keyboard port's map only, the HUD/menus, and the audio listener count (faudio supports several).
+
+**Mouse capture.** F1 is no longer needed: moving or clicking the mouse over the client area during
+gameplay captures it; menus, Escape, Alt-Tab and any foreground change release it. F1 now switches
+automatic capture off and on. Not yet confirmed interactively by the user.
+
+**Next** (user-stated): mouse-driven menus drawn with the game's own cursor art. Also still open:
+RAT vehicle controls, town cart NaN, barter EUK/battery items.

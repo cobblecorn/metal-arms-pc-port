@@ -13,6 +13,8 @@ static PcInputLayout s_layout = PCINPUT_LAYOUT_SHARED;
 static bool s_connected[FPADIO_MAX_DEVICES];		// by XInput pad index
 static DWORD s_lastProbe[FPADIO_MAX_DEVICES];
 static volatile LONG s_mouseLook, s_mouseDX, s_mouseDY;
+static volatile LONG s_lookAllowed;		// the keyboard port is in gameplay (set by the game thread)
+static volatile LONG s_lookSwitchedOff;	// F1 turned automatic mouse look off
 static bool s_rawMouse;
 static float s_mouseDegrees = 0.1f;
 static float s_frameYaw, s_framePitch;
@@ -125,10 +127,31 @@ static void ReleaseMouse() {
 	InterlockedExchange(&s_mouseDY, 0);
 }
 
+static void CaptureMouse() {
+	InterlockedExchange(&s_mouseDX, 0);
+	InterlockedExchange(&s_mouseDY, 0);
+	InterlockedExchange(&s_mouseLook, 1);
+	ClipToGame();
+	SetCursor(NULL);
+}
+
+// Mouse look captures itself when the game is in gameplay, owns focus, the player has not
+// turned it off with F1, and the mouse moves or clicks over the client area.
+static bool MayCaptureMouse() {
+	if (!s_rawMouse || MouseLook() || GetForegroundWindow() != s_window || IsIconic(s_window) ||
+		!InterlockedCompareExchange(&s_lookAllowed, 0, 0) || InterlockedCompareExchange(&s_lookSwitchedOff, 0, 0))
+		return false;
+	POINT cursor;
+	RECT client;
+	return GetCursorPos(&cursor) && ScreenToClient(s_window, &cursor) && GetClientRect(s_window, &client) &&
+		PtInRect(&client, cursor);
+}
+
 bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 	s_window = (HWND)window;
 	s_platform = platform;
 	s_mouseLook = s_mouseDX = s_mouseDY = 0;
+	s_lookAllowed = s_lookSwitchedOff = 0;
 	s_frameYaw = s_framePitch = 0;
 	s_mouseDegrees = 0.1f;
 	char sensitivity[32];
@@ -240,12 +263,14 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 	if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && !wParam) || message == WM_DESTROY) ReleaseMouse();
 	if (message == WM_KEYDOWN && !(lParam & (1L << 30))) {
 		if (wParam == VK_ESCAPE) ReleaseMouse();
+		// F1 switches automatic mouse look off (freeing the cursor) and back on.
 		if (wParam == VK_F1 && s_rawMouse && GetForegroundWindow() == s_window) {
-			if (MouseLook()) ReleaseMouse();
-			else {
-				InterlockedExchange(&s_mouseDX, 0); InterlockedExchange(&s_mouseDY, 0);
-				InterlockedExchange(&s_mouseLook, 1);
-				ClipToGame(); SetCursor(NULL);
+			if (InterlockedCompareExchange(&s_lookSwitchedOff, 0, 0)) {
+				InterlockedExchange(&s_lookSwitchedOff, 0);
+				if (MayCaptureMouse()) CaptureMouse();
+			} else {
+				InterlockedExchange(&s_lookSwitchedOff, 1);
+				ReleaseMouse();
 			}
 		}
 	}
@@ -253,14 +278,21 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 		SetCursor(NULL); return true;
 	}
 	if ((message == WM_MOVE || message == WM_SIZE) && MouseLook()) ClipToGame();
-	if (message == WM_INPUT && MouseLook() && GetForegroundWindow() == s_window) {
+	if (message == WM_INPUT && GetForegroundWindow() == s_window) {
 		RAWINPUT data;
 		UINT size = sizeof(data);
 		const UINT read = GetRawInputData((HRAWINPUT)lParam, RID_INPUT, &data, &size, sizeof(RAWINPUTHEADER));
 		if (read != (UINT)-1 && read >= sizeof(RAWINPUTHEADER) + sizeof(RAWMOUSE) &&
 			data.header.dwType == RIM_TYPEMOUSE && !(data.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
-			InterlockedExchangeAdd(&s_mouseDX, data.data.mouse.lLastX);
-			InterlockedExchangeAdd(&s_mouseDY, data.data.mouse.lLastY);
+			const RAWMOUSE &mouse = data.data.mouse;
+			if (MouseLook()) {
+				InterlockedExchangeAdd(&s_mouseDX, mouse.lLastX);
+				InterlockedExchangeAdd(&s_mouseDY, mouse.lLastY);
+			} else if ((mouse.lLastX || mouse.lLastY || (mouse.usButtonFlags & (RI_MOUSE_LEFT_BUTTON_DOWN | RI_MOUSE_RIGHT_BUTTON_DOWN))) &&
+				MayCaptureMouse()) {
+				// The motion that brings the mouse in is not applied, so the view does not jump.
+				CaptureMouse();
+			}
 		}
 	}
 	// WM_INPUT must still reach DefWindowProc for the foreground packet cleanup.
@@ -270,7 +302,9 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 void pcinput_BeginFrame(bool allowLook) {
 	const LONG dx = InterlockedExchange(&s_mouseDX, 0), dy = InterlockedExchange(&s_mouseDY, 0);
 	s_frameYaw = s_framePitch = 0;
-	if (!allowLook) ReleaseMouse();
+	InterlockedExchange(&s_lookAllowed, allowLook ? 1 : 0);
+	// Menus, and losing focus by any route the window messages missed, free the cursor.
+	if (!allowLook || GetForegroundWindow() != s_window) ReleaseMouse();
 	if (allowLook && MouseLook() && GetForegroundWindow() == s_window) {
 		// Distance, not stick deflection: no turn-speed cap, acceleration curve or dt scaling.
 		const float radiansPerCount = s_mouseDegrees * (3.14159265358979323846f / 180.0f);

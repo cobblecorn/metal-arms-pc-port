@@ -52,7 +52,8 @@ retail evidence instead of guessing; keep their output under `build/`.
 | Control | Action |
 |---|---|
 | WASD | Move (diagonal speed is normalized) |
-| F1 | Toggle raw mouse look |
+| Mouse movement | Captures the mouse for raw mouse look (during gameplay, while the game has focus) |
+| F1 | Turn automatic mouse look off (free cursor) / back on |
 | Mouse / arrow keys | Look / turn |
 | Space | Jump |
 | E | Weapons menu (observed in current run; adapter intends action) |
@@ -62,6 +63,7 @@ retail evidence instead of guessing; keep their output under `build/`.
 | R | Adapter maps secondary selection; active menu mapping needs reconciliation |
 | 1 / 2 / 3 / 4 | Quick-select up / right / down / left |
 | Escape / Enter | Pause; Escape also releases the mouse |
+| Alt-Tab | Releases the mouse; moving it over the game again recaptures it |
 | Alt-F4 | Close the game |
 
 The user confirmed responsive mouse look and reported that some weapons appear to work.
@@ -74,15 +76,20 @@ Throwable behavior has not yet been confirmed interactively.
 Mouse look uses raw relative motion, applied as angular displacement without the controller's
 acceleration curve or turn-speed cap. `-mouse-sensitivity 0.1` is the default, in degrees per
 mouse count, before the game's look-sensitivity multiplier. Use `0.05` for half that speed.
-F1 must be pressed again after switching away from the game or entering menu controls. All
-inputs return to neutral when the game loses focus. Desktop defaults to non-inverted look;
+Moving or clicking the mouse over the game during gameplay captures it; menus, Escape and losing
+focus (Alt-Tab) release it, and the next movement over the game recaptures it. F1 switches
+automatic capture off for a free cursor, and on again. All inputs return to neutral when the game
+loses focus. Desktop defaults to non-inverted look;
 loaded profiles retain their own setting.
 
 Target assistance (reticle snapping, aim biasing, shot focusing) is tuned for sticks. By
 default (`-aim-assist auto`) it is suspended while you aim with captured mouse look and returns
 when the right stick aims; `-aim-assist on|off` (or `MA_PORT_AIM_ASSIST`) forces it.
 
-XInput controllers occupy ports 1-4 and can connect after launch. The keyboard shares port 1.
+XInput controllers can connect after launch. `-input-layout shared` (default) puts the keyboard/mouse
+and controller 1 on port 1 and controllers 2-4 on ports 2-4. `-input-layout separate` keeps the
+keyboard/mouse alone on port 1 and puts controllers 1-3 on ports 2-4, so a keyboard player and pad
+players are separate players (local co-op). `MA_PORT_INPUT_LAYOUT` is the environment equivalent.
 The adapter intends A for jump, Y for action, B/X for weapon selection, triggers for fire,
 and RB/right-stick click for melee. Menu-button behavior needs the reconciliation noted above. Controller mapping has automated coverage; physical controller
 behavior and rumble still need verification. Legacy DirectInput-only pads are not supported by
