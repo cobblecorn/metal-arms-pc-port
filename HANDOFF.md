@@ -306,3 +306,45 @@ The direct GameCube level launch now passes the wrapper setup and reaches boot c
 The latest work is local on `x86-port`. There is no configured remote/upstream, and the earlier
 authenticated account search found no matching fork. Continue with local commits and never push;
 ask for the intended fork URL if the user wants remote synchronization.
+
+## 13. ADDENDUM (session 6, 2026-09-26)
+
+Retail GameCube `.gt` AI graph conversion is implemented in the runtime path:
+
+- `AIGraph.cpp` validates the graph header, vertex/POI counts and ranges, active edge counts, and
+  edge targets before converting the GameCube byte order and pointerizing graph data.
+- The retail corpus analysis found 71/71 `.gt` files use a 40-byte graph header, 128-byte vertices
+  with five edge slots, and 8-byte POIs. The WINGC build now uses five edge slots; other builds
+  retain their existing six-slot definition.
+- `AIMain.cpp` converts graph bytes before pointerization and reports short reads or invalid graph
+  data instead of continuing with malformed offsets.
+
+The Win32 Debug build succeeded with:
+
+```powershell
+cmake --build build --config Debug --target ma_port -- -nologo -v:m
+```
+
+The full `we01multi01` launch converted a graph with 153 vertices and reached
+`LOAD MARKER - END OF BOOTUP`, then proceeded into bot-dispenser and AI setup. Logs:
+`build/logs/wld-level-gt-conversion.log` and `.out`. This confirms the graph conversion and startup
+path through that marker; stable rendering and a clean gameplay run still need confirmation. One
+`fvid_Swap()` warning appeared at the start of the game loop, before the first begin/end frame pair.
+
+The current working tree contains uncommitted AI graph changes in `ma/App/ma/Ai/AIGraph.cpp`,
+`AIGraph.h`, and `AIMain.cpp`. It also contains a separate pending edit in `port/main_win.cpp`
+that routes Debug CRT diagnostics to the log; the recorded graph run should be repeated with that
+diagnostic change to identify the modal runtime error observed during launch. Keep that edit when
+reviewing the tree. `PORTING.md` was updated alongside this addendum.
+
+Next: rebuild, then rerun with the explicit data path and inspect any CRT assertion or run-time
+check captured by `port/main_win.cpp`:
+
+```powershell
+& .\build\Debug\ma_port.exe -data gamedata\files -mst mettlearms_gc.mst -level we01multi01 -log build\logs\wld-level-gt-conversion.log *> build\logs\wld-level-gt-conversion.out
+```
+
+Confirm whether the initial `fvid_Swap()` warning clears after the first frame. Then review line
+endings and `git diff --check` before committing. Git remains local on `x86-port`; there is no
+configured remote and no matching fork was found in the prior account search. Do not push without
+the intended fork URL.

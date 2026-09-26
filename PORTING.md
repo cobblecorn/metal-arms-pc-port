@@ -39,6 +39,7 @@ the WLD resource, then exits before localized setup and gameplay entity creation
 | Entry point | `port/main_win.cpp` replaces the MFC "mawin" dialog. Same boot sequence as the Xbox `main.cpp`. |
 | Struct layout | Built with `_FANGDEF_WINGC` (GameCube alignment, no SSE) so structures read from GC data line up in memory. This mode was previously tools-only, so `fdx8gcmath_*.inl` gained 12 math functions the runtime needs (scalar code from the GC reference). |
 | GameCube assets | `port/gcdata.cpp` converts big-endian CSV, particle, animation, world header, visibility, and world-init records, and decodes GX tiled TGA images. `port/gcmesh.cpp` expands supported GX display lists into D3D vertex and index buffers. |
+| AI graphs | `AIGraph.cpp` converts retail GameCube `.gt` graph headers, vertices, edge slots, and POIs before pointerization; the GC build uses the five edge slots present in the retail format. |
 | Language | C++ rule changes since 2003: anonymous-union members made implicit copies deleted (`CFSphere`, `CFRect2D`), implicit-int declarations, `Lock(void**)`, modern MASM operand sizes. |
 
 ## Status
@@ -60,9 +61,12 @@ the WLD resource, then exits before localized setup and gameplay entity creation
       for mesh conversion.
 - [x] Convert retail `.mtx` animation headers, bone records, key-time arrays, and compressed or
       floating-point tracks. Startup loads character animations during world entity creation.
+- [x] Convert retail GameCube `.gt` AI graphs. The converter validates graph counts, array ranges,
+      edge counts and edge targets before swapping the header, vertices, edges, and POIs. The
+      full `we01multi01` level path converted a graph with 153 vertices and reached boot completion.
 - [ ] Extend mesh support to skinned/streaming display lists and translate GameCube
       collision trees. The current adapter drops mesh collision data.
-- [ ] Convert tables (`.gt`), scripts (`.sma`), fonts, and other runtime resources.
+- [ ] Convert scripts (`.sma`), fonts, and other runtime resources.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
 - [ ] Input: keyboard/mouse and XInput mapping onto the game's pad layer. DirectInput gamepad
       enumeration works; remapping is disabled when no device/map is configured.
@@ -95,6 +99,9 @@ the WLD resource, then exits before localized setup and gameplay entity creation
 - The animation adapter bounds-checks offsets, counts, and track ranges. It rejects animations
   with overlapping track ranges and files with more bones than the source runtime's 127-bone
   limit; those assets still need a format-specific review.
+- The `.gt` converter matches the analyzed retail corpus: its GameCube graph header is 40 bytes,
+  each vertex is 128 bytes with five edge slots, and each POI is 8 bytes. Recheck those layout
+  assumptions if support is extended to other platforms or asset versions.
 - `-world-only` deliberately skips world-shape entity creation. Its diagnostic exits successfully
   but prints debug allocator warnings for game-system objects during shutdown; it does not
   represent normal gameplay teardown.
