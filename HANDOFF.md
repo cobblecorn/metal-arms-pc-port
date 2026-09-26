@@ -92,7 +92,8 @@ Working (verified by runs or by the user, see `PORTING.md` for detail):
   textures (GX formats), static/skinned/streamed meshes and kDOP collision, worlds and visibility,
   animations, AI graphs, particles (v8), fonts, camera animations, scripts (all 393 bind every native).
 - All 44 campaign worlds swept with `-mission`; Night Sneak (`wecdsneak01`) is the interactive
-  baseline. Rendering with textures, lighting and HUD; some scenery surfaces are still solid black.
+  baseline. Rendering with textures, lighting and HUD; world objects get their baked vertex lighting
+  (GameCube color streams remapped onto the converted vertex buffers, `gcmesh.cpp`/`fdx8mesh.cpp`).
 - Keyboard/mouse (raw mouse look, auto capture) and XInput; mouse aiming for vehicles and manned guns.
 - Audio: sound effects (MusyX banks decoded to PCM), music and speech streams (DSP-ADPCM), with the
   GameCube mix (MusyX distance model, stream gains); 160 virtual emitters.
@@ -117,15 +118,15 @@ delete, in-game save, kill mid-save), which needs the menus.
 
 1. **Verify the save flow** from the menus (create, load, rename, delete, in-game save; kill the game
    mid-save). The rest of the cloud-session changes are verified (see above).
-2. `wewchold_01` (Hold Your Ground): the retail `Mini_Game` table has 104 fields where the source
-   expects 62, so the level fails to load. Map it from `main.dol` like the other schemas.
+2. `wewchold_01` (Hold Your Ground) loads with the source's minigame logic; the retail version's
+   predators, intro cutscene and timed radio lines (Mini_Game fields 62-103) are not implemented.
 3. `CFQuatTang3::Calculate` NaN (scripted carts in `WEDTtown_01`, `wessstatn02`): a zero XZ tangent is
    unitized. Check the path tangent input.
 4. User confirmations pending: chase-level AI driver (probably fixed by the XZ math fix), RAT controls,
    vehicle reticle, dialog balance, throwables, and the new keys: Q = throwables list, R = weapons list
    (tap to reload), E = action, with lists opening after a 0.5 s hold (`PORTING.md` controls).
 5. Mouse-driven menus: follow `docs/mouse-menus-design.md` (clickable button prompts first).
-6. Remaining black scenery surfaces.
+6. Rendering fidelity checks against the GameCube (lighting levels, fog, reflections).
 7. Failed-load teardown beyond what `CLOUD_SESSION_LOG.md` entries 5 and 10 cover: systems
    created during `level_Load()` other than alarms/spawns (e.g. `aimain_InitSystem()`) have no
    explicit teardown on that path; check a failing level's log for asserts after the failure.
