@@ -1054,21 +1054,24 @@ BOOL CInventory::InitFromCSVTable( FGameDataTableHandle_t hTable, BOOL bLoadPrim
 		return FALSE;
 	}
 
-	// make sure that there are enough fields in the table
-	u32 nNumRequiredFields = (u32)( 6.0f + ((fNumPrimary + fNumSecondary) * 3.0f) + (fNumItems * 2.0f) );
-	if( nNumFields != nNumRequiredFields ) {
-		DEVPRINTF( "CInventory::InitFromCSVTable() - the passed in table has %d fields, not the required %d.\n", nNumFields, nNumRequiredFields );
+	// Validate serialized counts before converting floats or indexing fixed arrays.
+	// Positive bounded comparisons also reject NaN and infinity.
+	if( !(fNumBatteries >= 1.0f && fNumBatteries <= 255.0f) ||
+		!(fNumPrimary >= 1.0f && fNumPrimary <= ItemInst_uMaxInventoryWeapons) ||
+		!(fNumSecondary >= 1.0f && fNumSecondary <= ItemInst_uMaxInventoryWeapons) ||
+		!(fNumItems >= 0.0f && fNumItems <= nNumFields / 2) ||
+		!(fStartingPrimary >= 0.0f && fStartingPrimary < fNumPrimary) ||
+		!(fStartingSecondary >= 0.0f && fStartingSecondary < fNumSecondary) ||
+		fNumBatteries != (u32)fNumBatteries || fNumPrimary != (u32)fNumPrimary ||
+		fNumSecondary != (u32)fNumSecondary || fNumItems != (u32)fNumItems ||
+		fStartingPrimary != (u32)fStartingPrimary || fStartingSecondary != (u32)fStartingSecondary ) {
+		DEVPRINTF( "CInventory::InitFromCSVTable() - invalid or oversized inventory header.\n" );
 		return FALSE;
 	}
 
-	// do some error checking
-	if( fNumBatteries < 1.0f || 
-		fNumPrimary < 1.0f ||
-		fNumSecondary < 1.0f || 
-		fNumItems < 0.0f ||
-		fStartingPrimary >= fNumPrimary ||
-		fStartingSecondary >= fNumSecondary ) {
-		DEVPRINTF( "CInventory::InitFromCSVTable() - invalid data in the header fields.\n" );
+	u32 nNumRequiredFields = 6 + ((u32)fNumPrimary + (u32)fNumSecondary) * 3 + (u32)fNumItems * 2;
+	if( nNumFields != nNumRequiredFields ) {
+		DEVPRINTF( "CInventory::InitFromCSVTable() - the passed in table has %d fields, not the required %d.\n", nNumFields, nNumRequiredFields );
 		return FALSE;
 	}
 
@@ -1080,6 +1083,7 @@ BOOL CInventory::InitFromCSVTable( FGameDataTableHandle_t hTable, BOOL bLoadPrim
 
 	// read in the primary weapons
 	u32 i, nCount, j, nNumValid;
+	u32 anSelectedSlot[2] = { 0, 0 };
 	cchar *pszString;
 	f32 fClipSize, fReserveAmmo;
 	CItemInst *pItemInst;
@@ -1097,7 +1101,7 @@ BOOL CInventory::InitFromCSVTable( FGameDataTableHandle_t hTable, BOOL bLoadPrim
 		// Don't actually load the weapon if so requested (limited ammo case)
 		if( bLoadPrimary ) {
 			// make sure that the item doesn't already exist
-			for( j=0; j < i; j++ ) {
+			for( j=0; j < nNumValid; j++ ) {
 				if( m_aoWeapons[0][j].m_pItemData ) {
 					if( fclib_stricmp( m_aoWeapons[0][j].m_pItemData->m_pszCodeName, pszString ) == 0 ) {
 						// oophs, each weapon can only occupy 1 weapon slot
@@ -1111,15 +1115,21 @@ BOOL CInventory::InitFromCSVTable( FGameDataTableHandle_t hTable, BOOL bLoadPrim
 			if( !InitItemInst( pItemInst, pszString, (s32)fClipSize, (s32)fReserveAmmo ) ) {
 				DEVPRINTF( "CInventory::InitFromCSVTable() - trouble initing the primary item named %s.\n", pszString );
 			} else {
+				if( i == (u32)fStartingPrimary ) anSelectedSlot[0] = nNumValid;
 				nNumValid++;
 			}
 		}
 	}
 
 	if( bLoadPrimary ) {
+		if( !nNumValid ) {
+			DEVPRINTF( "CInventory::InitFromCSVTable() - no recognized primary inventory items.\n" );
+			return FALSE;
+		}
 		m_auNumWeapons[0] = nNumValid;
-		m_auCurWeapon[0] = (u32)fStartingPrimary;
-		FMATH_CLAMP( m_auCurWeapon[0], 0, nNumValid-1 );
+		// Serialized slots shift when unsupported items are omitted. Preserve the
+		// requested item by its remapped slot, or use the first recognized item.
+		m_auCurWeapon[0] = anSelectedSlot[0];
 	}
 	m_auSavedWeapon[0] = m_auCurWeapon[0];
 
@@ -1137,7 +1147,7 @@ BOOL CInventory::InitFromCSVTable( FGameDataTableHandle_t hTable, BOOL bLoadPrim
 
 		if( bLoadSecondary ) {
 			// make sure that the item doesn't already exist
-			for( j=0; j < i; j++ ) {
+			for( j=0; j < nNumValid; j++ ) {
 				if( m_aoWeapons[1][j].m_pItemData ) {
 					if( fclib_stricmp( m_aoWeapons[1][j].m_pItemData->m_pszCodeName, pszString ) == 0 ) {
 						// oophs, each weapon can only occupy 1 weapon slot
@@ -1151,15 +1161,21 @@ BOOL CInventory::InitFromCSVTable( FGameDataTableHandle_t hTable, BOOL bLoadPrim
 			if( !InitItemInst( pItemInst, pszString, (s32)fClipSize, (s32)fReserveAmmo ) ) {
 				DEVPRINTF( "CInventory::InitFromCSVTable() - trouble initing the secondary item named %s.\n", pszString );
 			} else {
+				if( i == (u32)fStartingSecondary ) anSelectedSlot[1] = nNumValid;
 				nNumValid++;
 			}
 		}
 	}
 
 	if( bLoadSecondary ) {
+		if( !nNumValid ) {
+			DEVPRINTF( "CInventory::InitFromCSVTable() - no recognized secondary inventory items.\n" );
+			return FALSE;
+		}
 		m_auNumWeapons[1] = nNumValid;
-		m_auCurWeapon[1] = (u32)fStartingSecondary;
-		FMATH_CLAMP( m_auCurWeapon[1], 0, nNumValid-1 );
+		// Serialized slots shift when unsupported items are omitted. Preserve the
+		// requested item by its remapped slot, or use the first recognized item.
+		m_auCurWeapon[1] = anSelectedSlot[1];
 	}
 	m_auSavedWeapon[1] = m_auCurWeapon[1];
 	

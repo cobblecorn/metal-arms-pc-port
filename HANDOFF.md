@@ -664,3 +664,21 @@ Debug build succeeded; output: `build/logs/blaster-loader-build.log`. Runtime lo
 selection, firing/reloading and all three blaster upgrades remain unverified. No new tests were
 added/run and no game process was launched. Inspect the next run for `CWeaponBlaster: loaded 3
 variants` and resource-creation diagnostics before describing the blaster as working.
+
+
+## 19. ADDENDUM (2026-09-26) - serialized inventory slot remapping
+
+`CInventory::InitFromCSVTable` compacted recognized items but kept the original serialized
+starting slot, then clamped it. If an earlier unsupported item was omitted, this selected a
+different item. Each successfully loaded starting item now records its compacted index. An
+unsupported starting item falls back to the first recognized item; a requested hand with no
+recognized items fails explicitly instead of underflowing `nNumValid - 1`.
+
+Duplicate checks now inspect only populated slots. Header validation happens before float to
+integer conversion and enforces integral, finite counts/indices, the 16-slot hand arrays, and
+the u8 battery count. Negative starting indices are rejected. Expected field counts are then
+computed from validated integers. The limited-ammo flags still skip the requested hand's load.
+
+Debug build succeeded (`build/logs/inventory-slots-build.log`). No runtime replay or automated
+tests were run. This fixes serialized item-name filtering; runtime weapon creation failures
+remain governed by the earlier weapon-selection guards. Q/E behavior remains unconfirmed.

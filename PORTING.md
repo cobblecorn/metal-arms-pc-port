@@ -162,6 +162,8 @@ environment variables remain available.
   initializing absent military variants. Its two extra numeric fields are retained but their
   behavior is not implemented. Blaster resource creation, firing and upgrades need runtime
   confirmation. Other item tables still report unsupported retail collectable names.
+- Retail inventory startup slots now follow recognized items when unsupported names are skipped;
+  array/count validation prevents invalid table indices and empty-inventory underflow.
 - Weapon selection rejects unavailable runtime weapon objects and retains the previous equipped
   item. Starting with Empty Secondary now preserves the inventory count so throwables remain
   selectable. These changes build successfully; runtime confirmation is pending.
