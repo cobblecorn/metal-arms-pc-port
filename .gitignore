@@ -1,0 +1,16 @@
+# Retail game data + disc image: never commit (copyrighted)
+/gamedata/
+*.rvz
+*.iso
+
+# Build output
+/build/
+/out/
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# Machine-generated IDE caches in the original drop
+*.ncb
+*.suo
