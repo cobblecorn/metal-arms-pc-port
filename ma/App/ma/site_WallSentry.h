@@ -198,6 +198,9 @@ private:
 public:
 	static BOOL InitSystem( void );
 	static void UninitSystem( void );
+#if FANG_WINGC
+	static BOOL _ReadRetailProps( void );
+#endif
 	virtual ~CWallSentry();
 	virtual BOOL	Create( CBotSiteWeapon::SiteWeaponData_t* pData, void* pUser, const u64 userTypeBits );
 	virtual void	RemoveFromWorld(void);

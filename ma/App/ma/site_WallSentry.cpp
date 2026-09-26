@@ -343,6 +343,30 @@ void CWallSentry::Destroy(void)
 	m_DeadAnimManMtxAim.Destroy();
 }
 
+#if FANG_WINGC
+// Retail sw_wall.csv GunProps has 29 fields. Per the retail vocabulary in main.dol, fields 0-21
+// match this source's first 22 entries and four smoke fields (particle, two rates, intensity)
+// are inserted before the damage profile, sound radius and decal. The smoke is not implemented.
+BOOL CWallSentry::_ReadRetailProps( void ) {
+	static const s8 anRetailField[] = {
+		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+		26, 27, 28,
+	};
+
+	FMemFrame_t Frame = fmem_GetFrame();
+	FGameDataFileHandle_t hFile = fgamedata_LoadFileToFMem( _WALLSENTRYINFO_FILENAME );
+	FGameDataTableHandle_t hTable = FGAMEDATA_INVALID_TABLE_HANDLE;
+	if( hFile != FGAMEDATA_INVALID_FILE_HANDLE ) {
+		hTable = fgamedata_GetFirstTableHandle( hFile, m_aGameDataMap[0].pszTableName );
+	}
+	BOOL bOK = hTable != FGAMEDATA_INVALID_TABLE_HANDLE && fgamedata_GetNumFields( hTable ) == 29 &&
+		fgamedata_GetTableDataRemapped( hTable, m_aSpewPropVocab, anRetailField, sizeof(anRetailField) / sizeof(anRetailField[0]),
+										&m_pSpewProps, sizeof(m_pSpewProps) );
+	fmem_ReleaseFrame( Frame );
+	return bOK;
+}
+#endif
+
 BOOL CWallSentry::InitSystem( void )
 {
 	if (CWallSentry::m_AliveAnimStackDef.IsCreated()==FALSE)
@@ -408,7 +432,11 @@ BOOL CWallSentry::InitSystem( void )
 		}
 	}
 	
-	if( !fgamedata_ReadFileUsingMap( m_aGameDataMap, _WALLSENTRYINFO_FILENAME ) ) 
+#if FANG_WINGC
+	if( !_ReadRetailProps() )
+#else
+	if( !fgamedata_ReadFileUsingMap( m_aGameDataMap, _WALLSENTRYINFO_FILENAME ) )
+#endif
 	{
 		DEVPRINTF( "CWallSentryRocket::Create(): Could not create .\n" );
 		goto _ExitWithError;
