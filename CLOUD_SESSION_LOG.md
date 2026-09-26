@@ -128,3 +128,40 @@ the math. **Verify in a run:** nothing specific to look for (no current callers 
 
 **Use it.** `python3 tools/mathdiff/mathdiff.py` (about 90 s); run it after touching `fdx8gcmath_*.inl`.
 Requires `clang gcc-multilib g++-multilib`.
+
+## 5. Failed level loads: tear down before releasing memory (`ma/App/ma/game.cpp`)
+
+**Why.** HANDOFF section 24: after a level fails to load (e.g. `wewchold_01`'s Mini_Game table),
+teardown "trips over other objects left in the released frame".
+
+**Cause.** `_PostWorldLoadGameInit()` took a resource frame before creating the player bots, and on
+failure released it at once. Both callers then run `game_UnloadLevel()`, which uninitializes every
+level system: HUDs, debris and explosion pools, barter, level cameras, test bots, mesh-part manager,
+level minigames, scripts, checkpoints. Everything created after that frame was torn down from released
+memory. The HUD and debris/explosion lines added earlier worked around three of those objects.
+
+**What changed.**
+- `_PostWorldLoadGameInit()`'s error path no longer releases that frame (the frame variable is gone).
+  `game_UnloadLevel()` tears the systems down in order while their memory is valid, then releases the
+  level's frame. The earlier HUD/debris/explosion workarounds were removed; `game_UnloadLevel()` does
+  those same calls.
+- `game_LoadGenericDebugLevel()` (`-level`) called `level_Unload()` before `game_UnloadLevel()`. That
+  freed the world and all post-world allocations before the level's systems were torn down. Removed:
+  `game_UnloadLevel()` calls `level_Unload()` at the right point.
+- `game_UnloadLevel()` passed `Level_aInfo[Level_nLoadedIndex].nLevel` to `CPlayer::UninitLevel` even
+  when the level itself failed to load (`Level_nLoadedIndex == -1`, an out-of-bounds read). It now passes
+  `LEVEL_DEVELOPMENT_LEVEL` then, which `CPlayer::UninitLevel` already treats as "no stats to save".
+
+**Not changed (reasoned, not verified):**
+- The `CFWorldAttachedLight` "Undeleted C++ class" FRES warning when a grunt fails to build is benign.
+  The light was already removed from the world (`RemoveFromWorld()` right after `Init()`), and its memory
+  is reclaimed with the frame. This is the engine's normal ownership of world-mesh lights created while
+  a world exists.
+- `level_Load()`'s own error path (`_LevelLoadError`) releases the world frame without
+  `CEntity::RemoveAndDestroyAll()`, and `game_UnloadLevel()` later uninitializes the alarm and spawn
+  systems created in that frame. The fix would mirror `level_Unload()`, but `RemoveAndDestroyAll()`
+  requires a live `FWorld_pWorld`, and whether a failed WLD load leaves one needs a run to check.
+
+**Checked.** Syntax check of `game.cpp`. **Verify in a run:** `-mission wewchold_01` (or any level that
+fails after world load) exits or returns cleanly, with no crash or assert during teardown. Also check
+that a normal level still loads and quits cleanly.

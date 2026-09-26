@@ -433,7 +433,8 @@ BOOL game_LoadGenericDebugLevel( cchar *pszWorldResName ) {
 	return TRUE;
 
 _ExitWithError:
-	level_Unload();
+	// game_UnloadLevel() calls level_Unload() once the level's systems are torn down; unloading the
+	// level first released the memory those systems still used.
 	game_UnloadLevel();
 	fres_ReleaseFrame( _hResFrame );
 	return FALSE;
@@ -515,7 +516,8 @@ void game_UnloadLevel( void ) {
 	CSpawnSys::UninitLevel();
 
 	// this must happen before level_Unload(), that way the level index is still valid
-	CPlayer::UninitLevel( Level_aInfo[Level_nLoadedIndex].nLevel, _bCompletedLevel );
+	// (it is -1 when the level itself failed to load)
+	CPlayer::UninitLevel( ( Level_nLoadedIndex >= 0 ) ? Level_aInfo[Level_nLoadedIndex].nLevel : LEVEL_DEVELOPMENT_LEVEL, _bCompletedLevel );
 	CBot::UninitLevel();
 	CBotSwarmer::UninitLevel();
 	CFPhysicsObject::UninitLevel();
@@ -1640,7 +1642,6 @@ void _EnablePlayerControls(s32 nPlayer) {
 
 static BOOL _PostWorldLoadGameInit( const GameInitInfo_t *pGameInit ) {
 	CFCamera *pCam;
-	FResFrame_t ResFrame;
 	int nPlayerNum;
 	
 ////////////////////////////////////////////////////////////////////
@@ -1712,8 +1713,6 @@ static BOOL _PostWorldLoadGameInit( const GameInitInfo_t *pGameInit ) {
 // setup the player bots and the player array here:
 ///////////////////////////////////////////////////
 	_UPDATE_LOADSCREEN
-		ResFrame = fres_GetFrame();
-
 		for( nPlayerNum = 0; nPlayerNum < CPlayer::m_nPlayerCount; nPlayerNum++ ) {
 			_UPDATE_LOADSCREEN
 				Player_aPlayer[nPlayerNum].m_pEntityOrig = NULL;
@@ -1889,14 +1888,12 @@ _ExitStartGameWithError:
 			Player_aPlayer[nPlayerNum].m_pEntityCurrent = NULL;
 		}
 		Player_aPlayer[nPlayerNum].m_Reticle.Destroy();
-		Player_aPlayer[nPlayerNum].m_Hud.Destroy( nPlayerNum );	// its meshes live in the frame released below
 	}
 
-	// These pools live in the frame released below; game_UnloadLevel() must not tear them down again.
-	CFDebris::UninitDebrisSystem();
-	fexplosion_UninitExplosionSystem();
-
-	fres_ReleaseFrame( ResFrame );
+	// Both callers run game_UnloadLevel() next. It uninitializes every level system in order (HUDs,
+	// debris and explosion pools, barter, level cameras, minigames, scripts, ...) while their memory
+	// is still allocated, then releases the level's frame. Releasing a frame taken before the player
+	// bots here first left everything created after it to be torn down from released memory.
 
 	Game_pFullscreenRenderTarget = NULL;
 
