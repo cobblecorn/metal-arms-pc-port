@@ -15,3 +15,6 @@ ma_port_asset_log.txt
 # Machine-generated IDE caches in the original drop
 *.ncb
 *.suo
+
+# Python caches
+__pycache__/
