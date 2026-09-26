@@ -102,6 +102,49 @@ static void _FangPrintf( cchar *pszFormat, FANG_VA_LIST Args )
 // instead, so a real run always produces a real diagnosis.
 // ---------------------------------------------------------------------------
 
+// Log a symbolized call stack from a captured context (needs the .pdb next to the exe).
+static void _LogStack( CONTEXT Ctx, int nMaxFrames )
+{
+	static bool bSymInit = false;
+	HANDLE hProcess = GetCurrentProcess();
+	if( !bSymInit )
+	{
+		SymSetOptions( SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS );
+		SymInitialize( hProcess, NULL, TRUE );
+		bSymInit = true;
+	}
+
+	STACKFRAME64 Frame;
+	memset( &Frame, 0, sizeof(Frame) );
+	Frame.AddrPC.Offset = Ctx.Eip;		Frame.AddrPC.Mode = AddrModeFlat;
+	Frame.AddrFrame.Offset = Ctx.Ebp;	Frame.AddrFrame.Mode = AddrModeFlat;
+	Frame.AddrStack.Offset = Ctx.Esp;	Frame.AddrStack.Mode = AddrModeFlat;
+
+	for( int i = 0; i < nMaxFrames; i++ )
+	{
+		if( !StackWalk64( IMAGE_FILE_MACHINE_I386, hProcess, GetCurrentThread(), &Frame, &Ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL ) ) break;
+		if( Frame.AddrPC.Offset == 0 ) break;
+
+		char aSymBuf[sizeof(SYMBOL_INFO) + 256];
+		SYMBOL_INFO *pSym = (SYMBOL_INFO *)aSymBuf;
+		memset( pSym, 0, sizeof(aSymBuf) );
+		pSym->SizeOfStruct = sizeof(SYMBOL_INFO);
+		pSym->MaxNameLen = 255;
+
+		DWORD64 nDisp64 = 0;
+		DWORD nDisp = 0;
+		IMAGEHLP_LINE64 Line;
+		memset( &Line, 0, sizeof(Line) );
+		Line.SizeOfStruct = sizeof(Line);
+
+		const bool bSym = !!SymFromAddr( hProcess, Frame.AddrPC.Offset, &nDisp64, pSym );
+		const bool bLine = !!SymGetLineFromAddr64( hProcess, Frame.AddrPC.Offset, &nDisp, &Line );
+		if( bSym && bLine )	_Log( "    #%d 0x%08x %s  (%s:%lu)\n", i, (unsigned)Frame.AddrPC.Offset, pSym->Name, Line.FileName, Line.LineNumber );
+		else if( bSym )		_Log( "    #%d 0x%08x %s\n", i, (unsigned)Frame.AddrPC.Offset, pSym->Name );
+		else				_Log( "    #%d 0x%08x\n", i, (unsigned)Frame.AddrPC.Offset );
+	}
+}
+
 static int __cdecl _RTCErrorHandler( int nErrType, const char *pszFile, int nLine, const char *pszModule, const char *pszFormat, ... )
 {
 	char szMsg[1024];
@@ -140,6 +183,27 @@ static int __cdecl _CrtReportHook( int nReportType, char *pszMessage, int *pnRet
 {
 	static const char *const apszType[] = { "WARN", "ERROR", "ASSERT" };
 	_Log( "\n*** CRT %s: %s\n", (nReportType >= 0 && nReportType <= 2) ? apszType[nReportType] : "REPORT", pszMessage ? pszMessage : "(no message)" );
+
+	// Asserts continue after logging, so a repeated one can flood the log without
+	// naming its caller. Log the stack the first time each distinct report is seen.
+	static SRWLOCK Lock = SRWLOCK_INIT;
+	static unsigned anSeen[128];
+	static int nNumSeen = 0;
+	unsigned nHash = 2166136261u;
+	for( const char *psz = pszMessage; psz && *psz; ++psz ) nHash = (nHash ^ (unsigned char)*psz) * 16777619u;
+	AcquireSRWLockExclusive( &Lock );
+	bool bFirst = nNumSeen < (int)(sizeof(anSeen) / sizeof(anSeen[0]));
+	for( int i = 0; bFirst && i < nNumSeen; ++i ) if( anSeen[i] == nHash ) bFirst = false;
+	if( bFirst )
+	{
+		anSeen[nNumSeen++] = nHash;
+		CONTEXT Ctx;
+		RtlCaptureContext( &Ctx );
+		_Log( "    (first occurrence; stack follows)\n" );
+		_LogStack( Ctx, 24 );
+	}
+	ReleaseSRWLockExclusive( &Lock );
+
 	if( _pLog ) fflush( _pLog );
 	if( pnReturnValue ) *pnReturnValue = 0;
 	return TRUE;	// TRUE = we handled it; don't also show the CRT's own dialog
@@ -175,40 +239,7 @@ static LONG WINAPI _CrashFilter( EXCEPTION_POINTERS *pEx )
 		_Log( "    access violation: %s address 0x%p\n", pRec->ExceptionInformation[0] == 0 ? "reading" : (pRec->ExceptionInformation[0] == 1 ? "writing" : "executing"), (void *)pRec->ExceptionInformation[1] );
 	}
 
-	HANDLE hProcess = GetCurrentProcess();
-	SymSetOptions( SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS );
-	SymInitialize( hProcess, NULL, TRUE );
-
-	CONTEXT Ctx = *pEx->ContextRecord;
-	STACKFRAME64 Frame;
-	memset( &Frame, 0, sizeof(Frame) );
-	Frame.AddrPC.Offset = Ctx.Eip;		Frame.AddrPC.Mode = AddrModeFlat;
-	Frame.AddrFrame.Offset = Ctx.Ebp;	Frame.AddrFrame.Mode = AddrModeFlat;
-	Frame.AddrStack.Offset = Ctx.Esp;	Frame.AddrStack.Mode = AddrModeFlat;
-
-	for( int i = 0; i < 40; i++ )
-	{
-		if( !StackWalk64( IMAGE_FILE_MACHINE_I386, hProcess, GetCurrentThread(), &Frame, &Ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL ) ) break;
-		if( Frame.AddrPC.Offset == 0 ) break;
-
-		char aSymBuf[sizeof(SYMBOL_INFO) + 256];
-		SYMBOL_INFO *pSym = (SYMBOL_INFO *)aSymBuf;
-		memset( pSym, 0, sizeof(aSymBuf) );
-		pSym->SizeOfStruct = sizeof(SYMBOL_INFO);
-		pSym->MaxNameLen = 255;
-
-		DWORD64 nDisp64 = 0;
-		DWORD nDisp = 0;
-		IMAGEHLP_LINE64 Line;
-		memset( &Line, 0, sizeof(Line) );
-		Line.SizeOfStruct = sizeof(Line);
-
-		const bool bSym = !!SymFromAddr( hProcess, Frame.AddrPC.Offset, &nDisp64, pSym );
-		const bool bLine = !!SymGetLineFromAddr64( hProcess, Frame.AddrPC.Offset, &nDisp, &Line );
-		if( bSym && bLine )	_Log( "    #%d 0x%08x %s  (%s:%lu)\n", i, (unsigned)Frame.AddrPC.Offset, pSym->Name, Line.FileName, Line.LineNumber );
-		else if( bSym )		_Log( "    #%d 0x%08x %s\n", i, (unsigned)Frame.AddrPC.Offset, pSym->Name );
-		else				_Log( "    #%d 0x%08x\n", i, (unsigned)Frame.AddrPC.Offset );
-	}
+	_LogStack( *pEx->ContextRecord, 40 );
 
 	fflush( stdout );
 	if( _pLog ) fflush( _pLog );
@@ -236,7 +267,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource>] [-world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
