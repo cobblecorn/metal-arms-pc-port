@@ -261,3 +261,14 @@ Result: Space = jump, E = action, Q = primary (weapons) list, R = secondary (thr
 F = melee (GameCube Z). The XInput path uses the same map by Xbox positions. Nothing found explains the
 reported Q/E behaviour, so `PORTING.md` now lists the traced mapping and asks for a quick re-check
 rather than changing keys.
+
+## 12. WINGC alignment check (no code changes)
+
+The WINGC build lowers `FCLASS_BYTE_ALIGN` from 16 to 8 (`fangalign.h`), so aligned math objects are
+only 8-byte aligned. Any SSE code using aligned loads/stores on them could fault. A scan of every
+compiled source for `movaps`/`movdqa`/`_mm_load_ps`/`_mm_store_ps` found only `dx/fdx8collasm.asm`,
+whose five routines have no callers (linked but dead). The GC-layout quaternion assembly uses `movups`.
+Nothing to fix.
+
+Also re-ran `tools/syntax_check.py` over all 403 files after entry 9 added an include to the widely used
+`FScriptSystem.h`: all pass.
