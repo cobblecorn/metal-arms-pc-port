@@ -151,6 +151,70 @@ typedef struct {
 	f32 fHUDScaleSpecialEUK;
 } CollectableUserProp_t;
 
+#if FANG_WINGC
+// Retail goodies.csv layout, from the retail vocabulary in main.dol (tools/dol_vocab.py
+// --scan 12). It adds an s32 after nAmmoCount and a u32 at the end, keeps three strings
+// between the sounds and the HUD scale, and has no separate special-EUK HUD scale. The
+// middle string is "none" in every retail table, so it cannot tell the respawn particle
+// from the EUK mesh; both are NULL either way. The two new values are kept but unused.
+typedef struct {
+	cchar *pszMeshName;
+	u32 uPoolSize;
+	s32 nAmmoCount;
+	s32 nRetailCount2;				// e.g. 100 where nAmmoCount is 50 (ripper); meaning unconfirmed
+	CFSoundGroup *pPickupSound;
+	CFSoundGroup *pPickupSoundWeapon;
+	CFSoundGroup *pRespawnSound;
+	cchar *pszParticleName;
+	cchar *pszRespawnParticleName;
+	cchar *pszMeshAnimName;
+	f32 fHUDScale;
+	u32 uRetailFlag;				// 1 for energy, mega health, battery and arm servos; meaning unconfirmed
+} CollectableRetailUserProp_t;
+
+static const FGameData_TableEntry_t _aRetailGameDataVocab[] = {
+	FGAMEDATA_VAR_TYPE_STRING | FGAMEDATA_FLAGS_STRING_PTR_TO_MAIN_STR_TBL | FGAMEDATA_FLAGS_STRING_NONE_TO_NULL, sizeof( cchar * ), F32_DATATABLE_0, F32_DATATABLE_0,
+	FGAMEDATA_VAR_TYPE_FLOAT | FGAMEDATA_FLAGS_CONVERT_TO_U32 | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO, sizeof( u32 ), F32_DATATABLE_0, F32_DATATABLE_10000,
+	FGAMEDATA_VAR_TYPE_FLOAT | FGAMEDATA_FLAGS_CONVERT_TO_S32 | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO, sizeof( s32 ), F32_DATATABLE_Neg1, F32_DATATABLE_10000,
+	FGAMEDATA_VAR_TYPE_FLOAT | FGAMEDATA_FLAGS_CONVERT_TO_S32 | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO, sizeof( s32 ), F32_DATATABLE_Neg1, F32_DATATABLE_10000,
+	FGAMEDATA_VOCAB_SOUND_GROUP,
+	FGAMEDATA_VOCAB_SOUND_GROUP,
+	FGAMEDATA_VOCAB_SOUND_GROUP,
+	FGAMEDATA_VAR_TYPE_STRING | FGAMEDATA_FLAGS_STRING_PTR_TO_MAIN_STR_TBL | FGAMEDATA_FLAGS_STRING_NONE_TO_NULL, sizeof( cchar * ), F32_DATATABLE_0, F32_DATATABLE_0,
+	FGAMEDATA_VAR_TYPE_STRING | FGAMEDATA_FLAGS_STRING_PTR_TO_MAIN_STR_TBL | FGAMEDATA_FLAGS_STRING_NONE_TO_NULL, sizeof( cchar * ), F32_DATATABLE_0, F32_DATATABLE_0,
+	FGAMEDATA_VAR_TYPE_STRING | FGAMEDATA_FLAGS_STRING_PTR_TO_MAIN_STR_TBL | FGAMEDATA_FLAGS_STRING_NONE_TO_NULL, sizeof( cchar * ), F32_DATATABLE_0, F32_DATATABLE_0,
+	FGAMEDATA_VAR_TYPE_FLOAT | FGAMEDATA_FLAGS_FLOAT_X | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO, sizeof( f32 ), F32_DATATABLE_POS_EPSILON, F32_DATATABLE_10000,
+	FGAMEDATA_VAR_TYPE_FLOAT | FGAMEDATA_FLAGS_CONVERT_TO_U32 | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO, sizeof( u32 ), F32_DATATABLE_0, F32_DATATABLE_10000,
+
+	// End of table:
+	FGAMEDATA_VAR_TYPE_COUNT| 0, 0, F32_DATATABLE_0, F32_DATATABLE_0
+};
+
+// Read one retail goodies table into the source layout.
+static BOOL _GetRetailCollectableTableData( FGameDataTableHandle_t hTable, CollectableUserProp_t *pUserProp ) {
+	CollectableRetailUserProp_t Retail;
+
+	if( fgamedata_GetNumFields( hTable ) != 12 ||
+		!fgamedata_GetTableData( hTable, _aRetailGameDataVocab, &Retail, sizeof( Retail ) ) ) {
+		return FALSE;
+	}
+
+	pUserProp->pszMeshName = Retail.pszMeshName;
+	pUserProp->uPoolSize = Retail.uPoolSize;
+	pUserProp->nAmmoCount = Retail.nAmmoCount;
+	pUserProp->pPickupSound = Retail.pPickupSound;
+	pUserProp->pPickupSoundWeapon = Retail.pPickupSoundWeapon;
+	pUserProp->pRespawnSound = Retail.pRespawnSound;
+	pUserProp->pszParticleName = Retail.pszParticleName;
+	pUserProp->pszRespawnParticleName = Retail.pszRespawnParticleName;
+	pUserProp->pszEUKMeshName = NULL;
+	pUserProp->pszMeshAnimName = Retail.pszMeshAnimName;
+	pUserProp->fHUDScale = Retail.fHUDScale;
+	pUserProp->fHUDScaleSpecialEUK = Retail.fHUDScale;
+	return TRUE;
+}
+#endif
+
 const FGameData_TableEntry_t CCollectableType::m_aGameDataVocab[] = {
 	// pszMeshName
 	FGAMEDATA_VAR_TYPE_STRING|
@@ -2088,7 +2152,11 @@ void CCollectable::_LoadFromGameData( FGameDataTableHandle_t hTable ) {
 
 	FResFrame_t ResFrame = fres_GetFrame();
 
+#if FANG_WINGC
+	if( !_GetRetailCollectableTableData( hTable, &UserProp ) ) {
+#else
 	if( !fgamedata_GetTableData( hTable, CCollectableType::m_aGameDataVocab, &UserProp, sizeof( CollectableUserProp_t ) ) ) {
+#endif
 		DEVPRINTF( "CCollectable::_LoadFromGameData(): Trouble parsing data for '%s'.\n", pszTableName );
 		goto _ExitWithError;
 	}
