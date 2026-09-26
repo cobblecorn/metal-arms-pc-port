@@ -27,6 +27,7 @@
 #include "ftimer.h"
 #include "ftext.h"
 #include "ItemInst.h"
+#include "Item.h"
 #include "ItemRepository.h"
 #include "fforce.h"
 #include "meshtypes.h"
@@ -1934,6 +1935,7 @@ void CBotGlitch::_HandleWeaponWork( void ) {
 
 void CBotGlitch::_ChangeWeaponIndex( u32 nHandIndex, u32 nNewIndex ) {
 	FASSERT( nHandIndex==0 || nHandIndex==1 );
+	if( nHandIndex > 1 ) return;
 	FASSERT( nNewIndex < m_WeaponInv[ nHandIndex ].m_nWeaponInvCount );
 	if( nNewIndex >= m_WeaponInv[ nHandIndex ].m_nWeaponInvCount ) {
 		// Port: the FASSERT above is compiled out entirely in Release/Production builds, so
@@ -1942,6 +1944,10 @@ void CBotGlitch::_ChangeWeaponIndex( u32 nHandIndex, u32 nNewIndex ) {
 		// switch to; leave the current weapon state untouched.
 		return;
 	}
+
+	// Glitch's primary animation/firing paths require a real weapon, including
+	// the empty-primary weapon object. Never replace it with a failed asset.
+	if( nHandIndex == 0 && !m_WeaponInv[0].m_apWeapon[nNewIndex] ) return;
 
 	m_WeaponInv[ nHandIndex ].m_nWeaponInvIndex = (u8)nNewIndex;
 
@@ -4068,6 +4074,10 @@ BOOL CBotGlitch::_InitWeaponInventory( CBotBuilder* pBuilder ) {
 			else
 #endif
 			m_apWeapon[0]->SetDesiredState( CWeapon::STATE_DEPLOYED );
+			if( m_apWeapon[0] ) {
+				// Keep the HUD/callback index aligned with any startup fallback.
+				m_pInventory->m_auCurWeapon[0] = m_WeaponInv[0].m_nWeaponInvIndex;
+			}
 		}
 
 		if( m_WeaponInv[ 1 ].m_nWeaponInvCount ) {
@@ -4085,10 +4095,12 @@ BOOL CBotGlitch::_InitWeaponInventory( CBotBuilder* pBuilder ) {
 			}
 #if FANG_WINGC
 			else {
-				DEVPRINTF( "CBotGlitch::_InitInventory(): No supported secondary weapon is available.\n" );
-				m_WeaponInv[1].m_nWeaponInvCount = 0;
+				// Empty Secondary intentionally has no weapon object. Keep the
+				// inventory count so equipped grenades can still be selected later.
+				DEVPRINTF( "CBotGlitch::_InitInventory(): Starting with no secondary weapon equipped.\n" );
 			}
 #endif
+			m_pInventory->m_auCurWeapon[1] = m_WeaponInv[1].m_nWeaponInvIndex;
 		}
 	}
 
@@ -4104,7 +4116,19 @@ BOOL CBotGlitch::_InventoryCallback( CInventoryCallbackReason_e eReason, CInvent
 
 	switch( eReason ) {
 	case IREASON_WEAPONCHANGE:
-		pBotGlitch->m_WeaponInv[nHandIndex].m_nWeaponSwitchToIndex = (u8)pInventory->m_auCurWeapon[nHandIndex];
+		// Refuse missing runtime assets before starting the switch animation.
+		// Empty Secondary is the one valid null weapon; Empty Primary is an object.
+		if( nHandIndex > 1 || nWeaponIndex >= pBotGlitch->m_WeaponInv[nHandIndex].m_nWeaponInvCount ) {
+			return FALSE;
+		}
+		if( !pBotGlitch->m_WeaponInv[nHandIndex].m_apWeapon[nWeaponIndex] ) {
+			CItem *pItem = pInventory->m_aoWeapons[nHandIndex][nWeaponIndex].m_pItemData;
+			if( nHandIndex != 1 || !pItem || fclib_stricmp( pItem->m_pszCodeName, "Empty Secondary" ) ) {
+				DEVPRINTF( "CBotGlitch: Cannot equip unavailable weapon (hand=%u slot=%u).\n", nHandIndex, nWeaponIndex );
+				return FALSE;
+			}
+		}
+		pBotGlitch->m_WeaponInv[nHandIndex].m_nWeaponSwitchToIndex = (u8)nWeaponIndex;
 
 		if( nHandIndex == 1 ) {
 			pBotGlitch->AbortScopeMode( TRUE );

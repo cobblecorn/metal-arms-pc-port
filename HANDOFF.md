@@ -579,3 +579,26 @@ and the rendering progress that was missing from its older checklist.
 
 The configured remote is the private `cobblecorn/metal-arms-pc-port` repository. It was verified
 private and no retail game data or disc images were tracked before this checkpoint's push.
+
+
+## 16. ADDENDUM (2026-09-26) - weapon selection runtime safety
+
+Inspection of `build/logs/pc-input-raw.log` found out-of-range weapon-index assertions and
+an access violation in `CBotGlitch::_WeaponOrUpgradeLevelMayHaveChanged`, reached from
+`_SwitchPrimaryWeaponsInBackpack`. The user did not observe a crash and believes another
+chat ended their session; do not equate this saved log with their observed session ending.
+The source nevertheless contains both matching defects:
+
+- `_ChangeWeaponIndex` could replace the active primary with a null object for an unsupported
+  asset. Its animation code then dereferenced that pointer. Selection callbacks now reject
+  unavailable weapons before queuing animation, and direct primary changes reject null targets.
+- The Windows GC startup fallback set the secondary inventory count to zero when the equipped
+  secondary was null. `CItem::MakeWeapon` deliberately returns null for Empty Secondary, so
+  this disabled switching to otherwise available throwables. The count is now preserved.
+- Startup primary fallback now updates the inventory/HUD selected index. `SetCurWeapon` checks
+  hand and slot bounds before indexing and restores its old selection if the callback rejects
+  the request. The HUD already reads those indices back after selection.
+
+Debug `ma_port` build succeeds (`build/logs/weapon-selection-build.log`). No runtime replay or
+new tests were run for this change. Throwable selection/throwing still needs interactive
+confirmation, as does the Q/E menu discrepancy. The build was not launched automatically.

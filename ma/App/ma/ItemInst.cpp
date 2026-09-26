@@ -668,7 +668,11 @@ void CInventory::SetupDefaultItems() {
 
 BOOL CInventory::SetCurWeapon(u32 uWhichSide, u32 uNewWeaponIdx, BOOL bRestoreSaved, BOOL bNoReloadCallback)
 {
-	FASSERT((s32)uNewWeaponIdx < m_auNumWeapons[uWhichSide]);
+	// Validate before indexing either hand or slot; assertions are not bounds checks.
+	if( uWhichSide > 1 || uNewWeaponIdx >= (u32)m_auNumWeapons[uWhichSide] ||
+		uNewWeaponIdx >= ItemInst_uMaxInventoryWeapons ||
+		m_auCurWeapon[uWhichSide] >= (u32)m_auNumWeapons[uWhichSide] ||
+		m_auCurWeapon[uWhichSide] >= ItemInst_uMaxInventoryWeapons ) return FALSE;
 
 	u32 uOldItemIdx = m_auCurWeapon[uWhichSide];
 	CItemInst *pIIOld = &(m_aoWeapons[uWhichSide][uOldItemIdx]);
@@ -779,6 +783,10 @@ BOOL CInventory::SetCurWeapon(u32 uWhichSide, u32 uNewWeaponIdx, BOOL bRestoreSa
 		}
 	}
 
+	if( !bRetVal ) {
+		// A rejected switch must not leave the HUD pointing at an unequipped item.
+		m_auCurWeapon[uWhichSide] = uOldItemIdx;
+	}
 	return(bRetVal);
 }
 

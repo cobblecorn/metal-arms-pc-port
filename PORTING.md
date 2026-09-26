@@ -157,8 +157,11 @@ environment variables remain available.
   table also has newer tail columns, which are ignored by the older source vocabulary.
 - Retail `w_laser.csv` and `w_blaster.csv` use newer schemas than the source vocabularies. The
   Windows GC-data build leaves those systems unavailable and skips those entity instances; the
-  player starts without a supported secondary weapon. Other item tables still report unsupported
+  player may start with an empty secondary hand. Other item tables still report unsupported
   retail collectable names.
+- Weapon selection rejects unavailable runtime weapon objects and retains the previous equipped
+  item. Starting with Empty Secondary now preserves the inventory count so throwables remain
+  selectable. These changes build successfully; runtime confirmation is pending.
 - The wrapper system accepts trailing retail phrases and reads its six-field screen-name stride,
   selecting the Xbox UI entries and ignoring the two screens this source does not define.
 - A regular `-level we01multi01` launch now passes wrapper and world setup and reaches
