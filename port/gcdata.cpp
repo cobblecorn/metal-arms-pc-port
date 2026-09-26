@@ -349,6 +349,62 @@ static BOOL _ConvertFpr( void *pData, u32 nBytes, cchar *pszResName )
 	return TRUE;
 }
 
+static BOOL _IsStringValid( const u8 *pBytes, u32 nOffset, u32 nBytes )
+{
+	return nOffset < nBytes && memchr( pBytes + nOffset, 0, nBytes - nOffset ) != NULL;
+}
+
+// Sound effect banks (.sfb) are the PC FData_SFxBank_* structs, big-endian, with file-relative
+// offsets in place of pointers: the header, then the sequences, their commands and each
+// command's data. fsndfx turns the offsets into pointers after this. Everything is checked
+// before anything is swapped so a bad file is rejected whole.
+static BOOL _ConvertSfb( void *pData, u32 nBytes, cchar *pszResName )
+{
+	FASSERT( sizeof(FData_SFxBank_Header_t) == 20 && sizeof(FData_SFxBank_Seq_t) == 16 &&
+		sizeof(FData_SFxBank_Cmd_t) == 8 && sizeof(FData_SFxBank_PlayCmd_t) == 20 );
+	u8 *pBytes = (u8 *)pData;
+	if( !pData || nBytes < sizeof(FData_SFxBank_Header_t) ) return FALSE;
+
+	const u32 nSeqs = _ReadBE32( pBytes + 8 ), nSeqsOffset = _ReadBE32( pBytes + 12 );
+	BOOL bValid = _IsStringValid( pBytes, _ReadBE32( pBytes ), nBytes ) &&
+		_IsArrayRangeValid( nSeqsOffset, nSeqs, sizeof(FData_SFxBank_Seq_t), nBytes );
+	for( u32 i = 0; bValid && i < nSeqs; ++i )
+	{
+		const u8 *pSeq = pBytes + nSeqsOffset + i * sizeof(FData_SFxBank_Seq_t);
+		const u32 nCmds = _ReadBE32( pSeq + 4 ), nCmdsOffset = _ReadBE32( pSeq + 8 );
+		bValid = _IsStringValid( pBytes, _ReadBE32( pSeq ), nBytes ) &&
+			_IsArrayRangeValid( nCmdsOffset, nCmds, sizeof(FData_SFxBank_Cmd_t), nBytes );
+		for( u32 j = 0; bValid && j < nCmds; ++j )
+		{
+			const u8 *pCmd = pBytes + nCmdsOffset + j * sizeof(FData_SFxBank_Cmd_t);
+			const u32 nPlayOffset = _ReadBE32( pCmd + 4 );
+			bValid = _ReadBE32( pCmd ) == FDATA_SFXBANK_CMD_TYPE_PLAY &&
+				_IsArrayRangeValid( nPlayOffset, 1, sizeof(FData_SFxBank_PlayCmd_t), nBytes ) &&
+				_IsStringValid( pBytes, _ReadBE32( pBytes + nPlayOffset ), nBytes );
+		}
+	}
+	if( !bValid )
+	{
+		DEVPRINTF( "gcdata: '%s' is not a GameCube sound effect bank this port understands.\n", pszResName ? pszResName : "(unnamed)" );
+		return FALSE;
+	}
+
+	((FData_SFxBank_Header_t *)pBytes)->ChangeEndian();
+	FData_SFxBank_Seq_t *paSeqs = (FData_SFxBank_Seq_t *)(pBytes + nSeqsOffset);
+	for( u32 i = 0; i < nSeqs; ++i )
+	{
+		paSeqs[i].ChangeEndian();
+		FData_SFxBank_Cmd_t *paCmds = (FData_SFxBank_Cmd_t *)(pBytes + (u32)paSeqs[i].paCmds);
+		for( u32 j = 0; j < paSeqs[i].nNumCmds; ++j )
+		{
+			paCmds[j].ChangeEndian();
+			// A play command shared by two commands would be swapped twice; the retail banks share none.
+			((FData_SFxBank_PlayCmd_t *)(pBytes + (u32)paCmds[j].pCmdData))->ChangeEndian();
+		}
+	}
+	return TRUE;
+}
+
 BOOL gcdata_ConvertWorldHeader( void *pData, u32 nHeaderBytes, u32 nFileBytes )
 {
 	if( !pData || nHeaderBytes != sizeof(FData_WorldFileHeader_t) ) return FALSE;
@@ -1007,6 +1063,10 @@ BOOL gcdata_Convert( cchar *pszExtension, cchar *pszResName, void *pData, u32 nB
 	else if( pszExtension && strcmp( pszExtension, "fpr" ) == 0 )
 	{
 		if( !_ConvertFpr( pData, nBytes, pszResName ) ) return FALSE;
+	}
+	else if( pszExtension && strcmp( pszExtension, "sfb" ) == 0 )
+	{
+		if( !_ConvertSfb( pData, nBytes, pszResName ) ) return FALSE;
 	}
 #else
 	pszExtension; pszResName; pData; nBytes;

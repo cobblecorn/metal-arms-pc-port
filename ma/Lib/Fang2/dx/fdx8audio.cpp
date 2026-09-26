@@ -28,6 +28,10 @@
 #include "ffile.h"
 #include "floop.h"
 
+#if FANG_WINGC
+#include "gcaudio.h"
+#endif
+
 #include <dsound.h>
 #include <mmreg.h>
 #include <msacm.h>
@@ -284,6 +288,24 @@ static void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive 
 static void _InvokeEmittersEndofplayCallbacks( FLinkRoot_t *poVirtualEmittersListActive );
 static void _DestroyAllEmittersFromABank( FAudio_BankHandle_t hBank );
 
+// Unloads the Xbox ADPCM codec, if it was loaded, and the GameCube sound data.
+static void _ReleaseCodec( void )
+{
+	if( _ohCodecDriverID )
+	{
+		acmDriverRemove( _ohCodecDriverID, 0 );
+		_ohCodecDriverID = NULL;
+	}
+	if( _ohCodecInstance )
+	{
+		FreeLibrary( _ohCodecInstance );
+		_ohCodecInstance = NULL;
+	}
+#if FANG_WINGC
+	gcaudio_Uninit();
+#endif
+}
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 BOOL faudio_ModuleStartup( void )
@@ -331,6 +353,14 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 
 	////
 	//
+#if FANG_WINGC
+	// GameCube wave banks are DSP-ADPCM, decoded by gcaudio instead of the Xbox ADPCM codec.
+	if( ! gcaudio_Init() )
+	{
+		DEVPRINTF( "[ FAUDIO ] Error %u: The GameCube sound data could not be read !!!\n", __LINE__ );
+		return FAUDIO_ERROR;
+	}
+#else
 	_ohCodecInstance = LoadLibraryA( "xbadpcm.acm" );
 	if( ! _ohCodecInstance )
 	{
@@ -356,10 +386,10 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 	if( 0 != acmDriverOpen( &_ohCodecDriver, _ohCodecDriverID, 0 ) )
 	{
 		DEVPRINTF( "[ FAUDIO ] Error %u: acmDriverOpen() failed !!!\n", __LINE__ );
-		acmDriverRemove( _ohCodecDriverID, 0 );
-		FreeLibrary( _ohCodecInstance );
+		_ReleaseCodec();
 		return FAUDIO_ERROR;
 	}
+#endif
 	//
 	////
 
@@ -368,8 +398,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 	if( FAILED( DirectSoundCreate8( NULL, &_poDS, NULL ) ) )
 	{
 		DEVPRINTF( "[ FAUDIO ] Error %u: DirectSoundCreate8() failed !!!\n", __LINE__ );
-		acmDriverRemove( _ohCodecDriverID, 0 );
-		FreeLibrary( _ohCodecInstance );
+		_ReleaseCodec();
 		return FAUDIO_ERROR;
 	}
 
@@ -377,8 +406,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 	{
 		DEVPRINTF( "[ FAUDIO ] Error %u: SetCooperativeLevel() failed !!!\n", __LINE__ );
 		FDX8_SAFE_RELEASE( _poDS );
-		acmDriverRemove( _ohCodecDriverID, 0 );
-		FreeLibrary( _ohCodecInstance );
+		_ReleaseCodec();
 		return FAUDIO_ERROR;
 	}
 
@@ -392,6 +420,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 	{
 		DEVPRINTF( "[ FAUDIO ] Error %u: CreateSoundBuffer() failed !!!\n", __LINE__ );
 		FDX8_SAFE_RELEASE( _poDS );
+		_ReleaseCodec();
 		return FAUDIO_ERROR;
 	}
 
@@ -410,6 +439,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 		DEVPRINTF( "[ FAUDIO ] Error %u: SetFormat() failed !!!\n", __LINE__ );
 		FDX8_SAFE_RELEASE( poDSBufferPrimary );
 		FDX8_SAFE_RELEASE( _poDS );
+		_ReleaseCodec();
 		return FAUDIO_ERROR;
 	}
 
@@ -418,6 +448,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 		DEVPRINTF( "[ FAUDIO ] Error %u: SetFormat() failed !!!\n", __LINE__ );
 		FDX8_SAFE_RELEASE( poDSBufferPrimary );
 		FDX8_SAFE_RELEASE( _poDS );
+		_ReleaseCodec();
 		return FAUDIO_ERROR;
 	}
 
@@ -432,7 +463,11 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 	{
 		fang_MemZero( &_oLoadReg, sizeof( _oLoadReg ) );
 		fres_CopyType( _oLoadReg.sResType, FAUDIOBANK_RESTYPE );
+#if FANG_WINGC
+		_oLoadReg.pszFileExtension = "rdg";
+#else
 		_oLoadReg.pszFileExtension = "wvb";
+#endif
 		_oLoadReg.nMemType         = FRESLOAD_MEMTYPE_PERM;
 		_oLoadReg.nAlignment       = 16;
 		_oLoadReg.pFcnCreate       = _BankLoadCallback;
@@ -443,8 +478,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 			DEVPRINTF( "[ FAUDIO ] Error %u: fresload_RegisterHandler() failed !!!\n", __LINE__ );
 			FDX8_SAFE_RELEASE( _poDSRealListener );
 			FDX8_SAFE_RELEASE( _poDS );
-			acmDriverRemove( _ohCodecDriverID, 0 );
-			FreeLibrary( _ohCodecInstance );
+			_ReleaseCodec();
 			return FAUDIO_ERROR;
 		}
 	}
@@ -541,8 +575,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 		DEVPRINTF( "[ FAUDIO ] Error %u: fres_AllocAndZero() failed !!!\n", __LINE__ );
 		FDX8_SAFE_RELEASE( _poDSRealListener );
 		FDX8_SAFE_RELEASE( _poDS );
-		acmDriverRemove( _ohCodecDriverID, 0 );
-		FreeLibrary( _ohCodecInstance );
+		_ReleaseCodec();
 		fres_ReleaseFrame( oResFrame );
 		return FAUDIO_ERROR;
 	}
@@ -621,8 +654,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 
 		FDX8_SAFE_RELEASE( _poDSRealListener );
 		FDX8_SAFE_RELEASE( _poDS );
-		acmDriverRemove( _ohCodecDriverID, 0 );
-		FreeLibrary( _ohCodecInstance );
+		_ReleaseCodec();
 		fres_ReleaseFrame( oResFrame );
 
 		return FAUDIO_ERROR;
@@ -848,8 +880,7 @@ void faudio_Uninstall( void )
 	//
 	////
 
-	acmDriverRemove( _ohCodecDriverID, 0 );
-	FreeLibrary( _ohCodecInstance );
+	_ReleaseCodec();
 
 	FAudio_bModuleInstalled = FALSE;
 
@@ -866,6 +897,24 @@ static BOOL _BankLoadCallback( FResHandle_t hRes, void *pLoadedBase, u32 nLoaded
 	FASSERT_MSG( pLoadedBase, "[ FAUDIO ] Error: NULL pointer !!!" );
 	FASSERT_MSG( pszResName,  "[ FAUDIO ] Error: NULL pointer !!!" );
 	FASSERT_MSG( *pszResName, "[ FAUDIO ] Error: Zero length string !!!" );
+
+#if FANG_WINGC
+	if( _oWaveBanksList.nCount == _uMaxBanks )
+	{
+		DEVPRINTF( "[ FAUDIO ] Error %u: Maximum number of banks already loaded !!!\n", __LINE__ );
+		return FALSE;
+	}
+
+	// The converted bank keeps the Windows layout: bank, waves, PCM formats, then PCM.
+	FDataWvbFile_Bank_t *poConvertedBank = gcaudio_ConvertBank( pLoadedBase, nLoadedBytes, pszResName );
+	if( ! poConvertedBank )
+	{
+		return FALSE;
+	}
+	flinklist_AddTail( &_oWaveBanksList, poConvertedBank );
+	fres_SetBase( hRes, poConvertedBank );
+	return TRUE;
+#endif
 
 	////
 	//

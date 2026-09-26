@@ -12,6 +12,7 @@
 //   -mst <file>     master file name inside the data dir (default: mettlearms_gc.mst)
 //   -res WxH        window/screen resolution (default: 1280x960)
 //   -fullscreen     run fullscreen instead of in a window
+//   -no-audio       skip sound effect and music setup
 //   -mission <name> load a registered single-player world with its mission data
 //   -level <name>    launch a world directly as a generic debug level
 //   -world-only <name> load a world resource, then exit before game/audio setup
@@ -55,6 +56,7 @@ static char _szMission[64];
 static char _szWorldOnly[64];
 static int _nReqWidth = 1280, _nReqHeight = 960;
 static bool _bFullscreen = false;
+static bool _bNoAudio = false;
 
 static FILE *_pLog = NULL;
 static DWORD _nMainThreadId = 0;
@@ -320,7 +322,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -344,6 +346,7 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-mission" ) && bHasValue )		strncpy( _szMission, argv[++i], sizeof(_szMission) - 1 );
 		else if( !_stricmp( pszArg, "-world-only" ) && bHasValue )	strncpy( _szWorldOnly, argv[++i], sizeof(_szWorldOnly) - 1 );
 		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
+		else if( !_stricmp( pszArg, "-no-audio" ) )				_bNoAudio = true;
 		else if( !_stricmp( pszArg, "-mouse-sensitivity" ) && bHasValue ) {
 			char *pEnd;
 			const char *pszValue = argv[++i];
@@ -533,7 +536,7 @@ int main( int argc, char **argv )
 	_GameInitParms.pszMemCardDir = NULL;
 	_GameInitParms.pauInputEmulationMap = NULL;
 	_GameInitParms.pszInputEmulationDevName = NULL;
-	_GameInitParms.bInstallAudio = FALSE;
+	_GameInitParms.bInstallAudio = !_bNoAudio;
 	_GameInitParms.bLoadWorldOnly = _szWorldOnly[0] != 0;
 	if( _GameInitParms.bLoadWorldOnly )
 	{

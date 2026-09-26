@@ -2417,7 +2417,6 @@ BOOL game_InitLocalizedResources( void ) {
 	fmovie2_Install();
 
 	if( Gameloop_bInstallAudio ) {
-		// Sound effect banks are platform-specific; the current port has no GC decoder.
 		fresload_Load( FSNDFX_RESTYPE, "Damage" );
 		fresload_Load( FSNDFX_RESTYPE, "weapons" );
 		fresload_Load( FSNDFX_RESTYPE, "Glitch" );

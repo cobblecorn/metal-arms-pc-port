@@ -79,7 +79,7 @@ add_custom_command(
     VERBATIM)
 add_custom_target(ma_shaders DEPENDS ${MA_SHADER_DIR}/shaders.stamp)
 
-add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcdata.cpp port/gcmesh.cpp port/pc_input.cpp)
+add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcaudio.cpp port/gcdata.cpp port/gcmesh.cpp port/pc_input.cpp)
 target_compile_definitions(fang2 PRIVATE MA_PC_INPUT)
 add_dependencies(fang2 ma_shaders)
 ma_common_settings(fang2)
