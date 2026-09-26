@@ -807,3 +807,28 @@ the foreground: a backgrounded loop outlived TaskStop and kept launching windows
 
 User reports to follow up: RAT vehicle controls broken (WASD dead, mouse steers). No game audio
 (expected; GC MusyX/DSP-ADPCM not implemented). Next priority chosen: audio.
+
+### Audio work in progress (stopped at the usage limit)
+
+`port/gcaudio.cpp/.h` are written but **not yet in CMake, built or tested**. The formats are verified
+in Python over the whole retail corpus. `snd_init.rdg` is a 24-byte BE header
+(proj/pool/sdir bytes+offset) followed by:
+- the MusyX project: 106 SFX groups, table offset at group+28 (project-relative), 10-byte entries
+  sfxId/macroId;
+- the pool: SoundMacros whose StartSample command is opcode 0x10 in the low byte of word0, with the
+  sample in bits 8-23;
+- the sample directory: 32-byte entries (id, offset in `snd_smpls.rdg`, rate @14, count @16 whose
+  top byte 0 means DSP-ADPCM, 40-byte ADPCM record @28 with coefs at +8).
+
+All 1,361 samples are mono DSP-ADPCM. All 106 banks and 1,359 waves resolve except 2. All 106
+`.sfb` files are the PC `FData_SFxBank_*` structs, big-endian with file-relative offsets (20/16/8/20
+bytes; no shared play cmds; only PLAY cmds).
+
+Remaining steps:
+1. Add `port/gcaudio.cpp` to the fang2 library in CMakeLists.
+2. gcdata.cpp: add an `sfb` case that validates, then byte-swaps header, seqs, cmds and play cmds.
+3. fdx8audio.cpp (WINGC): skip the `xbadpcm.acm` codec load (not on modern Windows), register
+   extension `rdg`, call `gcaudio_Init()` at install, and in `_BankLoadCallback` use
+   `gcaudio_ConvertBank()` in place of the ACM path.
+4. main_win.cpp: set `bInstallAudio = TRUE`; remove the fsndfx "audio not installed" bypass if needed.
+5. Streams (`*.wvs` on disc, speech/music) are a separate format and still to do.
