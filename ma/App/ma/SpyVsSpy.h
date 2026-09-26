@@ -110,7 +110,7 @@ public:
 	static void TurnOffHUD( BOOL bOff, BOOL bNoReticle = FALSE, BOOL bNoWeaponSel = FALSE );
 	static void AttackDisable( BOOL bOff );
 
-	static CEntity *FindEntity( cchar *pszName, const u64 &uTypeBits = 0 );
+	static CEntity *FindEntity( cchar *pszName, const u64 &uTypeBits = 0, BOOL bRequired = TRUE );
 	static void TakeControlFromPlayer( BOOL bTake, BOOL bCanSkip = FALSE );
 	static void CameraInterp( const f32 &fUnitTime,
 						const f32 &fStartFOV, const CFVec3A &StartPos, const CFQuatA &StartQuat,

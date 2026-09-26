@@ -5264,6 +5264,12 @@ BOOL CBattleStage::Load( LevelEvent_e eEvent ) {
 		m_pGlitchStartPoint = (CESphere *) pEntity;
 
 		// Find the escorts
+#if FANG_WINGC
+		// The retail level was reworked after this source: it has no escorts or "reprogram"
+		// point (main.dol names neither). Missing escorts are skipped.
+		m_pEscortGrunt1 = (CBotGrunt *) CSpyVsSpy::FindEntity( _BATTLE_ESCORT1, ENTITY_BIT_BOTGRUNT, FALSE );
+		m_pEscortGrunt2 = (CBotGrunt *) CSpyVsSpy::FindEntity( _BATTLE_ESCORT2, ENTITY_BIT_BOTGRUNT, FALSE );
+#else
 		if( !( pEntity = CSpyVsSpy::FindEntity( _BATTLE_ESCORT1, ENTITY_BIT_BOTGRUNT ) ) ) {
 			goto _ExitWithError;
 		}
@@ -5273,6 +5279,7 @@ BOOL CBattleStage::Load( LevelEvent_e eEvent ) {
 			goto _ExitWithError;
 		}
 		m_pEscortGrunt2 = (CBotGrunt *) pEntity;
+#endif
 
 		// Find the battle door
 		if( !( pEntity = CSpyVsSpy::FindEntity( _BATTLE_DOOR, ENTITY_BIT_DOOR ) ) ) {
@@ -5281,9 +5288,16 @@ BOOL CBattleStage::Load( LevelEvent_e eEvent ) {
 		m_pBattleDoor = (CDoorEntity *) pEntity;
 
 		// Find the reprogram point that we will run to
+#if FANG_WINGC
+		// Only the retired run-to-program code used this point.
+		if( !( pEntity = CSpyVsSpy::FindEntity( _BATTLE_REPROGRAM_POINT, ENTITY_BIT_SPHERE, FALSE ) ) ) {
+			pEntity = m_pGlitchStartPoint;
+		}
+#else
 		if( !( pEntity = CSpyVsSpy::FindEntity( _BATTLE_REPROGRAM_POINT, ENTITY_BIT_SPHERE ) ) ) {
 			goto _ExitWithError;
 		}
+#endif
 
 		m_ProgramPoint = pEntity->MtxToWorld()->m_vPos;
 
@@ -5327,8 +5341,12 @@ void CBattleStage::SwitchTo( void ) {
 		_SetupFighterBot( m_paMiners[ i ] );
 	}
 
-	_MakeEscortDumb( (CBot *) m_pEscortGrunt1 );
-	_MakeEscortDumb( (CBot *) m_pEscortGrunt2 );
+	if( m_pEscortGrunt1 ) {
+		_MakeEscortDumb( (CBot *) m_pEscortGrunt1 );
+	}
+	if( m_pEscortGrunt2 ) {
+		_MakeEscortDumb( (CBot *) m_pEscortGrunt2 );
+	}
 
 	// Put him in the world
 	CFMtx43A::m_Temp.Identity();
@@ -5453,7 +5471,9 @@ void CBattleStage::_WalkToDoorWork( void ) {
 			// The door is now forced open when you win.
 //			m_pBattleDoor->ForceGotoPos( 1, CDoorEntity::GOTOREASON_UNKNOWN );
 
-			ai_AssignGoal_FaceIt( CSpyVsSpy::GetGlitch()->AIBrain(), CFVec3A::m_Null, m_pEscortGrunt1->Guid(), 100, 0, 0 );
+			if( m_pEscortGrunt1 ) {
+				ai_AssignGoal_FaceIt( CSpyVsSpy::GetGlitch()->AIBrain(), CFVec3A::m_Null, m_pEscortGrunt1->Guid(), 100, 0, 0 );
+			}
 		}
 	} else {
 		m_fDoorDelay -= FLoop_fPreviousLoopSecs;
@@ -5621,9 +5641,17 @@ BOOL CProgramStage::Load( LevelEvent_e eEvent ) {
 		CEntity *pEntity;
 
 		// Find the spawn point
+#if FANG_WINGC
+		// The retail level has no "reprogram" sphere; use Glitch's start point instead.
+		if( !( pEntity = CSpyVsSpy::FindEntity( _PROGRAM_SPAWN_POINT, ENTITY_BIT_SPHERE, FALSE ) ) &&
+			!( pEntity = CSpyVsSpy::FindEntity( _BATTLE_START_POINT, ENTITY_BIT_SPHERE ) ) ) {
+			goto _ExitWithError;
+		}
+#else
 		if( !( pEntity = CSpyVsSpy::FindEntity( _PROGRAM_SPAWN_POINT, ENTITY_BIT_SPHERE ) ) ) {
 			goto _ExitWithError;
 		}
+#endif
 		m_SpawnPoint = pEntity->MtxToWorld()->m_vPos;
 
 		// Find the crate
@@ -6125,7 +6153,7 @@ void CSpyVsSpy::UnloadLevel( void ) {
 		return;
 	}
 
-	if( ( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex != -1 ) && 
+	if( CSpyVsSpy::GetGlitch() && ( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex != -1 ) && 
 		!CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_IsDonePlaying() ) {
 		CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_Stop();
 	}
@@ -6271,13 +6299,13 @@ void CSpyVsSpy::AttackDisable( BOOL bOff ) {
 	}
 }
 
-CEntity *CSpyVsSpy::FindEntity( cchar *pszName, const u64 &uTypeBits/* = 0*/ ) {
+CEntity *CSpyVsSpy::FindEntity( cchar *pszName, const u64 &uTypeBits/* = 0*/, BOOL bRequired/* = TRUE*/ ) {
 	CEntity *pEntity;
 
 	// Find the gurney
 	pEntity = CEntity::FindInWorld( pszName );
 	if( pEntity == NULL ) {
-		DEVPRINTF( "CSpyVsSpy::_FindMeshEntity(): Entity '%s' was not found.\n", pszName );
+		DEVPRINTF( bRequired ? "CSpyVsSpy::_FindMeshEntity(): Entity '%s' was not found.\n" : "CSpyVsSpy: optional entity '%s' is not in this level.\n", pszName );
 		return NULL;
 	}
 	
@@ -6720,10 +6748,18 @@ BOOL CSpyVsSpy::_LoadLevelCSV( void ) {
 		goto _ExitWithError;
 	}
 
-	FGameDataTableHandle_t hTable = fgamedata_GetFirstTableHandle( hHandle, "info" );
+#if FANG_WINGC
+	// Retail spy_cfg has no "info" table. Its "ddr" table holds records of this same 11-field
+	// vocabulary (four in the retail data). The retail game loads up to 30 of them and gives each
+	// DDR stage the record its level data names; this port uses the first record throughout.
+	cchar *pszTableName = "ddr";
+#else
+	cchar *pszTableName = "info";
+#endif
+	FGameDataTableHandle_t hTable = fgamedata_GetFirstTableHandle( hHandle, pszTableName );
 
-	if( hHandle == FGAMEDATA_INVALID_TABLE_HANDLE ) {
-		DEVPRINTF( "CSpyVsSpy::_LoadLevelCSV(): Could not find \"info\" table in CSV.\n" );
+	if( hTable == FGAMEDATA_INVALID_TABLE_HANDLE ) {
+		DEVPRINTF( "CSpyVsSpy::_LoadLevelCSV(): Could not find \"%s\" table in CSV.\n", pszTableName );
 		goto _ExitWithError;
 	}
 

@@ -1845,6 +1845,9 @@ void CBotCorrosive::_HandleBehaviorAnimations( void ) {
 
 			case BEHAVIOR_STATE_BEAT_CHEST_AND_ROAR:
 				ZeroTime( ANIMTAP_BEAT_CHEST );
+#if FANG_WINGC
+				PlaySound( m_BotInfo_Corrosive.pSoundGroupBeatChest );
+#endif
 				if (m_bForce2D_RoarRocket)
 				{
 					PlaySound( m_BotInfo_Corrosive.pSoundGroupAngryRoar, 1.0f, 1.0f, -1.0f, NULL, TRUE ); // Start the angry roar sound as well
@@ -1857,6 +1860,9 @@ void CBotCorrosive::_HandleBehaviorAnimations( void ) {
 
 			case BEHAVIOR_STATE_BEAT_CHEST_AND_LAUGH:
 				ZeroTime( ANIMTAP_BEAT_CHEST );
+#if FANG_WINGC
+				PlaySound( m_BotInfo_Corrosive.pSoundGroupBeatChest );
+#endif
 				if (m_bForce2D_RoarRocket)
 				{
 					PlaySound( m_BotInfo_Corrosive.pSoundGroupLaugh, 1.0f, 1.0f, -1.0f, NULL, TRUE ); // Start the angry roar sound as well

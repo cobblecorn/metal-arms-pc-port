@@ -452,7 +452,14 @@ BOOL CWeaponLaser::InitSystem( void ) {
 			m_aoTracerDef[i].fSpeed_WS = m_aUserProps[i].fRocketSpeed;
 			m_aoTracerDef[i].fMaxTailDist_WS = m_aUserProps[i].fMaxLiveRange;
 			m_aoTracerDef[i].fBeginDeathUnitFade_WS = 0.25f;
+#if FANG_WINGC
+			// The retail tracer texture (TF_1shot_01) is a glow on black with no alpha, and the
+			// retail color is tinted with full alpha: it only looks right drawn additively, as the
+			// other energy tracers are (elite guard, snarq, quad laser primary).
+			m_aoTracerDef[i].uFlags = TRACERFLAG_DRAW_ADDITIVE;
+#else
 			m_aoTracerDef[i].uFlags = TRACERFLAG_NONE;
+#endif
 
 			pTexDef = (FTexDef_t *)(fresload_Load(FTEX_RESNAME, m_aUserProps[i].pszL12_TexName));
 			if(pTexDef == NULL)

@@ -1891,6 +1891,10 @@ _ExitStartGameWithError:
 		Player_aPlayer[nPlayerNum].m_Reticle.Destroy();
 	}
 
+	// These pools live in the frame released below; game_UnloadLevel() must not tear them down again.
+	CFDebris::UninitDebrisSystem();
+	fexplosion_UninitExplosionSystem();
+
 	fres_ReleaseFrame( ResFrame );
 
 	Game_pFullscreenRenderTarget = NULL;
