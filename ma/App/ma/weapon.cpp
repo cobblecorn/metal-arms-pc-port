@@ -19,6 +19,9 @@
 
 #include "fang.h"
 #include "weapon.h"
+#if FANG_WINGC
+#include "weapon_blaster.h"
+#endif
 #include "reticle.h"
 #include "player.h"
 #include "fxfm.h"
@@ -355,6 +358,10 @@ BOOL CWeapon::ClassHierarchyBuild( void ) {
 	m_nWeaponType = pBuilder->m_nWeaponType;
 	m_pOwnerBot = pBuilder->m_pOwnerBot;
 	m_nUpgradeLevel = pBuilder->m_nUpgradeLevel;
+	if( (u32)m_nWeaponType >= WEAPON_TYPE_COUNT || m_nUpgradeLevel >= GetUpgradeLevelCount() ) {
+		DEVPRINTF( "CWeapon::ClassHierarchyBuild(): Unavailable weapon variant %u for type %u.\n", m_nUpgradeLevel, m_nWeaponType );
+		goto _ExitWithError;
+	}
 	m_nClipAmmo = pBuilder->m_nClipAmmo;
 	m_nReserveAmmo = pBuilder->m_nReserveAmmo;
 
@@ -764,9 +771,17 @@ void CWeapon::SetItemInst( CItemInst *pItemInst, BOOL bUpdateItemInstAmmoFromWea
 }
 
 
+u32 CWeapon::GetUpgradeLevelCount( void ) const {
+#if FANG_WINGC
+	if( m_nWeaponType == WEAPON_TYPE_BLASTER ) return CWeaponBlaster::GetAvailableLevelCount();
+#endif
+	return (u32)m_nWeaponType < WEAPON_TYPE_COUNT ? m_anMaxUpgradeCount[m_nWeaponType] : 0;
+}
+
 void CWeapon::SetUpgradeLevel( u32 nUpgradeLevel ) {
 	FASSERT( IsCreated() );
 	FASSERT( nUpgradeLevel < GetUpgradeLevelCount() );
+	if( nUpgradeLevel >= GetUpgradeLevelCount() ) return;
 
 	if( nUpgradeLevel == GetUpgradeLevel() ) {
 		return;
@@ -810,7 +825,7 @@ BOOL CWeapon::UpgradeWeapon( void ) {
 
 	u32 nNewLevel = GetUpgradeLevel() + 1;
 
-	if( nNewLevel == GetUpgradeLevelCount() ) {
+	if( nNewLevel >= GetUpgradeLevelCount() ) {
 		// Already at maximum upgrade level...
 		return FALSE;
 	}

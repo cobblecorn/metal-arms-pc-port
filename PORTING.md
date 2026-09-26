@@ -157,10 +157,11 @@ environment variables remain available.
 - Retail `Difficulty.csv` has 20 fields in its `Diff` table; this source expects 8 fields
   for four difficulty levels and therefore falls back to its defaults. The retail flamer
   table also has newer tail columns, which are ignored by the older source vocabulary.
-- Retail `w_laser.csv` and `w_blaster.csv` use newer schemas than the source vocabularies. The
-  Windows GC-data build leaves those systems unavailable and skips those entity instances; the
-  player may start with an empty secondary hand. Other item tables still report unsupported
-  retail collectable names.
+- Retail `w_laser.csv` uses a substantially newer schema and remains unavailable. The blaster
+  loader now reads its 45-field layout and handles the three available player variants without
+  initializing absent military variants. Its two extra numeric fields are retained but their
+  behavior is not implemented. Blaster resource creation, firing and upgrades need runtime
+  confirmation. Other item tables still report unsupported retail collectable names.
 - Weapon selection rejects unavailable runtime weapon objects and retains the previous equipped
   item. Starting with Empty Secondary now preserves the inventory count so throwables remain
   selectable. These changes build successfully; runtime confirmation is pending.

@@ -359,8 +359,8 @@ public:
 	// Type and upgrade:
 	FINLINE WeaponType_e Type( void ) const { FASSERT( IsCreated() ); return m_nWeaponType; }
 
-	FINLINE u32 GetUpgradeLevelCount( void ) const { FASSERT( IsCreated() ); return m_anMaxUpgradeCount[m_nWeaponType]; }
-	FINLINE u32 GetMaxUpgradeLevel( void ) const { FASSERT( IsCreated() ); FASSERT( m_anMaxUpgradeCount[m_nWeaponType] > 0 ); return m_anMaxUpgradeCount[m_nWeaponType] - 1; }
+	u32 GetUpgradeLevelCount( void ) const;
+	FINLINE u32 GetMaxUpgradeLevel( void ) const { FASSERT( IsCreated() ); u32 nCount = GetUpgradeLevelCount(); FASSERT( nCount > 0 ); return nCount ? nCount - 1 : 0; }
 	FINLINE BOOL IsUpgradeAtMax( void ) const { FASSERT( IsCreated() ); return GetUpgradeLevel() == GetMaxUpgradeLevel(); }
 
 	FINLINE u32 GetUpgradeLevel( void ) const { FASSERT( IsCreated() ); return m_nUpgradeLevel; }

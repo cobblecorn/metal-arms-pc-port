@@ -643,3 +643,24 @@ Evidence and next implementation requirements (all field indices zero-based):
 No weapon loader was enabled in this investigation. Both remain explicitly unavailable until
 compatible mapping and resource handling are implemented. No game process was launched or
 terminated, and no tests were added or run. The decoder was used to inspect the two real assets.
+
+
+## 18. ADDENDUM (2026-09-26) - blaster retail loader implementation
+
+`CWeaponBlaster::_ReadRetailProperties` now accepts the 43-field source layout and the
+45-field retail layout. It maps the existing vocabulary field by field, advancing two retail
+fields before the sound/decal tail, and retains the two extra numeric values separately.
+Their semantics remain unknown and are NOT implemented; this is not retail behavior parity.
+The loader requires all three player levels, accepts only contiguous optional military levels,
+and validates positive clip capacity/reload duration before initialization can divide by them.
+
+The available level count now drives blaster system/resource creation and cartridge matrices.
+Missing military variants are not populated with invented player values. Base weapon build and
+upgrade entry points reject unavailable/out-of-range levels. GetMaxUpgradeLevel uses the same
+available count. Draw-enable tolerates the intentionally absent variant meshes; destroy/clear
+still covers all allocated array slots. Laser loading remains unchanged and unavailable.
+
+Debug build succeeded; output: `build/logs/blaster-loader-build.log`. Runtime loading, mesh bone compatibility,
+selection, firing/reloading and all three blaster upgrades remain unverified. No new tests were
+added/run and no game process was launched. Inspect the next run for `CWeaponBlaster: loaded 3
+variants` and resource-creation diagnostics before describing the blaster as working.

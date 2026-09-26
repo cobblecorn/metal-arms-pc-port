@@ -20,6 +20,7 @@
 #include "fang.h"
 #include "weapon_blaster.h"
 #include "fgamedata.h"
+#include "fres.h"
 #include "fworld.h"
 #include "fworld_coll.h"
 #include "fresload.h"
@@ -88,6 +89,9 @@ CWeaponBlaster::_SystemData_t	CWeaponBlaster::m_aSystemData[EUK_COUNT_BLASTER];
 
 #if FANG_WINGC
 static BOOL _bUserPropsAvailable = FALSE;
+static u32 _nAvailableBlasterLevels;
+// Retail fields 38/39 are retained until their runtime semantics are established.
+static f32 _aRetailExtraProps[CWeapon::EUK_COUNT_BLASTER][2];
 #endif
 
 
@@ -393,6 +397,56 @@ const FGameDataMap_t CWeaponBlaster::m_aUserPropMapTable[] = {
 };
 
 
+u32 CWeaponBlaster::GetAvailableLevelCount( void ) {
+#if FANG_WINGC
+	return _nAvailableBlasterLevels;
+#else
+	return EUK_COUNT_BLASTER;
+#endif
+}
+
+#if FANG_WINGC
+BOOL CWeaponBlaster::_ReadRetailProperties( void ) {
+	FMemFrame_t frame = fmem_GetFrame();
+	FGameDataFileHandle_t file = fgamedata_LoadFileToFMem( _USER_PROP_FILENAME );
+	BOOL ok = file != FGAMEDATA_INVALID_FILE_HANDLE;
+	_nAvailableBlasterLevels = 0;
+	for( u32 level=0; ok && level<EUK_COUNT_BLASTER; ++level ) {
+		FGameDataTableHandle_t table = fgamedata_GetFirstTableHandle( file, m_aUserPropMapTable[level].pszTableName );
+		if( table == FGAMEDATA_INVALID_TABLE_HANDLE ) {
+			// Retail has three player levels and no military variants. Require
+			// the player levels, and reject a gap before a later military level.
+			if( level < 3 ) ok = FALSE;
+			continue;
+		}
+		if( level != _nAvailableBlasterLevels ) { ok = FALSE; break; }
+		u32 count = fgamedata_GetNumFields( table );
+		if( count != 43 && count != 45 ) { ok = FALSE; break; }
+		u8 *dest = (u8 *)&m_aUserProps[level];
+		u32 bytes = 0;
+		for( u32 field=0; ok && field<43; ++field ) {
+			const FGameData_TableEntry_t *entry = &m_aUserPropVocab[field];
+			if( entry->nBytesForData > sizeof(_UserProps_t)-bytes ) { ok = FALSE; break; }
+			ok = fgamedata_GetFieldFromTable( table, field + ((count==45 && field>=38) ? 2 : 0), entry, dest+bytes );
+			bytes += entry->nBytesForData;
+		}
+		if( bytes != sizeof(_UserProps_t) ) ok = FALSE;
+		if( ok && count == 45 ) {
+			FGameData_TableEntry_t extra = { FGAMEDATA_VAR_TYPE_FLOAT | FGAMEDATA_FLAGS_FLOAT_X,
+				sizeof(f32), F32_DATATABLE_0, F32_DATATABLE_0 };
+			ok = fgamedata_GetFieldFromTable( table, 38, &extra, &_aRetailExtraProps[level][0] ) &&
+				fgamedata_GetFieldFromTable( table, 39, &extra, &_aRetailExtraProps[level][1] );
+		}
+		if( ok && (!(m_aUserProps[level].fClipAmmoMax >= 1.0f) ||
+			!(m_aUserProps[level].fReloadTimeForOneRound > 0.0f)) ) ok = FALSE;
+		if( ok ) ++_nAvailableBlasterLevels;
+	}
+	fmem_ReleaseFrame( frame );
+	if( !ok ) _nAvailableBlasterLevels = 0;
+	return ok;
+}
+#endif
+
 BOOL CWeaponBlaster::InitSystem( void ) 
 {
 	Info_t *pInfo;
@@ -406,7 +460,11 @@ BOOL CWeaponBlaster::InitSystem( void )
 #endif
 
 	// Read the user properties for all EUK levels of this weapon...
+#if FANG_WINGC
+	if( !_ReadRetailProperties() )
+#else
 	if( !fgamedata_ReadFileUsingMap( m_aUserPropMapTable, _USER_PROP_FILENAME ) )
+#endif
 	{
 		DEVPRINTF( "CWeaponBlaster::InitSystem(): Could not read user properties from file '%s'.\n", _USER_PROP_FILENAME );
 #if FANG_WINGC
@@ -420,10 +478,11 @@ BOOL CWeaponBlaster::InitSystem( void )
 
 #if FANG_WINGC
 	_bUserPropsAvailable = TRUE;
+	DEVPRINTF( "CWeaponBlaster: loaded %u variants; retail extra fields retained without behavior mapping.\n", GetAvailableLevelCount() );
 #endif
 
 	// Do this for each EUK level...
-	for( i=0; i<EUK_COUNT_BLASTER; i++ )
+	for( i=0; i<GetAvailableLevelCount(); i++ )
 	{
 		//fixup the user props
 		m_aSystemData[i].bDoubleStacked = m_aUserProps[i].fDoubleStacked == 0.0f ? 0 : 1;
@@ -531,7 +590,7 @@ void CWeaponBlaster::_ComputeCartridgeShellMatrices(void)
 	Info_t *pInfo = NULL;
 	_UserProps_t *pUserProps;
 
-	for( i=0, pUserProps=m_aUserProps; i<EUK_COUNT_BLASTER; ++i, ++pUserProps ) 
+	for( i=0, pUserProps=m_aUserProps; i<GetAvailableLevelCount(); ++i, ++pUserProps )
 	{ // Each EUK level...
 
 		pInfo = &m_aaInfo[WEAPON_TYPE_BLASTER][i];
@@ -626,11 +685,11 @@ BOOL CWeaponBlaster::ClassHierarchyBuild( void )
 
 	// Initialize from builder object...
 
-	for( i=0, pResourceData=m_aResourceData; i<EUK_COUNT_BLASTER; ++i, ++pResourceData ) 
+	for( i=0, pResourceData=m_aResourceData; i<GetAvailableLevelCount(); ++i, ++pResourceData )
 	{
 		// Each EUK level...
 		if( m_nSingleMeshForEUKs >= 0 ) {
-			FASSERT( m_nSingleMeshForEUKs < EUK_COUNT_ROCKET_LAUNCHER );
+			if( (u32)m_nSingleMeshForEUKs >= GetAvailableLevelCount() ) goto _ExitWithError;
 			uMeshEUK = m_nSingleMeshForEUKs;
 		} else {
 			uMeshEUK = i;
@@ -923,7 +982,7 @@ void CWeaponBlaster::ClassHierarchyDrawEnable( BOOL bDrawingHasBeenEnabled )
 
 		for( i=0; i<EUK_COUNT_BLASTER; ++i )
 		{
-			FMATH_CLEARBITMASK( m_aResourceData[i].m_pWorldMesh->m_nFlags, FMESHINST_FLAG_DONT_DRAW );
+			if( m_aResourceData[i].m_pWorldMesh ) FMATH_CLEARBITMASK( m_aResourceData[i].m_pWorldMesh->m_nFlags, FMESHINST_FLAG_DONT_DRAW );
 		}
 
 		if (m_pResourceData->m_paShellWorldMeshArray)
@@ -939,7 +998,7 @@ void CWeaponBlaster::ClassHierarchyDrawEnable( BOOL bDrawingHasBeenEnabled )
 		// Disable drawing of this weapon...
 		for( i=0; i<EUK_COUNT_BLASTER; ++i )
 		{
-			FMATH_SETBITMASK( m_aResourceData[i].m_pWorldMesh->m_nFlags, FMESHINST_FLAG_DONT_DRAW );
+			if( m_aResourceData[i].m_pWorldMesh ) FMATH_SETBITMASK( m_aResourceData[i].m_pWorldMesh->m_nFlags, FMESHINST_FLAG_DONT_DRAW );
 		}
 
 		if (m_pResourceData->m_paShellWorldMeshArray)

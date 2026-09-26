@@ -222,6 +222,10 @@ public:
 
 	// System:
 	static BOOL InitSystem( void );
+	static u32 GetAvailableLevelCount( void );
+#if FANG_WINGC
+	static BOOL _ReadRetailProperties( void );
+#endif
 	static void UninitSystem( void );
 
 	CWeaponBlaster();
