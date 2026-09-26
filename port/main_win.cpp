@@ -25,6 +25,9 @@
 
 #include <windows.h>
 #include <dbghelp.h>
+#include <crtdbg.h>
+#include <rtcapi.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -82,6 +85,70 @@ static void _Log( const char *pszFormat, ... )
 static void _FangPrintf( cchar *pszFormat, FANG_VA_LIST Args )
 {
 	_LogV( pszFormat, Args );
+}
+
+// ---------------------------------------------------------------------------
+// Debug-CRT diagnostics.
+//
+// The Debug CRT normally reports asserts, invalid parameters, pure-virtual calls, and
+// /RTC (run-time check: stack/uninitialized-variable corruption) failures by popping a
+// blocking "Microsoft Visual C++ Runtime Library" / "Debug Assertion Failed!" message
+// box. In a headless or automated run there's nobody to click it, so the process just
+// sits there forever looking like a hang. All of these are redirected here to the log
+// instead, so a real run always produces a real diagnosis.
+// ---------------------------------------------------------------------------
+
+static int __cdecl _RTCErrorHandler( int nErrType, const char *pszFile, int nLine, const char *pszModule, const char *pszFormat, ... )
+{
+	char szMsg[1024];
+	va_list Args;
+	va_start( Args, pszFormat );
+	_vsnprintf( szMsg, sizeof(szMsg) - 1, pszFormat, Args );
+	va_end( Args );
+	szMsg[sizeof(szMsg) - 1] = 0;
+
+	_Log( "\n*** RUN-TIME CHECK FAILURE (type %d) at %s:%d [%s]:\n    %s\n", nErrType, pszFile ? pszFile : "?", nLine, pszModule ? pszModule : "?", szMsg );
+	if( _pLog ) fflush( _pLog );
+	return 0;	// 0 = continue running (like clicking "Ignore"); nonzero = break into a debugger
+}
+
+static void __cdecl _PurecallHandler( void )
+{
+	_Log( "\n*** PURE VIRTUAL FUNCTION CALL (R6025) - calling abort()\n" );
+	if( _pLog ) fflush( _pLog );
+	abort();
+}
+
+static void __cdecl _InvalidParameterHandler( const wchar_t *pszExpr, const wchar_t *pszFunc, const wchar_t *pszFile, unsigned int nLine, uintptr_t )
+{
+	_Log( "\n*** CRT INVALID PARAMETER at %ls:%u in %ls(%ls) - calling abort()\n", pszFile ? pszFile : L"?", nLine, pszFunc ? pszFunc : L"?", pszExpr ? pszExpr : L"?" );
+	if( _pLog ) fflush( _pLog );
+	abort();
+}
+
+static void __cdecl _SigAbortHandler( int )
+{
+	_Log( "\n*** abort() called\n" );
+	if( _pLog ) fflush( _pLog );
+}
+
+static int __cdecl _CrtReportHook( int nReportType, char *pszMessage, int *pnReturnValue )
+{
+	static const char *const apszType[] = { "WARN", "ERROR", "ASSERT" };
+	_Log( "\n*** CRT %s: %s\n", (nReportType >= 0 && nReportType <= 2) ? apszType[nReportType] : "REPORT", pszMessage ? pszMessage : "(no message)" );
+	if( _pLog ) fflush( _pLog );
+	if( pnReturnValue ) *pnReturnValue = 0;
+	return TRUE;	// TRUE = we handled it; don't also show the CRT's own dialog
+}
+
+static void _InstallCrtDiagnostics( void )
+{
+	_RTC_SetErrorFunc( _RTCErrorHandler );
+	_set_purecall_handler( _PurecallHandler );
+	_set_invalid_parameter_handler( _InvalidParameterHandler );
+	signal( SIGABRT, _SigAbortHandler );
+	_CrtSetReportHook( _CrtReportHook );
+	_set_error_mode( _OUT_TO_STDERR );
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +357,7 @@ int main( int argc, char **argv )
 {
 	_nMainThreadId = GetCurrentThreadId();
 	SetUnhandledExceptionFilter( _CrashFilter );
+	_InstallCrtDiagnostics();
 	setvbuf( stdout, NULL, _IONBF, 0 );
 
 	if( !_ParseArgs( argc, argv ) )

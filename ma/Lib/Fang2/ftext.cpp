@@ -32,6 +32,7 @@
 #include "fclib.h"
 #include "fdraw.h"
 #include "frenderer.h"
+#include "gcdata.h"
 
 #if FANG_PLATFORM_GC
 #include "fgcviewport.h"
@@ -2474,6 +2475,19 @@ FTextError_e ftext_Load( FDataFntFile_Handle_t ohFont, cchar *pszName )
 	ffile_Close( ohFile );
 	//
 	////
+
+#if FANG_PLATFORM_WIN && FANG_WINGC
+	// Port: this loader reads the retail GameCube .fnt file straight in and never went
+	// through the endian conversion the rest of the resource system uses, because this
+	// bespoke loader predates that system and was only ever little-endian on Xbox/PC.
+	// Convert it in place before anything below treats its offsets as pointers.
+	if( !gcdata_ConvertFont( poNewFont, uTotalBytesAllocatedNontexture ) )
+	{
+		DEVPRINTF( "[ FTEXT ] Error %u: Could not convert GameCube font \"%s\" !!!\n", __LINE__, pszName );
+		fres_ReleaseFrame( ohTempResFrame );
+		return FTEXT_ERROR;
+	}
+#endif
 
 	poNewFont->oHandle = ohFont;
 

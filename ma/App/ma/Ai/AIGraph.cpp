@@ -1267,6 +1267,135 @@ BOOL CAIGraph::PointerizeBinaryData(void)
 	return TRUE;
 }
 
+#if FANG_WINGC
+static u16 _ReadGraphBE16( const u8 *pData )
+{
+	return (u16)(((u16)pData[0] << 8) | pData[1]);
+}
+
+static BOOL _GraphRangeValid( u32 nOffset, u32 nLength, u32 nTotalBytes )
+{
+	return nOffset <= nTotalBytes && nLength <= nTotalBytes - nOffset;
+}
+
+BOOL CAIGraph::ConvertGameCubeBinaryData( u32 nFileBytes )
+{
+	static_assert( sizeof(CAIGraph) == 40, "GameCube graph header layout changed" );
+	static_assert( sizeof(GraphVert) == 128, "GameCube graph vertices must use five edge slots" );
+	static_assert( sizeof(CGraphPoi) == 8, "GameCube graph POI layout changed" );
+
+	u8 *pBytes = (u8 *)this;
+	if( nFileBytes < sizeof(CAIGraph) )
+	{
+		DEVPRINTF( "AIGraph: GameCube graph is smaller than its header (%u bytes).\n", nFileBytes );
+		return FALSE;
+	}
+
+	const u16 nNumVerts = _ReadGraphBE16( pBytes + 0 );
+	const u16 nNumPoi = _ReadGraphBE16( pBytes + 2 );
+	const u16 nMaxVerts = _ReadGraphBE16( pBytes + 4 );
+	const u16 nMaxPoi = _ReadGraphBE16( pBytes + 6 );
+	const u16 nNumHazardNames = _ReadGraphBE16( pBytes + 8 );
+	u32 nOffset = sizeof(CAIGraph);
+	if( nNumVerts > nMaxVerts || nNumPoi > nMaxPoi || nNumHazardNames > 255 ||
+		!_GraphRangeValid( nOffset, (u32)nNumVerts * sizeof(GraphVert), nFileBytes ) )
+	{
+		DEVPRINTF( "AIGraph: invalid GameCube graph counts (verts=%u/%u poi=%u/%u hazards=%u).\n",
+			nNumVerts, nMaxVerts, nNumPoi, nMaxPoi, nNumHazardNames );
+		return FALSE;
+	}
+
+	const u32 nVertsOffset = nOffset;
+	nOffset += (u32)nNumVerts * sizeof(GraphVert);
+	if( !_GraphRangeValid( nOffset, (u32)nNumPoi * sizeof(CGraphPoi), nFileBytes ) )
+	{
+		DEVPRINTF( "AIGraph: invalid GameCube graph POI array.\n" );
+		return FALSE;
+	}
+	const u32 nPoiOffset = nOffset;
+	nOffset += (u32)nNumPoi * sizeof(CGraphPoi);
+	if( !_GraphRangeValid( nOffset, (u32)nNumHazardNames * sizeof(cchar *), nFileBytes ) )
+	{
+		DEVPRINTF( "AIGraph: invalid GameCube graph hazard pointer array.\n" );
+		return FALSE;
+	}
+	nOffset += (u32)nNumHazardNames * sizeof(cchar *);
+	for( u32 i = 0; i < nNumHazardNames; i++ )
+	{
+		const u32 nNameStart = nOffset;
+		while( nOffset < nFileBytes && pBytes[nOffset] != 0 ) nOffset++;
+		if( nOffset == nNameStart || nOffset >= nFileBytes )
+		{
+			DEVPRINTF( "AIGraph: invalid GameCube graph hazard name %u.\n", i );
+			return FALSE;
+		}
+		nOffset++;
+	}
+	if( nOffset != nFileBytes )
+	{
+		DEVPRINTF( "AIGraph: unexpected trailing data in GameCube graph (%u bytes).\n",
+			nFileBytes - nOffset );
+		return FALSE;
+	}
+
+	GraphVert *pVerts = (GraphVert *)(pBytes + nVertsOffset);
+	for( u32 i = 0; i < nNumVerts; i++ )
+	{
+		const u8 nEdgeCount = pVerts[i].m_nNumEdges;
+		if( nEdgeCount == VERT_SLOT_FREE ) continue;
+		if( nEdgeCount > AIGRAPH_NUM_EDGES_PER_VERT )
+		{
+			DEVPRINTF( "AIGraph: invalid GameCube graph edge count %u at vert %u.\n", nEdgeCount, i );
+			return FALSE;
+		}
+		for( u32 j = 0; j < nEdgeCount; j++ )
+		{
+			const u8 *pEdge = pBytes + nVertsOffset + i * sizeof(GraphVert) +
+				offsetof(GraphVert, m_aEdgeSlots) + j * sizeof(GraphEdge);
+			if( _ReadGraphBE16( pEdge + offsetof(GraphEdge, m_nNextVertId) ) >= nNumVerts )
+			{
+				DEVPRINTF( "AIGraph: invalid GameCube graph edge target at vert %u edge %u.\n", i, j );
+				return FALSE;
+			}
+		}
+	}
+
+	m_nNumVerts = nNumVerts;
+	m_nNumPoi = nNumPoi;
+	m_nMaxVerts = nMaxVerts;
+	m_nMaxPoi = nMaxPoi;
+	m_nNumHazardNames = nNumHazardNames;
+	for( u32 i = 0; i < nNumVerts; i++ )
+	{
+		GraphVert *pVert = &pVerts[i];
+		pVert->m_Location.x = fang_ConvertEndian( pVert->m_Location.x );
+		pVert->m_Location.y = fang_ConvertEndian( pVert->m_Location.y );
+		pVert->m_Location.z = fang_ConvertEndian( pVert->m_Location.z );
+		pVert->m_fSafeRad = fang_ConvertEndian( pVert->m_fSafeRad );
+		pVert->m_fHeightClearance = fang_ConvertEndian( pVert->m_fHeightClearance );
+		for( u32 j = 0; j < AIGRAPH_NUM_EDGES_PER_VERT; j++ )
+		{
+			GraphEdge *pEdge = &pVert->m_aEdgeSlots[j];
+			pEdge->m_nNextVertId = fang_ConvertEndian( pEdge->m_nNextVertId );
+			pEdge->m_nProps = fang_ConvertEndian( pEdge->m_nProps );
+			pEdge->m_fLength = fang_ConvertEndian( pEdge->m_fLength );
+			pEdge->m_fMaxSafeHeight = fang_ConvertEndian( pEdge->m_fMaxSafeHeight );
+			pEdge->m_fHalfWidth = fang_ConvertEndian( pEdge->m_fHalfWidth );
+		}
+	}
+	CGraphPoi *pPoi = (CGraphPoi *)(pBytes + nPoiOffset);
+	for( u32 i = 0; i < nNumPoi; i++ )
+	{
+		pPoi[i].m_uPackedVertEdgeId = fang_ConvertEndian( pPoi[i].m_uPackedVertEdgeId );
+		pPoi[i].m_uVisInfo = fang_ConvertEndian( pPoi[i].m_uVisInfo );
+	}
+
+	DEVPRINTF( "AIGraph: converted GameCube graph (%u verts, %u POIs, %u hazards).\n",
+		nNumVerts, nNumPoi, nNumHazardNames );
+	return TRUE;
+}
+#endif
+
 #if AIGRAPH_EDITOR_ENABLED
 
 BOOL CAIGraph::LoadFromBinaryFile(const char* szFileName)

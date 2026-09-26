@@ -11,5 +11,6 @@ BOOL gcdata_ConvertWorldHeader( void *pData, u32 nHeaderBytes, u32 nFileBytes );
 BOOL gcdata_ConvertWorldVisData( void *pData, u32 nBytes );
 BOOL gcdata_ConvertWorldInitData( void *pData, u32 nBytes );
 BOOL gcdata_DecodeTga( const void *pFileData, u32 nFileBytes, FTexInfo_t *pTexInfo, void **ppImageData, u32 *pnImageBytes );
+BOOL gcdata_ConvertFont( void *pData, u32 nBytes );
 
 #endif

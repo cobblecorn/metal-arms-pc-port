@@ -1935,6 +1935,13 @@ void CBotGlitch::_HandleWeaponWork( void ) {
 void CBotGlitch::_ChangeWeaponIndex( u32 nHandIndex, u32 nNewIndex ) {
 	FASSERT( nHandIndex==0 || nHandIndex==1 );
 	FASSERT( nNewIndex < m_WeaponInv[ nHandIndex ].m_nWeaponInvCount );
+	if( nNewIndex >= m_WeaponInv[ nHandIndex ].m_nWeaponInvCount ) {
+		// Port: the FASSERT above is compiled out entirely in Release/Production builds, so
+		// without this guard an out-of-range index (e.g. a retail inventory slot this source's
+		// reduced weapon set doesn't have) would read past m_apWeapon[] below. Nothing to
+		// switch to; leave the current weapon state untouched.
+		return;
+	}
 
 	m_WeaponInv[ nHandIndex ].m_nWeaponInvIndex = (u8)nNewIndex;
 
@@ -4037,8 +4044,11 @@ BOOL CBotGlitch::_InitWeaponInventory( CBotBuilder* pBuilder ) {
 		m_apWeapon[0] = m_apWeapon[1] = NULL;
 		if( m_WeaponInv[ 0 ].m_nWeaponInvCount ) {
 			if( m_pInventory ) {
-				// change to current primary weapon as recorded in inventory
-				_ChangeWeaponIndex( 0, m_pInventory->m_auCurWeapon[0] );
+				// change to current primary weapon as recorded in inventory. Retail inventory
+				// data may reference a slot this source's reduced weapon set doesn't have
+				// (unsupported weapon schema); fall back to slot 0 when so.
+				u32 uCurIdx = m_pInventory->m_auCurWeapon[0];
+				_ChangeWeaponIndex( 0, (uCurIdx < m_WeaponInv[0].m_nWeaponInvCount) ? uCurIdx : 0 );
 			} else {
 				_ChangeWeaponIndex( 0, 1 );
 			}
@@ -4062,8 +4072,11 @@ BOOL CBotGlitch::_InitWeaponInventory( CBotBuilder* pBuilder ) {
 
 		if( m_WeaponInv[ 1 ].m_nWeaponInvCount ) {
 			if( m_pInventory ) {
-				// change to current secondary weapon as recorded in inventory
-				_ChangeWeaponIndex( 1, m_pInventory->m_auCurWeapon[1] );
+				// change to current secondary weapon as recorded in inventory. See the primary
+				// hand's comment above: retail inventory data may reference a slot this source's
+				// reduced weapon set doesn't have.
+				u32 uCurIdx = m_pInventory->m_auCurWeapon[1];
+				_ChangeWeaponIndex( 1, (uCurIdx < m_WeaponInv[1].m_nWeaponInvCount) ? uCurIdx : 0 );
 			} else {
 				_ChangeWeaponIndex( 1, 0 );
 			}

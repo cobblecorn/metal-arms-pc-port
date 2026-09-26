@@ -904,6 +904,77 @@ BOOL gcdata_DecodeTga( const void *pFileData, u32 nFileBytes, FTexInfo_t *pTexIn
 #endif
 }
 
+// ftext.cpp's font loader (ftext_Load()) is a bespoke loader that reads a .fnt file
+// straight into an fres_Alloc'd copy of FDataFntFile_Font_t and then fixes up its three
+// array offsets into pointers. It never goes through fresload/gcdata_Convert(), and it
+// never called ChangeEndian() on any of it (the original code never needed to: the file
+// is only ever produced and consumed little-endian, on Xbox/PC). On a big-endian GameCube
+// file, every field, including the array offsets, is byte-swapped nonsense until this
+// runs. Call it right after the raw file bytes are read, before ftext.cpp's own
+// offset-to-pointer fixup.
+BOOL gcdata_ConvertFont( void *pData, u32 nBytes )
+{
+	if( !pData || nBytes < sizeof(FDataFntFile_Font_t) ) return FALSE;
+	u8 *pBytes = (u8 *)pData;
+
+	const u32 nBuckets = pBytes[offsetof(FDataFntFile_Font_t, uBuckets)];
+	const u32 nTexPages = pBytes[offsetof(FDataFntFile_Font_t, uTexPages)];
+	const u32 nBucketLetters = _ReadBE16( pBytes + offsetof(FDataFntFile_Font_t, uBucketLetters) );
+	const u32 nFntLetters = _ReadBE16( pBytes + offsetof(FDataFntFile_Font_t, uFntLetters) );
+	const u32 nLetterBucketsOffset = _ReadBE32( pBytes + offsetof(FDataFntFile_Font_t, paoLetterBuckets) );
+	const u32 nBucketLettersOffset = _ReadBE32( pBytes + offsetof(FDataFntFile_Font_t, paoBucketLetters) );
+	const u32 nFntLettersOffset = _ReadBE32( pBytes + offsetof(FDataFntFile_Font_t, paoFntLetters) );
+
+	if( nTexPages > 64 ||
+		!_IsArrayRangeValid( nLetterBucketsOffset, nBuckets, sizeof(FDataFntFile_LetterBucket_t), nBytes ) ||
+		!_IsArrayRangeValid( nBucketLettersOffset, nBucketLetters, sizeof(FDataFntFile_BucketLetter_t), nBytes ) ||
+		!_IsArrayRangeValid( nFntLettersOffset, nFntLetters, sizeof(FDataFntFile_Letter_t), nBytes ) )
+	{
+		DEVPRINTF( "gcdata: invalid GameCube font (buckets=%u bucketLetters=%u fntLetters=%u texPages=%u, %u bytes).\n",
+			nBuckets, nBucketLetters, nFntLetters, nTexPages, nBytes );
+		return FALSE;
+	}
+
+	// Cross-check the bucket -> bucketLetter -> fntLetter index chain while the offsets are
+	// still known-good raw values: this is exactly the chain that read a wild pointer before.
+	for( u32 i = 0; i < nBuckets; i++ )
+	{
+		const u8 *pBucket = pBytes + nLetterBucketsOffset + i * sizeof(FDataFntFile_LetterBucket_t);
+		const u32 nLettersInBucket = _ReadBE16( pBucket + offsetof(FDataFntFile_LetterBucket_t, nNumLettersInBucket) );
+		const u32 nBaseIndex = _ReadBE16( pBucket + offsetof(FDataFntFile_LetterBucket_t, nBucketLetterBaseIndex) );
+		if( nLettersInBucket && (nBaseIndex >= nBucketLetters || nLettersInBucket > nBucketLetters - nBaseIndex) )
+		{
+			DEVPRINTF( "gcdata: invalid GameCube font letter bucket %u (base=%u count=%u of %u).\n", i, nBaseIndex, nLettersInBucket, nBucketLetters );
+			return FALSE;
+		}
+	}
+	for( u32 i = 0; i < nBucketLetters; i++ )
+	{
+		const u8 *pBL = pBytes + nBucketLettersOffset + i * sizeof(FDataFntFile_BucketLetter_t);
+		const u32 nLetterIndex = _ReadBE16( pBL + offsetof(FDataFntFile_BucketLetter_t, uFntLetterIndex) );
+		if( nLetterIndex >= nFntLetters )
+		{
+			DEVPRINTF( "gcdata: invalid GameCube font bucket-letter %u (letter index %u of %u).\n", i, nLetterIndex, nFntLetters );
+			return FALSE;
+		}
+	}
+
+	((FDataFntFile_Font_t *)pData)->ChangeEndian();
+
+	FDataFntFile_LetterBucket_t *pFontBuckets = nBuckets ? (FDataFntFile_LetterBucket_t *)(pBytes + nLetterBucketsOffset) : NULL;
+	for( u32 i = 0; i < nBuckets; i++ ) pFontBuckets[i].ChangeEndian();
+
+	FDataFntFile_BucketLetter_t *pFontBucketLetters = nBucketLetters ? (FDataFntFile_BucketLetter_t *)(pBytes + nBucketLettersOffset) : NULL;
+	for( u32 i = 0; i < nBucketLetters; i++ ) pFontBucketLetters[i].ChangeEndian();
+
+	FDataFntFile_Letter_t *pFontLetters = nFntLetters ? (FDataFntFile_Letter_t *)(pBytes + nFntLettersOffset) : NULL;
+	for( u32 i = 0; i < nFntLetters; i++ ) pFontLetters[i].ChangeEndian();
+
+	DEVPRINTF( "gcdata: converted GameCube font (%u buckets, %u bucket letters, %u letters, %u texture pages).\n",
+		nBuckets, nBucketLetters, nFntLetters, nTexPages );
+	return TRUE;
+}
+
 BOOL gcdata_Convert( cchar *pszExtension, cchar *pszResName, void *pData, u32 nBytes )
 {
 #if FANG_PLATFORM_WIN && FANG_WINGC

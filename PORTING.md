@@ -64,9 +64,23 @@ the WLD resource, then exits before localized setup and gameplay entity creation
 - [x] Convert retail GameCube `.gt` AI graphs. The converter validates graph counts, array ranges,
       edge counts and edge targets before swapping the header, vertices, edges, and POIs. The
       full `we01multi01` level path converted a graph with 153 vertices and reached boot completion.
+- [x] Convert GameCube `.fnt` fonts. `ftext.cpp`'s font loader (`ftext_Load()`) is a bespoke
+      reader that never went through the generic `fresload`/`gcdata_Convert` hook and never
+      byte-swapped anything; `gcdata_ConvertFont()` validates and swaps the header and its
+      three variable-length arrays (letter buckets, bucket-letters, letters) in place before
+      the loader's own offset-to-pointer fixup runs. This was crashing every launch (a wild
+      pointer read while drawing the first piece of HUD text); see the CRT diagnostics entry
+      below for how this was actually diagnosed instead of just hanging.
 - [ ] Extend mesh support to skinned/streaming display lists and translate GameCube
-      collision trees. The current adapter drops mesh collision data.
-- [ ] Convert scripts (`.sma`), fonts, and other runtime resources.
+      collision trees (`kDOP`, embedded per-mesh in `.ape`/world mesh data, same one converter
+      for both a prop's mesh and a level's static geometry). The current adapter drops this
+      data entirely. **This is the current blocker on real gameplay**: with no collision, the
+      player falls through the floor immediately after spawning, dies, and the level appears
+      to fully reload from scratch on a ~7-second cycle (same bot GUIDs recreated each time -
+      see the known-issues entry below). Worth trying first: a temporary flat ground-plane
+      collision volume for the world, to confirm this diagnosis before investing in a full
+      kDOP-tree translation.
+- [ ] Convert scripts (`.sma`) and other runtime resources.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
 - [ ] Input: keyboard/mouse and XInput mapping onto the game's pad layer. DirectInput gamepad
       enumeration works; remapping is disabled when no device/map is configured.
@@ -109,6 +123,21 @@ the WLD resource, then exits before localized setup and gameplay entity creation
   additional 8-byte tail field, removed before the version 7 structures are byte-swapped.
   It validates that both removed fields are zero, plus the shifted texture name, sampling
   interval, and zeroed list state before converting a file.
+- `main_win.cpp` now redirects every Debug-CRT diagnostic (asserts, `/RTC` stack/uninitialized-
+  variable failures, pure-virtual calls, invalid-parameter aborts) to the log instead of a
+  blocking "Microsoft Visual C++ Runtime Library" dialog. Without this, a hit anywhere in the
+  Debug build looks exactly like a hang: the process is still alive, sitting in a modal message
+  box nobody is there to click. This is how the font crash below was actually found, instead of
+  just timing out. Non-fatal asserts now log and continue (matching "Ignore"); this can let a
+  real bug run further than it would on the original platforms before something else notices -
+  treat a firing assert as a real bug to fix, not background noise.
+- Found via the above: `CBotGlitch::_InitInventory()` was passing a retail inventory's current-
+  weapon slot straight to `_ChangeWeaponIndex()` with no bounds check against this source's
+  reduced weapon set (see the laser/blaster schema note above) - a real out-of-bounds array read
+  that the original `FASSERT` alone did not prevent (`FASSERT` compiles out entirely in
+  Release/Production builds, so this was always a live bug, not just a debug-build nuisance).
+  Fixed at both the call site (fall back to slot 0 when the retail slot is out of range) and in
+  `_ChangeWeaponIndex()` itself (bounds-checked no-op instead of undefined behavior).
 - Compiler flags a few `1 << n` results widened to 64 bits (C4334: `fcoll_kDOP.cpp`,
   `GeneralCorrosiveGame.cpp`, `SpaceDock.cpp`, `fEventListener.h`, `ColiseumMiniGame.cpp`).
   Behavior is the same as the original 32-bit shift, but it may be a latent bug.

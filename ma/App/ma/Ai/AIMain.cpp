@@ -124,15 +124,32 @@ BOOL _InitPathFinding(const char* pszLevelFilename)
 	if (FFILE_IS_VALID_HANDLE(hFile))
 	{
 		s32 nSizeBytes = ffile_GetFileSize( hFile );
+		if (nSizeBytes < (s32)sizeof(CAIGraph))
+		{
+			DEVPRINTF( "_InitPathFinding(): Invalid graph file '%s' (%d bytes).\n", szGraphFileName, nSizeBytes );
+			ffile_Close( hFile );
+			goto _ExitInitPathFindingWithError;
+		}
 		aimain_pGraphFileData = fres_AlignedAlloc(nSizeBytes, 32); //important to align this since caigraph is requires it
 		if (!aimain_pGraphFileData)
 		{
+			ffile_Close( hFile );
 			goto _ExitInitPathFindingWithError;
 		}
 		s32 nCount = ffile_Read( hFile, nSizeBytes, aimain_pGraphFileData );
 		ffile_Close( hFile );
-		FASSERT(nCount == nSizeBytes);
+		if (nCount != nSizeBytes)
+		{
+			DEVPRINTF( "_InitPathFinding(): Short read on graph file '%s' (%d/%d bytes).\n", szGraphFileName, nCount, nSizeBytes );
+			goto _ExitInitPathFindingWithError;
+		}
 		aimain_pAIGraph = (CAIGraph*) aimain_pGraphFileData;
+		#if FANG_WINGC
+		if (!aimain_pAIGraph->ConvertGameCubeBinaryData((u32)nSizeBytes))
+		{
+			goto _ExitInitPathFindingWithError;
+		}
+		#endif
 		aimain_pAIGraph->PointerizeBinaryData();
 	}
 	else

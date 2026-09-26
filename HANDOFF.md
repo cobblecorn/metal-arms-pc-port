@@ -348,3 +348,81 @@ Confirm whether the initial `fvid_Swap()` warning clears after the first frame. 
 endings and `git diff --check` before committing. Git remains local on `x86-port`; there is no
 configured remote and no matching fork was found in the prior account search. Do not push without
 the intended fork URL.
+
+## 13. ADDENDUM (session 6) - remote exists now; CRT diagnostics; font fix; real gameplay blocker found
+
+**Correction to session 5's addendum and earlier notes: a GitHub remote now exists.** The user
+explicitly asked for it this session. It's private, under the authenticated `cobblecorn` account:
+`https://github.com/cobblecorn/metal-arms-pc-port`. Both `main` and `x86-port` are pushed and
+tracked (`git push` with no args now works from `x86-port`). Verified before the first push: no
+`gamedata/`, no `.rvz`/`.iso`, in the tracked history (`git ls-files | grep -iE '^gamedata/|\.rvz$|\.iso$'`
+was empty), and `.git` was 9 MB. Keep verifying that before every push - the whole point of
+`.gitignore` here is that retail data must never leave this machine. Push freely otherwise; don't
+reintroduce the earlier "never push" caution unless the user says so.
+
+**The single highest-leverage change this session: CRT diagnostics.** Every run before this
+looked like a hang: the process was still alive, sitting in a blocking "Microsoft Visual C++
+Runtime Library" message box (Debug-CRT assert / `/RTC` stack-corruption / pure-virtual-call /
+invalid-parameter dialogs), which nobody headless is there to click through. `Get-Process | select
+MainWindowTitle` is how this was actually noticed - it's easy to keep "waiting" on a `timeout`'d
+run and never realize the process didn't crash, it's blocked on a dialog. `port/main_win.cpp` now
+installs `_RTC_SetErrorFunc`, `_set_purecall_handler`, `_set_invalid_parameter_handler`,
+`signal(SIGABRT,...)`, and `_CrtSetReportHook`, all logging to the file/stdout and returning
+"continue" instead of popping a dialog. **Do this check first in any future session that seems
+stuck**: `Get-Process -Name ma_port | select MainWindowTitle` - if it says anything other than
+the game's own title, it's blocked on a dialog, not hung or crashed; `taskkill /F /IM ma_port.exe`
+to clear it.
+
+**Fixed: the font crash that was blocking every run.** `ftext.cpp`'s font loader (`ftext_Load()`)
+is a bespoke reader, separate from the generic `fresload`/`gcdata_Convert` conversion path
+everything else goes through - it was never touched by earlier sessions' asset-conversion work,
+and it never called any `ChangeEndian()`. On the big-endian GC `.fnt` file this left every field,
+including the three array offsets the loader fixes up into pointers right after reading, as
+byte-swapped garbage. First real symptom was a `_CrashFilter` stack trace pointing straight at it
+(`_FindFntLetterIndex` reading a wild address, called from HUD text drawing during the real
+per-frame game loop - i.e. the game was genuinely rendering when it crashed). Fixed with
+`gcdata_ConvertFont()` in `port/gcdata.cpp` (validates counts/offsets bottom-up before swapping,
+same style as the other converters), called from `ftext.cpp` right after `ffile_Read()` and before
+its own offset-to-pointer fixup. All 6 boot-time fonts now convert and validate cleanly.
+
+**Fixed: a real out-of-bounds read in `CBotGlitch::_InitInventory()`/`_ChangeWeaponIndex()`.**
+Passing the retail save's current-weapon slot straight through with no bounds check against this
+source's reduced weapon set (known laser/blaster schema gap) read past `m_apWeapon[]`. `FASSERT`
+alone never prevented this - it compiles out entirely in Release/Production builds, so this was a
+live memory-safety bug independent of porting, not just noise. Fixed at the two call sites (fall
+back to slot 0) and hardened `_ChangeWeaponIndex()` itself (bounds-checked no-op).
+
+**Current state after both fixes, `-level we01multi01`, 30-second run:** boots cleanly through
+fonts, no crash. But it doesn't reach real gameplay: the same sequence repeats on a roughly
+7-8 second cycle - `BotDispenser` spawns bots with the exact same GUIDs (305, 313, 316) every
+time, `AIBrainman` "takes control" of a fresh `Player0` every time, the (now-harmless) weapon
+assert fires every time. Identical GUIDs each cycle is the tell: this isn't the dispenser
+retriggering, the *entire level* is reloading from scratch each time (user's own read watching it
+run: "looks to be looping the intro sequence"). Most likely cause, and the next thing to fix:
+
+**World/level collision is missing, for the same reason mesh collision is already a known gap.**
+`fmesh_coll.h`/`FkDOP_*` collision trees are embedded per-mesh in the exported `.ape`/world-mesh
+data (`gc/fGCmesh_coll.cpp` is the GC-side source layout) - the same data `port/gcmesh.cpp`
+explicitly zeroes out today ("Mesh collision data is cleared because the GC kDOP representation is
+not translated"). Level geometry is built from these same meshes. With no collision, the player
+almost certainly falls straight through the floor at spawn, dies, and the level's death/respawn
+path reloads everything - matching the repeating identical-GUID cycle exactly. Also noticed but
+not yet chased down: `AlarmSys.cpp` logs `XA_Error: Alarm (dspns_jump1) with no Alarm Net Name.` -
+the `XA_ALARMNETNAME` CSV field isn't resolving for this entity, likely the same kind of CSV
+schema drift as the other known table mismatches. Probably a secondary/unrelated issue; revisit
+once collision is fixed and the loop (if it's really collision) is confirmed gone.
+
+**Suggested next steps, in order:**
+1. Before committing to a full kDOP-tree translation (real work: read `gc/fGCmesh_coll.cpp` for
+   the GC source layout, `fmesh_coll.h`/`fdx8mesh_coll.cpp` for the DX target layout, then extend
+   `port/gcmesh.cpp`), try a cheap experiment first: give the world a temporary flat ground-plane
+   collision volume (or hardcode `fworld_coll`/the player's ground check to never fall below some
+   Z) and see if the reload loop stops. That confirms or kills this diagnosis in minutes instead
+   of a multi-hour conversion effort.
+2. If confirmed, do the real kDOP conversion in `gcmesh.cpp`, following the exact validate-then-
+   `ChangeEndian()` pattern every other converter in `gcdata.cpp`/`gcmesh.cpp` already uses.
+3. Only then chase the `AlarmSys` "no Alarm Net Name" CSV issue and remaining `.sma`/audio/input
+   work - those matter far less while the player can't stand on the ground.
+
+Build still succeeds with `cmake --build build --config Debug --target ma_port -- -nologo -v:m`.
+Latest instrumented run logs: `build/logs/weapon-fix.log` / `.out`.

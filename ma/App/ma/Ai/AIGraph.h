@@ -51,7 +51,11 @@ typedef BOOL (*AIGraph_LOSTestFunc)(const CFVec3A &rRayStart, const CFVec3A &rRa
 void AIGraph_SetLOSTestFunc(AIGraph_LOSTestFunc pFunc);
 
 
-#define AIGRAPH_NUM_EDGES_PER_VERT 6			//How many edges a vert on the graph can have
+#if FANG_WINGC
+	#define AIGRAPH_NUM_EDGES_PER_VERT 5			//The retail GameCube graph stores five edge slots per vert
+#else
+	#define AIGRAPH_NUM_EDGES_PER_VERT 6			//How many edges a vert on the graph can have
+#endif
 #define AIGRAPH_FUTURE_NUM_EDGES_PER_VERT 5		 //In the future, How many edges a vert on the graph can have
 #define AIGRAPH_INVALID_VERTID 0
 
@@ -329,6 +333,9 @@ public:
 	FINLINE GraphVert	*GetEdgeDestVert(GraphEdge* pEdge)				{ return m_paVerts + pEdge->m_nNextVertId;}
 
 	BOOL				PointerizeBinaryData(void);
+#if FANG_WINGC
+	BOOL				ConvertGameCubeBinaryData(u32 nFileBytes);
+#endif
 	u32					IdentifySubGraphs(void);
 	void				BindWithAccessData(CAIGraphDataAccess* pAIGraphDataAccess) { m_pAIGraphDataAccess = pAIGraphDataAccess;}
 
