@@ -388,6 +388,21 @@ HRESULT IDirect3DDevice8::Clear( DWORD nCount, CONST D3DRECT *pRects, DWORD nFla
 
 // --- render / texture-stage state -------------------------------------------
 
+// Fang's multipass rendering draws the lighting pass, then re-draws the same triangles for the
+// surface (base texture) pass with D3DCMP_EQUAL, relying on the Xbox's bit-identical depths across
+// different vertex shaders. A D3D9 driver compiles each shader separately and gives no such
+// guarantee, so EQUAL rejects most pixels and only the lightmaps remain. EQUAL is therefore mapped
+// to LESSEQUAL with a small extra pull toward the viewer, added to whatever ZBIAS the game set.
+static float s_fGameDepthBias = 0.0f;	// from D3DRS_ZBIAS
+static bool s_bDepthEqual = false;		// game asked for D3DCMP_EQUAL
+static const float _EQUAL_PASS_DEPTH_BIAS = -3.0e-6f;
+
+static HRESULT _ApplyDepthBias( IDirect3DDevice9 *pDev )
+{
+	float fBias = s_fGameDepthBias + (s_bDepthEqual ? _EQUAL_PASS_DEPTH_BIAS : 0.0f);
+	return pDev->SetRenderState( D3DRS_DEPTHBIAS, *(DWORD *)&fBias );
+}
+
 HRESULT IDirect3DDevice8::SetRenderState( D3DRENDERSTATETYPE nState, DWORD nValue )
 {
 	switch( (DWORD)nState )
@@ -396,10 +411,19 @@ HRESULT IDirect3DDevice8::SetRenderState( D3DRENDERSTATETYPE nState, DWORD nValu
 		return m_pDev->SetSoftwareVertexProcessing( nValue );
 
 	case D3DRS_ZBIAS:
+		// D3D8: integer 0..16, larger = closer. D3D9: float depth offset, negative = closer.
+		s_fGameDepthBias = -(float)nValue * 1.5e-5f;
+		return _ApplyDepthBias( m_pDev );
+
+	case D3DRS_ZFUNC:
 		{
-			// D3D8: integer 0..16, larger = closer. D3D9: float depth offset, negative = closer.
-			float fBias = -(float)nValue * 1.5e-5f;
-			return m_pDev->SetRenderState( D3DRS_DEPTHBIAS, *(DWORD *)&fBias );
+			const bool bEqual = (nValue == D3DCMP_EQUAL);
+			if( bEqual != s_bDepthEqual )
+			{
+				s_bDepthEqual = bEqual;
+				_ApplyDepthBias( m_pDev );
+			}
+			return m_pDev->SetRenderState( D3DRS_ZFUNC, bEqual ? D3DCMP_LESSEQUAL : nValue );
 		}
 
 	// D3D8-only states with no D3D9 equivalent and no visible effect here.
@@ -484,7 +508,10 @@ HRESULT IDirect3DDevice8::CreateVertexShader( CONST DWORD *pDecl, CONST DWORD *p
 		for( UINT i=0; i<nElem; i++ )
 		{
 			pD3D9Func[nOut++] = 31u; // D3DSIO_DCL
-			pD3D9Func[nOut++] = 0x80000000u | ((DWORD)aElem[i].Usage << 16) | (DWORD)aElem[i].UsageIndex;
+			// DCL usage token: bits 0-4 = D3DDECLUSAGE, bits 16-19 = usage index, bit 31 set.
+			// (These were swapped before, which declared every input as POSITIONn so only v0
+			// ever received data: normals, colors and texcoords all read as zero.)
+			pD3D9Func[nOut++] = 0x80000000u | ((DWORD)aElem[i].UsageIndex << 16) | (DWORD)aElem[i].Usage;
 			pD3D9Func[nOut++] = 0x900f0000u | (DWORD)aInputReg[i]; // D3DSPR_INPUT, xyzw
 		}
 		memcpy( pD3D9Func + nOut, pFunc + 1, (nCodeWords - 1) * sizeof(DWORD) );

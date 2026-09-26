@@ -1160,6 +1160,30 @@ static void _FixupShTexInst( FShTexInst_t *pShTexInst, FMesh_t *pMesh, BOOL bLoa
 {
 	FASSERT( pShTexInst && pMesh );
 
+#if FANG_WINGC
+	{
+		// Port diagnostic (MA_PORT_TEXPROBE=1): raw FShTexInst_t contents as seen after GC conversion.
+		static int _nEnabled = -1;
+		if ( _nEnabled < 0 )
+		{
+			char szVal[8];
+			_nEnabled = GetEnvironmentVariableA( "MA_PORT_TEXPROBE", szVal, sizeof(szVal) ) > 0 ? 1 : 0;
+		}
+		static u32 _nLogged = 0;
+		if ( _nEnabled && _nLogged < 400 )
+		{
+			const u8 *pRaw = (const u8 *)pShTexInst;
+			DEVPRINTF( "PORT-TEX mesh='%s' texdef=%p nameOfs=%u layer=%u raw=%02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x name='%.16s'\n",
+				pMesh->szName, pShTexInst->TexInst.GetTexDef(), pShTexInst->nTextureNameOffset, pShTexInst->nTexLayerID,
+				pRaw[0], pRaw[1], pRaw[2], pRaw[3], pRaw[4], pRaw[5], pRaw[6], pRaw[7], pRaw[8], pRaw[9], pRaw[10], pRaw[11],
+				pRaw[12], pRaw[13], pRaw[14], pRaw[15], pRaw[16], pRaw[17], pRaw[18], pRaw[19], pRaw[20], pRaw[21], pRaw[22], pRaw[23],
+				pRaw[24], pRaw[25], pRaw[26], pRaw[27],
+				pShTexInst->nTextureNameOffset ? (const char *)pMesh + pShTexInst->nTextureNameOffset : "" );
+			_nLogged++;
+		}
+	}
+#endif
+
 	if ( pShTexInst->TexInst.GetTexDef() != NULL )
 	{
 		// Tex def has already been assigned

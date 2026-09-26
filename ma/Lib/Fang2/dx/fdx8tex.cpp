@@ -3366,6 +3366,46 @@ static BOOL _ResLoadCreate( FResHandle_t hRes, void *pLoadedBase, u32 nLoadedByt
 		return FALSE;
 	}
 	fclib_strcpy( oDecodedTexInfo.szName, pszResName );
+	{
+		// Port diagnostic: MA_PORT_TEXDUMP=<dir> writes the first 64 decoded textures (mip 0) as BMPs.
+		static int _nDumpState = -1;
+		static char _szDumpDir[MAX_PATH];
+		static u32 _nDumped = 0;
+		if( _nDumpState < 0 )
+		{
+			DWORD nLen = GetEnvironmentVariableA( "MA_PORT_TEXDUMP", _szDumpDir, sizeof(_szDumpDir) );
+			_nDumpState = (nLen > 0 && nLen < sizeof(_szDumpDir)) ? 1 : 0;
+			if( _nDumpState ) CreateDirectoryA( _szDumpDir, NULL );
+		}
+		if( _nDumpState && _nDumped < 64 )
+		{
+			char szPath[MAX_PATH + 64];
+			_snprintf( szPath, sizeof(szPath) - 1, "%s\\%s.bmp", _szDumpDir, pszResName );
+			szPath[sizeof(szPath) - 1] = 0;
+			FILE *pFile = fopen( szPath, "wb" );
+			if( pFile )
+			{
+				const u32 nW = oDecodedTexInfo.nTexelsAcross, nH = oDecodedTexInfo.nTexelsDown;
+				BITMAPFILEHEADER FileHeader = {};
+				BITMAPINFOHEADER InfoHeader = {};
+				FileHeader.bfType = 0x4d42;
+				FileHeader.bfOffBits = sizeof(FileHeader) + sizeof(InfoHeader);
+				FileHeader.bfSize = FileHeader.bfOffBits + nW * nH * 4;
+				InfoHeader.biSize = sizeof(InfoHeader);
+				InfoHeader.biWidth = (LONG)nW;
+				InfoHeader.biHeight = -(LONG)nH;
+				InfoHeader.biPlanes = 1;
+				InfoHeader.biBitCount = 32;
+				InfoHeader.biCompression = BI_RGB;
+				fwrite( &FileHeader, sizeof(FileHeader), 1, pFile );
+				fwrite( &InfoHeader, sizeof(InfoHeader), 1, pFile );
+				fwrite( pDecodedImage, nW * nH * 4, 1, pFile );
+				fclose( pFile );
+			}
+			DEVPRINTF( "PORT-TEXDUMP '%s' %ux%u lods=%u\n", pszResName, (u32)oDecodedTexInfo.nTexelsAcross, (u32)oDecodedTexInfo.nTexelsDown, (u32)oDecodedTexInfo.nLodCount );
+			_nDumped++;
+		}
+	}
 	static u32 nLoggedDecodedTextures = 0;
 	if( nLoggedDecodedTextures < 8 )
 	{

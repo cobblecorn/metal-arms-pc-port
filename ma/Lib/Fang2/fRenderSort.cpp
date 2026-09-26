@@ -1778,6 +1778,17 @@ void frs_FlushRenderLists( void )
 		}
 	}
 
+	#if FANG_WINGC
+	{
+		// Port diagnostic: how many materials went through each pass.
+		static u32 _nFrame = 0;
+		if ( (++_nFrame % 600) == 1 )
+		{
+			DEVPRINTF( "PORT-RS frame %u: flags=%08x lighting=%u surface=%u\n", _nFrame, (u32)FRS_bRenderFlags, (u32)nLightingMaterials, (u32)nSurfaceMaterials );
+		}
+	}
+	#endif
+
 	#if FANG_PLATFORM_GC
 		// We will not do any changes to the z compare order for specular
 	if (!FSh_bUseClipPlane)

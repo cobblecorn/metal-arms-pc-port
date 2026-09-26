@@ -450,6 +450,10 @@ BOOL CFMeshInst::DrawPrep_P( BOOL bFlushImmediate )
 //
 //
 //
+#if FANG_WINGC
+static void _PortLogD3DState( cchar *pszTag, cchar *pszMesh, u32 nMtl );
+#endif
+
 BOOL CFMeshInst::DrawMaterialLight_P( FViewportPlanesMask_t nCrossesPlanesMask, FMeshMaterial_t *pMaterial, u32 nLODIndex )
 {
 	FASSERT( _bWindowCreated );
@@ -542,7 +546,10 @@ BOOL CFMeshInst::DrawMaterialLight_P( FViewportPlanesMask_t nCrossesPlanesMask, 
 	for ( nPass = 0; nPass < nTotalPasses; nPass++ )
 	{
 		fsh_SetPassIdx( nPass );
-		fsh_ExecuteCurrent( FMesh_bRenderShadows, nShadowID ); 
+		fsh_ExecuteCurrent( FMesh_bRenderShadows, nShadowID );
+#if FANG_WINGC
+		_PortLogD3DState( bFastPass ? "LIGHT-FAST" : "LIGHT", m_pMesh->szName, (u32)(pMaterial - m_pMesh->aMtl) );
+#endif
 
 		// Progress through all the clusters for this material, submitting for render the relevant ones
 		FDX8MeshCluster_t *pCluster = ((FDX8MeshMaterial_t *)pMaterial->pPlatformData)->aCluster;
@@ -725,6 +732,158 @@ BOOL CFMeshInst::DrawMaterialLight_P( FViewportPlanesMask_t nCrossesPlanesMask, 
 //
 //
 //
+#if FANG_WINGC
+// Port diagnostic: dumps the D3D9 state a pass draws with (first few calls after frame ~300).
+static void _PortLogD3DState( cchar *pszTag, cchar *pszMesh, u32 nMtl )
+{
+	// Enabled with MA_PORT_D3DPROBE=1.
+	static int _nEnabled = -1;
+	if ( _nEnabled < 0 )
+	{
+		char szVal[8];
+		_nEnabled = GetEnvironmentVariableA( "MA_PORT_D3DPROBE", szVal, sizeof(szVal) ) > 0 ? 1 : 0;
+	}
+	static u32 _nCalls = 0, _anLogged[2] = { 0, 0 };
+	u32 &nLogged = _anLogged[ pszTag[0] == 'S' ? 1 : 0 ];
+	if ( !_nEnabled || ++_nCalls < 150000 || nLogged >= 8 )
+	{
+		return;
+	}
+	nLogged++;
+	IDirect3DDevice9 *pDev = FDX8_pDev->GetD3D9Device();
+	DWORD z, zf, zw, ab, sb, db, at, cull, cw, bias, fog;
+	pDev->GetRenderState( D3DRS_ZENABLE, &z );
+	pDev->GetRenderState( D3DRS_ZFUNC, &zf );
+	pDev->GetRenderState( D3DRS_ZWRITEENABLE, &zw );
+	pDev->GetRenderState( D3DRS_ALPHABLENDENABLE, &ab );
+	pDev->GetRenderState( D3DRS_SRCBLEND, &sb );
+	pDev->GetRenderState( D3DRS_DESTBLEND, &db );
+	pDev->GetRenderState( D3DRS_ALPHATESTENABLE, &at );
+	pDev->GetRenderState( D3DRS_CULLMODE, &cull );
+	pDev->GetRenderState( D3DRS_COLORWRITEENABLE, &cw );
+	pDev->GetRenderState( D3DRS_DEPTHBIAS, &bias );
+	pDev->GetRenderState( D3DRS_FOGENABLE, &fog );
+	IDirect3DBaseTexture9 *pT0 = NULL, *pT1 = NULL;
+	pDev->GetTexture( 0, &pT0 );
+	pDev->GetTexture( 1, &pT1 );
+	DWORD op0, a10, a20, tci0, op1, a11, a21, tci1, aop0;
+	pDev->GetTextureStageState( 0, D3DTSS_COLOROP, &op0 );
+	pDev->GetTextureStageState( 0, D3DTSS_COLORARG1, &a10 );
+	pDev->GetTextureStageState( 0, D3DTSS_COLORARG2, &a20 );
+	pDev->GetTextureStageState( 0, D3DTSS_TEXCOORDINDEX, &tci0 );
+	pDev->GetTextureStageState( 0, D3DTSS_ALPHAOP, &aop0 );
+	pDev->GetTextureStageState( 1, D3DTSS_COLOROP, &op1 );
+	pDev->GetTextureStageState( 1, D3DTSS_COLORARG1, &a11 );
+	pDev->GetTextureStageState( 1, D3DTSS_COLORARG2, &a21 );
+	pDev->GetTextureStageState( 1, D3DTSS_TEXCOORDINDEX, &tci1 );
+	IDirect3DVertexShader9 *pVS = NULL;
+	IDirect3DPixelShader9 *pPS = NULL;
+	pDev->GetVertexShader( &pVS );
+	pDev->GetPixelShader( &pPS );
+	DWORD fvf = 0;
+	pDev->GetFVF( &fvf );
+	DEVPRINTF( "PORT-D3D %s mesh=%s mtl=%u z=%u zf=%u zw=%u ab=%u sb=%u db=%u at=%u cull=%u cw=%x bias=%08x fog=%u "
+		"t0=%p op0=%u a1=%x a2=%x tci0=%x aop0=%u t1=%p op1=%u a1=%x a2=%x tci1=%x vs=%p ps=%p fvf=%x\n",
+		pszTag, pszMesh, nMtl, z, zf, zw, ab, sb, db, at, cull, cw, bias, fog,
+		pT0, op0, a10, a20, tci0, aop0, pT1, op1, a11, a21, tci1, pVS, pPS, fvf );
+	{
+		DWORD nMip, nMin, nMag, nMaxMip, nBias, nAddrU;
+		pDev->GetSamplerState( 0, D3DSAMP_MIPFILTER, &nMip );
+		pDev->GetSamplerState( 0, D3DSAMP_MINFILTER, &nMin );
+		pDev->GetSamplerState( 0, D3DSAMP_MAGFILTER, &nMag );
+		pDev->GetSamplerState( 0, D3DSAMP_MAXMIPLEVEL, &nMaxMip );
+		pDev->GetSamplerState( 0, D3DSAMP_MIPMAPLODBIAS, &nBias );
+		pDev->GetSamplerState( 0, D3DSAMP_ADDRESSU, &nAddrU );
+		u32 nLevels = 0, nW = 0, nH = 0;
+		IDirect3DBaseTexture9 *pTex = NULL;
+		pDev->GetTexture( 0, &pTex );
+		if ( pTex )
+		{
+			nLevels = pTex->GetLevelCount();
+			if ( pTex->GetType() == D3DRTYPE_TEXTURE )
+			{
+				D3DSURFACE_DESC Desc;
+				((IDirect3DTexture9 *)pTex)->GetLevelDesc( 0, &Desc );
+				nW = Desc.Width; nH = Desc.Height;
+			}
+			pTex->Release();
+		}
+		DEVPRINTF( "PORT-D3D   s0 mip=%u min=%u mag=%u maxmip=%u lodbias=%08x addrU=%u tex=%ux%u levels=%u\n",
+			nMip, nMin, nMag, nMaxMip, nBias, nAddrU, nW, nH, nLevels );
+	}
+	float afTexMtx[8];
+	pDev->GetVertexShaderConstantF( 74, afTexMtx, 2 );
+	DEVPRINTF( "PORT-D3D   texmtx0 = (%.3f %.3f %.3f %.3f) (%.3f %.3f %.3f %.3f)\n",
+		afTexMtx[0], afTexMtx[1], afTexMtx[2], afTexMtx[3], afTexMtx[4], afTexMtx[5], afTexMtx[6], afTexMtx[7] );
+	IDirect3DVertexDeclaration9 *pDecl = NULL;
+	if ( SUCCEEDED( pDev->GetVertexDeclaration( &pDecl ) ) && pDecl )
+	{
+		D3DVERTEXELEMENT9 aElem[MAXD3DDECLLENGTH];
+		UINT nElem = MAXD3DDECLLENGTH;
+		if ( SUCCEEDED( pDecl->GetDeclaration( aElem, &nElem ) ) )
+		{
+			char szDecl[512];
+			u32 nLen = 0;
+			for ( UINT e = 0; e < nElem && aElem[e].Stream != 0xff && nLen < sizeof(szDecl) - 32; e++ )
+			{
+				nLen += _snprintf( szDecl + nLen, sizeof(szDecl) - nLen, "[s%u o%u t%u u%u.%u] ",
+					aElem[e].Stream, aElem[e].Offset, aElem[e].Type, aElem[e].Usage, aElem[e].UsageIndex );
+			}
+			szDecl[sizeof(szDecl) - 1] = 0;
+			DEVPRINTF( "PORT-D3D   decl %s\n", szDecl );
+		}
+		pDecl->Release();
+	}
+	for ( UINT s = 0; s < 3; s++ )
+	{
+		IDirect3DVertexBuffer9 *pStreamVB = NULL;
+		UINT nOffset = 0, nStride = 0;
+		if ( SUCCEEDED( pDev->GetStreamSource( s, &pStreamVB, &nOffset, &nStride ) ) )
+		{
+			DEVPRINTF( "PORT-D3D   stream%u vb=%p stride=%u\n", s, pStreamVB, nStride );
+			if ( pStreamVB ) pStreamVB->Release();
+		}
+	}
+	if ( nLogged == 1 )
+	{
+		// Dump the bound shaders' bytecode once per pass type (disassemble with fxc /dumpbin).
+		CreateDirectoryA( "shaderdump", NULL );
+		for ( u32 nWhich = 0; nWhich < 2; nWhich++ )
+		{
+			UINT nBytes = 0;
+			void *pCode = NULL;
+			if ( nWhich == 0 && pVS && SUCCEEDED( pVS->GetFunction( NULL, &nBytes ) ) && nBytes )
+			{
+				pCode = malloc( nBytes );
+				pVS->GetFunction( pCode, &nBytes );
+			}
+			else if ( nWhich == 1 && pPS && SUCCEEDED( pPS->GetFunction( NULL, &nBytes ) ) && nBytes )
+			{
+				pCode = malloc( nBytes );
+				pPS->GetFunction( pCode, &nBytes );
+			}
+			if ( pCode )
+			{
+				char szPath[128];
+				_snprintf( szPath, sizeof(szPath) - 1, "shaderdump\\%s_%s.bin", pszTag, nWhich ? "ps" : "vs" );
+				szPath[sizeof(szPath) - 1] = 0;
+				FILE *pFile = fopen( szPath, "wb" );
+				if ( pFile )
+				{
+					fwrite( pCode, nBytes, 1, pFile );
+					fclose( pFile );
+				}
+				free( pCode );
+			}
+		}
+	}
+	if ( pT0 ) pT0->Release();
+	if ( pT1 ) pT1->Release();
+	if ( pVS ) pVS->Release();
+	if ( pPS ) pPS->Release();
+}
+#endif
+
 void CFMeshInst::DrawMaterialSurface_P( FViewportPlanesMask_t nCrossesPlanesMask, FMeshMaterial_t *pMaterial, u32 nLODIndex )
 {
 	FASSERT( _bWindowCreated );
@@ -798,7 +957,7 @@ void CFMeshInst::DrawMaterialSurface_P( FViewportPlanesMask_t nCrossesPlanesMask
 		FPerf_nFullSurfaceShaderCount++;
 #endif
 	}
-	
+
 	// Progress through all the clusters for this material, submitting for render the relevant ones
 	FDX8MeshCluster_t *pCluster = ((FDX8MeshMaterial_t *)pMaterial->pPlatformData)->aCluster;
 	FDX8MeshCluster_t *pEndCluster = &pCluster[((FDX8MeshMaterial_t *)pMaterial->pPlatformData)->nClusterCount];
@@ -831,6 +990,24 @@ void CFMeshInst::DrawMaterialSurface_P( FViewportPlanesMask_t nCrossesPlanesMask
 		// Select the appropriate vertex buffer for this cluster
 		fdx8vb_Select( &pMeshIS->aVB[ pCluster->nVBIndex ], FALSE, FALSE, TRUE );
 		fsh_CheckVB();
+#if FANG_WINGC
+		if ( FSh_shaderType == SHADERTYPE_SURFACE )
+		{
+			_PortLogD3DState( "SURF", m_pMesh->szName, (u32)(pMaterial - m_pMesh->aMtl) );
+			// Port debug: MA_PORT_RAWSURF=1 draws the surface pass opaque, ignoring depth.
+			static int _nRawSurf = -1;
+			if ( _nRawSurf < 0 )
+			{
+				char szVal[8];
+				_nRawSurf = GetEnvironmentVariableA( "MA_PORT_RAWSURF", szVal, sizeof(szVal) ) > 0 ? 1 : 0;
+			}
+			if ( _nRawSurf )
+			{
+				FDX8_pDev->GetD3D9Device()->SetRenderState( D3DRS_ALPHABLENDENABLE, FALSE );
+				FDX8_pDev->GetD3D9Device()->SetRenderState( D3DRS_ZFUNC, D3DCMP_ALWAYS );
+			}
+		}
+#endif
 
 		// Set the index buffer
 		if ( nCurrentIB != pCluster->nIBIndex )
@@ -1067,6 +1244,24 @@ void CFMeshInst::DrawMaterialSpecular_P( FViewportPlanesMask_t nCrossesPlanesMas
 		// Select the appropriate vertex buffer for this cluster
 		fdx8vb_Select( &pMeshIS->aVB[ pCluster->nVBIndex ], FALSE, FALSE, TRUE );
 		fsh_CheckVB();
+#if FANG_WINGC
+		if ( FSh_shaderType == SHADERTYPE_SURFACE )
+		{
+			_PortLogD3DState( "SURF", m_pMesh->szName, (u32)(pMaterial - m_pMesh->aMtl) );
+			// Port debug: MA_PORT_RAWSURF=1 draws the surface pass opaque, ignoring depth.
+			static int _nRawSurf = -1;
+			if ( _nRawSurf < 0 )
+			{
+				char szVal[8];
+				_nRawSurf = GetEnvironmentVariableA( "MA_PORT_RAWSURF", szVal, sizeof(szVal) ) > 0 ? 1 : 0;
+			}
+			if ( _nRawSurf )
+			{
+				FDX8_pDev->GetD3D9Device()->SetRenderState( D3DRS_ALPHABLENDENABLE, FALSE );
+				FDX8_pDev->GetD3D9Device()->SetRenderState( D3DRS_ZFUNC, D3DCMP_ALWAYS );
+			}
+		}
+#endif
 
 		// Set the index buffer
 		if ( nCurrentIB != pCluster->nIBIndex )
