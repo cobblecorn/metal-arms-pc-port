@@ -1,8 +1,10 @@
 #include "gcdata.h"
 
 #include "fdata.h"
+#include "fparticle.h"
 #include "fres.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -89,6 +91,94 @@ static BOOL _ConvertCsv( void *pData, u32 nBytes )
 		}
 	}
 
+	return TRUE;
+}
+
+static BOOL _ConvertFpr( void *pData, u32 nBytes, cchar *pszResName )
+{
+	u8 *pBytes = (u8 *)pData;
+	if( !pBytes || nBytes < sizeof(u32) ) return FALSE;
+
+	const u32 nVersion = _ReadBE32( pBytes );
+	if( nVersion == FPARTICLE_FILE_VERSION && nBytes == sizeof(FParticleDef_t) )
+	{
+		((FParticleDef_t *)pData)->ChangeEndian();
+		return TRUE;
+	}
+
+	// Retail GC particles are version 8. The serialized structure adds one
+	// 8-byte field to each keyframe; the old fields after each keyframe retain
+	// their order. Remove those additions so the v7 runtime layout can consume
+	// the file. Validate the shifted texture name and invariant tail first.
+	const u32 nV7TextureOffset = (u32)offsetof(FParticleDef_t, szTextureName);
+	const u32 nV7TailOffset = (u32)offsetof(FParticleDef_t, fSecsBetweenLightSamples);
+	const u32 nKeyFrameBytes = sizeof(FParticleKeyFrame_t);
+	const u32 nHousekeepingBytes = sizeof(u32) + sizeof(FLink_t) + sizeof(FLinkRoot_t);
+	const u32 nLegacySuffixBytes = sizeof(f32) + sizeof(CFVec3) + nHousekeepingBytes;
+	if( nVersion != FPARTICLE_FILE_VERSION + 1 ||
+		nBytes != sizeof(FParticleDef_t) + 16 ||
+		nV7TextureOffset != 2 * sizeof(u32) + 2 * nKeyFrameBytes ||
+		nV7TailOffset > sizeof(FParticleDef_t) ||
+		nLegacySuffixBytes != sizeof(FParticleDef_t) - nV7TailOffset )
+	{
+		DEVPRINTF( "gcdata: unsupported GameCube particle format in '%s' (version %u, %u bytes).\n",
+			pszResName ? pszResName : "(unnamed)", nVersion, nBytes );
+		return FALSE;
+	}
+
+	const u32 nV8TextureOffset = nV7TextureOffset + 16;
+	const u32 nTextureNameBytes = FDATA_TEXNAME_LEN + 1;
+	if( !_IsRangeValid( nV8TextureOffset, nTextureNameBytes, nBytes ) ||
+		!memchr( pBytes + nV8TextureOffset, 0, nTextureNameBytes ) )
+	{
+		DEVPRINTF( "gcdata: invalid shifted texture name in GameCube particle '%s'.\n",
+			pszResName ? pszResName : "(unnamed)" );
+		return FALSE;
+	}
+
+	const u32 nV8TailOffset = nV7TailOffset + 16;
+	const f32 fSamplePeriod = fang_ConvertEndian( *(const f32 *)(pBytes + nV8TailOffset) );
+	if( !isfinite( fSamplePeriod ) || fSamplePeriod < (1.0f / 20.0f) || fSamplePeriod > 1.0f )
+	{
+		DEVPRINTF( "gcdata: invalid GameCube particle sampling period in '%s'.\n",
+			pszResName ? pszResName : "(unnamed)" );
+		return FALSE;
+	}
+
+	const u32 nHousekeepingOffset = nV8TailOffset + sizeof(f32) + sizeof(CFVec3);
+	for( u32 i = 0; i < nHousekeepingBytes; i++ )
+	{
+		if( pBytes[nHousekeepingOffset + i] != 0 )
+		{
+			DEVPRINTF( "gcdata: unsupported nonzero GameCube particle housekeeping data in '%s'.\n",
+				pszResName ? pszResName : "(unnamed)" );
+			return FALSE;
+		}
+	}
+
+	const u32 nMinExtensionOffset = 2 * sizeof(u32) + nKeyFrameBytes;
+	const u32 nMaxExtensionOffsetV8 = nMinExtensionOffset + 8 + nKeyFrameBytes;
+	for( u32 i = 0; i < 8; i++ )
+	{
+		if( pBytes[nMinExtensionOffset + i] != 0 || pBytes[nMaxExtensionOffsetV8 + i] != 0 )
+		{
+			DEVPRINTF( "gcdata: unsupported nonzero GameCube particle keyframe extension in '%s'.\n",
+				pszResName ? pszResName : "(unnamed)" );
+			return FALSE;
+		}
+	}
+
+	memmove( pBytes + nMinExtensionOffset, pBytes + nMinExtensionOffset + 8,
+		nBytes - (nMinExtensionOffset + 8) );
+	const u32 nMaxExtensionOffset = 2 * sizeof(u32) + 2 * nKeyFrameBytes;
+	const u32 nBytesAfterMinCompaction = nBytes - 8;
+	memmove( pBytes + nMaxExtensionOffset, pBytes + nMaxExtensionOffset + 8,
+		nBytesAfterMinCompaction - (nMaxExtensionOffset + 8) );
+	pBytes[0] = (u8)(FPARTICLE_FILE_VERSION >> 24);
+	pBytes[1] = (u8)(FPARTICLE_FILE_VERSION >> 16);
+	pBytes[2] = (u8)(FPARTICLE_FILE_VERSION >> 8);
+	pBytes[3] = (u8)FPARTICLE_FILE_VERSION;
+	((FParticleDef_t *)pData)->ChangeEndian();
 	return TRUE;
 }
 
@@ -402,6 +492,10 @@ BOOL gcdata_Convert( cchar *pszExtension, cchar *pszResName, void *pData, u32 nB
 			DEVPRINTF( "gcdata: converted GameCube CSV resource (%u bytes).\n", nBytes );
 			bLoggedFirstCsv = TRUE;
 		}
+	}
+	else if( pszExtension && strcmp( pszExtension, "fpr" ) == 0 )
+	{
+		if( !_ConvertFpr( pData, nBytes, pszResName ) ) return FALSE;
 	}
 #else
 	pszExtension; pszResName; pData; nBytes;

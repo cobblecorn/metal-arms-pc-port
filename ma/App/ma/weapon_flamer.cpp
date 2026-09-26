@@ -200,6 +200,12 @@ const FGameData_TableEntry_t CWeaponFlamer::m_aUserPropVocab[] = {
 
 	FGAMEDATA_VOCAB_MESH,			// pMeshEjectClip
 
+#if FANG_WINGC
+	// The retail GC table adds string-valued particle/event columns here. This
+	// source revision expects a float sound radius followed by legacy sound
+	// handles, so stop at the last field whose meaning still matches.
+	FGAMEDATA_VAR_TYPE_COUNT| 0, 0, F32_DATATABLE_0, F32_DATATABLE_0
+#else
 	// fSoundRadius:
 	FGAMEDATA_VAR_TYPE_FLOAT|
 	FGAMEDATA_FLAGS_FLOAT_X | FGAMEDATA_FLAGS_FLOAT_CLAMP_AND_GO,
@@ -251,6 +257,7 @@ const FGameData_TableEntry_t CWeaponFlamer::m_aUserPropVocab[] = {
 
 	// End of table:
 	FGAMEDATA_VAR_TYPE_COUNT| 0, 0, F32_DATATABLE_0, F32_DATATABLE_0
+#endif
 };
 
 

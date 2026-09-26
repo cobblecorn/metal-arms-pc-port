@@ -36,6 +36,7 @@
 #include "fdx8viewport.h"
 #include "fdx8xfm.h"
 #include "fdx8tex.h"
+#include "gcmesh.h"
 
 #include "fdx8vshader_const.h"
 
@@ -2203,12 +2204,19 @@ static BOOL _WindowCreatedCallback( FDX8VidEvent_e nEvent )
 //
 //
 //
-static BOOL _ResLoadCreate( FResHandle_t hRes, void *pLoadedBase, u32 nLoadedBytes, cchar *pszResName ) 
+static BOOL _ResLoadCreate( FResHandle_t hRes, void *pLoadedBase, u32 nLoadedBytes, cchar *pszResName )
 {
 	FMesh_t *pMesh;
+	void *pDxMeshData = NULL;
+	u32 nDxMeshBytes = 0;
+	if ( !gcmesh_ConvertToDx( pLoadedBase, nLoadedBytes, &pDxMeshData, &nDxMeshBytes, pszResName ) )
+	{
+		return FALSE;
+	}
 
 	// Create the runtime mesh data...
-	pMesh = (FMesh_t *)fdx8load_Create( (FMesh_t *)pLoadedBase, pszResName );
+	pMesh = (FMesh_t *)fdx8load_Create( (FMesh_t *)pDxMeshData, pszResName );
+	(void)nDxMeshBytes;
 	if ( pMesh == NULL ) 
 	{
 		// Could not create mesh...

@@ -35,6 +35,7 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
 | Threading | `fdx8loop.cpp`: the game-loop thread was an MFC `CWinThread`; replaced with a small Win32 thread class with the same lifecycle. |
 | Entry point | `port/main_win.cpp` replaces the MFC "mawin" dialog. Same boot sequence as the Xbox `main.cpp`. |
 | Struct layout | Built with `_FANGDEF_WINGC` (GameCube alignment, no SSE) so structures read from GC data line up in memory. This mode was previously tools-only, so `fdx8gcmath_*.inl` gained 12 math functions the runtime needs (scalar code from the GC reference). |
+| GameCube assets | `port/gcdata.cpp` converts big-endian CSV and version 8 particle records to the source runtime's host-order version 7 layout, and decodes GX tiled TGA images. `port/gcmesh.cpp` expands supported GX display lists into D3D vertex and index buffers. |
 | Language | C++ rule changes since 2003: anonymous-union members made implicit copies deleted (`CFSphere`, `CFRect2D`), implicit-int declarations, `Lock(void**)`, modern MASM operand sizes. |
 
 ## Status
@@ -46,11 +47,14 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
 - [x] Convert GameCube CSV tables to host byte order, including pointer offsets and UTF-16 strings.
 - [x] Decode GameCube TGA textures from GX tiled formats, including CMPR and split S3TCx2,
       into linear ARGB pixels for the D3D texture path.
-- [ ] Convert GameCube meshes and worlds. Startup currently reaches `gpdmwpnunkn.ape`, then
-      crashes when the DX loader interprets its GC mesh payload as `FDX8Mesh_t`; GC display
-      lists and vertex arrays need an adapter to D3D vertex/index buffers.
-- [ ] Convert remaining data formats: animations (`.mtx`), world files (`.wld`), tables
-      (`.gt`), scripts (`.sma`), fonts, particles (`.fpr`), and other runtime resources.
+- [x] Convert static, unskinned GameCube mesh display lists to D3D vertex/index buffers.
+      Startup has converted weapon and effect meshes through `gf_emp02.ape`.
+- [x] Adapt the retail version 8 particle layout to the source version 7 runtime layout;
+      particle textures now load during startup.
+- [ ] Extend mesh support to skinned/streaming display lists and translate GameCube
+      collision trees. The current adapter drops mesh collision data.
+- [ ] Convert animations (`.mtx`), world files (`.wld`), tables (`.gt`), scripts (`.sma`),
+      fonts, and other runtime resources.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
 - [ ] Input: keyboard/mouse and XInput mapping onto the game's pad layer. DirectInput gamepad
       enumeration works; remapping is disabled when no device/map is configured.
@@ -68,6 +72,13 @@ Retail data is **not** in this repo. Put the extracted disc files in `gamedata/f
 - Retail data was built with newer tool versions than this source snapshot (e.g. mesh
   compiler 0x39 vs 0x37 in `fdata.h`); the runtime doesn't enforce these, but layouts
   may differ slightly.
+- Retail `Difficulty.csv` has 20 fields in its `Diff` table; this source expects 8 fields
+  for four difficulty levels and therefore falls back to its defaults. The retail flamer
+  table also has newer tail columns, which are ignored by the older source vocabulary.
+- The particle adapter is based on the retail corpus layout: each version 8 keyframe has an
+  additional 8-byte tail field, removed before the version 7 structures are byte-swapped.
+  It validates that both removed fields are zero, plus the shifted texture name, sampling
+  interval, and zeroed list state before converting a file.
 - Compiler flags a few `1 << n` results widened to 64 bits (C4334: `fcoll_kDOP.cpp`,
   `GeneralCorrosiveGame.cpp`, `SpaceDock.cpp`, `fEventListener.h`, `ColiseumMiniGame.cpp`).
   Behavior is the same as the original 32-bit shift, but it may be a latent bug.

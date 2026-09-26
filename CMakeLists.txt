@@ -79,7 +79,7 @@ add_custom_command(
     VERBATIM)
 add_custom_target(ma_shaders DEPENDS ${MA_SHADER_DIR}/shaders.stamp)
 
-add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcdata.cpp)
+add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcdata.cpp port/gcmesh.cpp)
 add_dependencies(fang2 ma_shaders)
 ma_common_settings(fang2)
 target_link_libraries(fang2 PUBLIC smallamx)

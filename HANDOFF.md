@@ -1,12 +1,13 @@
 # HANDOFF - Metal Arms Windows port (read this first)
 
-Written at the end of session 1. Everything below was verified in that session unless marked **(unverified)**.
+Written as a chronological handoff. Older addenda describe the state at that time; see the last addendum for the current state.
 
 ## 0. The goal
 
 User goal (set via `/goal`): **"metal arms windows"** = a working native Windows build of *Metal Arms:
 Glitch in the System*, running from the user's retail **GameCube** disc data. A session Stop hook with
-that condition may still be active; it is **not met yet**. The game boots but cannot load any data.
+that condition may still be active; it is **not met yet**. Current progress and remaining format gaps
+are recorded in section 10 and `PORTING.md`.
 
 The user is nearly out of usage: be efficient, batch tool calls, avoid re-deriving what is here.
 
@@ -16,7 +17,7 @@ Project root: `D:\Documents\metal arms source port`  (git repo, branch **`x86-po
 
 | Path | What |
 |---|---|
-| `ma/` | The original Swingin' Ape source drop (Fang2 engine in `ma/Lib/Fang2`, game in `ma/App/ma`, tools in `ma/App/*`). Edited minimally (13 files, +241/-62 vs `main`). |
+| `ma/` | The original Swingin' Ape source drop (Fang2 engine in `ma/Lib/Fang2`, game in `ma/App/ma`, tools in `ma/App/*`), with focused Win32 port changes on `x86-port`. |
 | `CMakeLists.txt`, `cmake/sources_*.cmake` | Build. Source lists generated from the original `.vcproj` by `tools/gen_sources.py`. |
 | `port/main_win.cpp` | New plain-Win32 entry point (replaces MFC launcher). |
 | `port/compat/` | `d3d8.h`+`d3d8_compat.cpp` (D3D8 API on top of D3D9), `d3dx8.h`, `d3dx8tex.h`, `xgraphics.h` (Morton swizzle helpers), `sas_user.h`. |
@@ -30,8 +31,8 @@ Project root: `D:\Documents\metal arms source port`  (git repo, branch **`x86-po
 Git: local only, **never push** (proprietary source + retail data; user wants an Opus cloud review later via
 `/code-review ultra` on `x86-port` vs `main` - the user launches it, you cannot). Repo-local git identity is set.
 Collaborative commits used a `Co-Authored-By:` trailer when recording a collaborator.
-Commits so far: `bb47474` baseline (main) -> `a797c2d` gitignore+mst tool -> `280589e` engine builds ->
-`388f7fe` links/runs -> `6368b7f` PORTING.md. Tree was clean after that; this file is the next commit.
+Earlier commits established the ignored data workflow, engine build, executable, and initial port notes;
+continue with small local commits on `x86-port` using the required trailer.
 
 ## 2. Build / run / debug
 
@@ -127,7 +128,7 @@ before the handler runs: `gcdata_Convert(resType, buf, nBytes)`. Per type:
 - Vertex declaration translation maps D3D8 input-register numbers to D3D9 semantics by the fixed vs_1_x table (v0 POS, v1 BLENDWEIGHT, v2 BLENDINDICES, v3 NORMAL, v4 PSIZE, v5 COLOR0, v6 COLOR1, v7-14 TEXCOORD0-7, v15 POSITION1). Validate when real geometry draws; if a shader misreads inputs, look here first.
 - Pixel shaders are ps_1_1 via D3D9; fine on the RTX card but ps_1_x is emulated by the driver.
 
-## 7. Suggested first prompt for the next session
+## 7. Suggested first prompt from the initial handoff (superseded)
 
 > Read HANDOFF.md and PORTING.md in `D:\Documents\metal arms source port` (branch `x86-port`). Continue the goal "metal arms windows":
 > implement section 4a (GC master file loading in `ffile.cpp` `_ReadMasterDir`), then the `fresload` conversion hook (4d) starting with
@@ -169,7 +170,7 @@ before the handler runs: `gcdata_Convert(resType, buf, nBytes)`. Per type:
   Edit tool, or build backslashes with `chr(92)`. Python `open(p,"w")` on Windows writes CRLF; read/write with `newline=""` to control it.
 - Editing CRLF files with the Edit tool can leave mixed endings: normalize afterwards (read bytes, `\r\n`->`\n`->`\r\n`).
 
-## 9. ADDENDUM (session 2, 2026-09-26)
+## 9. ADDENDUM (session 2, 2026-09-26; historical)
 
 Work is still on local branch `x86-port`. This session advanced startup through master-file reading,
 texture creation, CSV table loading, and sound-group setup. The current blocking point is the first
@@ -211,3 +212,36 @@ build/Debug/ma_port.exe -log build/logs/run.log
 public project or push: this is a private source/data port and the earlier handoff explicitly says
 never to push. Continue with local commits on `x86-port`; ask the user for the intended fork URL if
 they want remote synchronization.
+
+## 10. ADDENDUM (session 3, 2026-09-26)
+
+The mesh and particle startup walls are now passed for the boot-time assets:
+
+- `port/gcmesh.cpp` converts supported static, unskinned, non-streaming GX triangle lists and
+  strips into the DX mesh/VB/IB layout. It checks source vertex, color, normal-basis, UV,
+  display-list, and output-buffer ranges. Mesh collision data is cleared because the GC kDOP
+  representation is not translated. Skinned and streaming display lists are rejected with a log.
+- The converter is called from the normal mesh resource handler, so standalone `.ape` resources
+  and meshes extracted by the world loader both pass through the same conversion.
+- `port/gcdata.cpp` adapts the retail FPR version 8 layout to the source version 7 structure by
+  removing one 8-byte tail from each keyframe, then byte-swapping the structure. The retail corpus
+  has 377 files, all version 8 / 1164 bytes; their shifted texture-name slot, 0.05–1.0 sampling
+  interval, zeroed keyframe extensions, and zeroed list state were checked. Runtime startup now
+  loads the first particle's `tf_1respwn1.tga` texture with no particle-version error.
+- The flamethrower CSV source vocabulary ends at `pMeshEjectClip`; newer GC tail columns are not
+  represented in this source and remain zeroed.
+
+Latest build succeeds with:
+
+```powershell
+cmake --build build --config Debug --target ma_port -- /nologo /verbosity:minimal
+```
+
+Latest startup (`build/logs/continue-run-final.log`) loads the translated meshes through `gf_emp02`,
+converts particles, reaches `LOAD MARKER - END OF BOOTUP`, and remains running. `Difficulty.csv`
+still has 20 `Diff` fields while this source expects 8; it falls back to default susceptibility
+values. Remaining major format work is world files, animation, tables, scripts, fonts, and audio.
+
+`PORTING.md` is updated to match. Git remains local on `x86-port`; there is no configured remote,
+and the earlier search found no matching fork under the authenticated account. Never push. If the
+user wants a specific fork updated, ask them for its URL.
