@@ -2397,7 +2397,13 @@ BOOL game_InitLocalizedResources( void ) {
 	fang_MemZero( &oAudioInit, sizeof( oAudioInit ) );
 
 	oAudioInit.uMaxListeners      = MAX_PLAYERS;
+#if FANG_PLATFORM_WIN && FANG_WINGC
+	// 80 was the GameCube's voice budget. Busy fights exceed it with looping burn sounds from
+	// wrecks, and new sounds then fail to start; DirectSound mixes far more.
+	oAudioInit.uMaxEmitters       = 160;
+#else
 	oAudioInit.uMaxEmitters       = 80;
+#endif
 	oAudioInit.uMaxStreams        = 2;
 	oAudioInit.uMaxBanks          = 24;
 	oAudioInit.uMaxPriorityLevels = 1;
