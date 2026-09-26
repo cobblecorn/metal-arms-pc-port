@@ -139,7 +139,7 @@ BOOL CSpaceDock::InitLevel( LevelEvent_e eEvent )
 		return(TRUE);
 	}
 
-	u64 uEventFlags = 1 << nSwitchEvent;
+	u64 uEventFlags = fevent_Bit( nSwitchEvent );
 	if(!CFScriptSystem::RegisterEventListener(_EventCallback, &s_hEventListener, &uEventFlags))
 	{
 		DEVPRINTF("CSpaceDock::InitLevel() : Could not register event listener.\n");

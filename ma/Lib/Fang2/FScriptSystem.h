@@ -22,6 +22,7 @@
 #include "fang.h"
 #include "amx.h"
 #include "fres.h"
+#include "FEventListener.h"	// fevent_Bit()
 #if !FANG_PRODUCTION_BUILD
 #include "ftextmon.h"
 #endif

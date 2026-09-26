@@ -2666,7 +2666,7 @@ BOOL CColiseumMiniGame::RegisterForTripwireEvents()
 		return FALSE;
 	}
 
-	u64 uEventFlags = 1 << nTriggerEvent;
+	u64 uEventFlags = fevent_Bit( nTriggerEvent );
 
 	if( !CFScriptSystem::RegisterEventListener(CheckTripWireEvents, NULL, &uEventFlags, (u32)nTriggerEvent) ) 
 	{

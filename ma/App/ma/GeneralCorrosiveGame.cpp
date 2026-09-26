@@ -952,7 +952,7 @@ BOOL CGeneralCorrosiveGame::_RegisterForScriptEvents( void ) {
 		return FALSE;
 	}
 
-	u64 uEventFlags = 1 << nTriggerEvent;
+	u64 uEventFlags = fevent_Bit( nTriggerEvent );
 
 	if( !CFScriptSystem::RegisterEventListener( _TripwireEventCallback, NULL, &uEventFlags, (u32) nTriggerEvent ) ) {
 		DEVPRINTF( "CGeneralCorrosiveGame::_RegisterForScriptEvents() : Could not register Tripwire listener callback.\n" );
@@ -966,7 +966,7 @@ BOOL CGeneralCorrosiveGame::_RegisterForScriptEvents( void ) {
 		return FALSE;
 	}
 
-	uEventFlags = 1 << nTriggerEvent;
+	uEventFlags = fevent_Bit( nTriggerEvent );
 
 	if( !CFScriptSystem::RegisterEventListener( _PossessEventCallback, NULL, &uEventFlags, (u32) nTriggerEvent ) ) {
 		DEVPRINTF( "CGeneralCorrosiveGame::_RegisterForScriptEvents() : Could not register possession listener callback.\n" );
@@ -980,7 +980,7 @@ BOOL CGeneralCorrosiveGame::_RegisterForScriptEvents( void ) {
 		return FALSE;
 	}
 
-	uEventFlags = 1 << nTriggerEvent;
+	uEventFlags = fevent_Bit( nTriggerEvent );
 
 	if( !CFScriptSystem::RegisterEventListener( _SwitchEventCallback, NULL, &uEventFlags, (u32) nTriggerEvent ) ) {
 		DEVPRINTF( "CGeneralCorrosiveGame::_RegisterForScriptEvents() : Could not register switch listener callback.\n" );
@@ -994,7 +994,7 @@ BOOL CGeneralCorrosiveGame::_RegisterForScriptEvents( void ) {
 		return FALSE;
 	}
 
-	uEventFlags = 1 << nTriggerEvent;
+	uEventFlags = fevent_Bit( nTriggerEvent );
 
 	if( !CFScriptSystem::RegisterEventListener( _DestructEventCallback, NULL, &uEventFlags, (u32) nTriggerEvent ) ) {
 		DEVPRINTF( "CGeneralCorrosiveGame::_RegisterForScriptEvents() : Could not register destruct listener callback.\n" );

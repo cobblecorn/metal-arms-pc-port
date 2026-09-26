@@ -516,7 +516,7 @@ BOOL CFScriptSystem::Work()
 			/////////////////////////////////////////////////////////////
 			// Execute the OnEvent function.
 			m_pCurScriptInst = &(m_paScriptInstList[uCurScriptInstIdx]);
-			uEventsOfInterest = m_pCurScriptInst->m_uEventFlags & (1 << uCurEvent);
+			uEventsOfInterest = m_pCurScriptInst->m_uEventFlags & fevent_Bit(uCurEvent);
 			if(uEventsOfInterest != 0)
 			{
 				if(!m_pCurScriptInst->OnEvent(uCurEvent, pCurEvent->m_uData1, pCurEvent->m_uData2, pCurEvent->m_uData3))
@@ -531,7 +531,7 @@ BOOL CFScriptSystem::Work()
 		for(uCurListenerIdx = 0; uCurListenerIdx < m_uNumEventListeners; ++uCurListenerIdx)
 		{
 			pCurListener = &(m_paEventListenerList[uCurListenerIdx]);
-			uEventsOfInterest = pCurListener->m_uEventFlags & (1 << uCurEvent);
+			uEventsOfInterest = pCurListener->m_uEventFlags & fevent_Bit(uCurEvent);
 			if(uEventsOfInterest != 0)
 			{
 				if(!pCurListener->OnEvent(uCurEvent, pCurEvent->m_uData1, pCurEvent->m_uData2, pCurEvent->m_uData3))
@@ -743,7 +743,7 @@ cell AMX_NATIVE_CALL CFScriptSystem::event_Trigger(AMX *pAMX, cell *aParams)
 
 cell CFScriptSystem::event_SetNotify(AMX *pAMX, cell *aParams)
 {
-	m_pCurScriptInst->m_uEventFlags |= (1 << aParams[1]);
+	m_pCurScriptInst->m_uEventFlags |= fevent_Bit(aParams[1]);
 	return(0);
 }
 
@@ -751,7 +751,7 @@ cell CFScriptSystem::event_SetNotify(AMX *pAMX, cell *aParams)
 
 cell AMX_NATIVE_CALL CFScriptSystem::event_StopNotify(AMX *pAMX, cell *aParams)
 {
-	m_pCurScriptInst->m_uEventFlags &= ~(1 << aParams[1]);
+	m_pCurScriptInst->m_uEventFlags &= ~fevent_Bit(aParams[1]);
 	return(0);
 }
 

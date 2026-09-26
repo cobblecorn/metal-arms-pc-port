@@ -205,3 +205,28 @@ note at the top), so nothing was lost. The new `HANDOFF.md` has:
 - a section for Linux/cloud sessions;
 - what works, what is changed but unverified, a prioritized open list (including the resolved
   checkpoint and emitter items from section 24 removed), and the pitfalls that cost time before.
+
+## 9. Script event masks beyond event 31 (`FEventListener.h`, `FScriptSystem.cpp`, three minigames)
+
+**Why.** Event masks are `u64`, but every site built the bit with `1 << n` on a 32-bit `int` (the
+C4334 warnings in `PORTING.md`; noted as "not live yet" in the history, section 21). For events 32-63:
+- the GameCube's PowerPC `slw` gives 0, so those events were never delivered;
+- x86 wraps the shift count, so event 40 fired as event 8, and event 63 produced
+  `0xffffffff80000000`, which matches event 31 and every event bit above it.
+
+**What.** `fevent_Bit( n )` in `FEventListener.h` returns exactly the GameCube value: the same
+sign-extended bit as before for 0-31 (checked against the old x86 result for 0, 5, 30 and 31), and 0 for
+32 and up or negative. It's used at every site: script `event_SetNotify`/`event_StopNotify` and dispatch in
+`FScriptSystem.cpp`, `CFEventListener::SetNotify/StopNotify`, and the listener registrations in
+`GeneralCorrosiveGame.cpp` (4), `SpaceDock.cpp` and `ColiseumMiniGame.cpp`. `FScriptSystem.h` now
+includes `FEventListener.h` for it.
+
+I chose GameCube behaviour over delivering events 32-63 properly because the retail game shipped and was
+tested without them.
+
+**Not changed.** `fcoll_kDOP.cpp`'s C4334 shifts use a kDOP vertex index (`FKDOP_MAX_VERTS` = 24), so
+they never reach 32.
+
+**Checked.** Syntax check of the changed files and the script system; a native test of the helper.
+**Verify in a run:** nothing new expected; a level with 32+ script events would now ignore the upper
+ones instead of misfiring.

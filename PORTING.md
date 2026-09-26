@@ -308,9 +308,12 @@ environment variables remain available.
   Release/Production builds, so this was always a live bug, not just a debug-build nuisance).
   Fixed at both the call site (fall back to slot 0 when the retail slot is out of range) and in
   `_ChangeWeaponIndex()` itself (bounds-checked no-op instead of undefined behavior).
-- Compiler flags a few `1 << n` results widened to 64 bits (C4334: `fcoll_kDOP.cpp`,
-  `GeneralCorrosiveGame.cpp`, `SpaceDock.cpp`, `fEventListener.h`, `ColiseumMiniGame.cpp`).
-  Behavior is the same as the original 32-bit shift, but it may be a latent bug.
+- Script event masks are `u64`, but events were set and tested with a 32-bit `1 << n`. For events
+  32-63 the GameCube's PowerPC gives 0 (never delivered) while x86 wraps the count (event 40 fired as
+  event 8; event 63 matched events 31-63). `fevent_Bit()` (`FEventListener.h`) now gives the GameCube
+  result everywhere (`FScriptSystem.cpp`, `FEventListener.h`, `GeneralCorrosiveGame.cpp`,
+  `SpaceDock.cpp`, `ColiseumMiniGame.cpp`). The remaining C4334 warnings (`fcoll_kDOP.cpp`) shift by a
+  kDOP vertex index, at most 23, so they are harmless.
 - 32-bit only: 150+ inline-asm blocks, MASM collision code, x86 Bink import lib.
 
 ## Legal

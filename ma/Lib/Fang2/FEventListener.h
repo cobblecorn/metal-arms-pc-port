@@ -25,6 +25,14 @@
 
 typedef void EventListenerCallback_t(s32 nWhichEvent, u32 uUserData, u32 uEventData1, u32 uEventData2, u32 uEventData3);
 
+// The bit for event nEvent in a u64 event mask, as the original "1 << nEvent" produced it on the
+// GameCube: a 32-bit int shift, sign-extended into the mask (event 31 sets bits 31-63), and 0 for events
+// 32 and up (PowerPC's slw gives 0). On x86 the shift count wraps instead, so event n+32 aliased event n.
+FINLINE u64 fevent_Bit(s32 nEvent)
+{
+	return (nEvent >= 0 && nEvent < 32) ? (u64)(s64)(s32)(1u << nEvent) : 0;
+}
+
 FCLASS_ALIGN_PREFIX class CFEventListener
 {
 public:
@@ -50,12 +58,12 @@ public:
 
 	void FINLINE SetNotify(s32 nWhichEvent)
 	{
-		m_uEventFlags |= (1 << nWhichEvent);
+		m_uEventFlags |= fevent_Bit(nWhichEvent);
 	}
 
 	void FINLINE StopNotify(s32 nWhichEvent)
 	{
-		m_uEventFlags &= ~(1 << nWhichEvent);
+		m_uEventFlags &= ~fevent_Bit(nWhichEvent);
 	}
 
 	BOOL FINLINE OnEvent(s32 nWhichEvent, u32 uEventData1, u32 uEventData2, u32 uEventData3)
