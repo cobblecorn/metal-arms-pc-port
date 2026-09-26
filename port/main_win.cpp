@@ -22,6 +22,7 @@
 #include "gameloop.h"
 
 #include <windows.h>
+#include <dbghelp.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -77,6 +78,66 @@ static void _Log( const char *pszFormat, ... )
 static void _FangPrintf( cchar *pszFormat, FANG_VA_LIST Args )
 {
 	_LogV( pszFormat, Args );
+}
+
+// ---------------------------------------------------------------------------
+// Crash reporting: log the exception and a symbolized call stack (needs the .pdb
+// next to the exe). Invaluable while bringing up 20-year-old code on a new platform.
+// ---------------------------------------------------------------------------
+
+static LONG WINAPI _CrashFilter( EXCEPTION_POINTERS *pEx )
+{
+	static volatile LONG nReentry = 0;
+	if( InterlockedIncrement( &nReentry ) > 1 )
+	{
+		return EXCEPTION_EXECUTE_HANDLER;
+	}
+
+	const EXCEPTION_RECORD *pRec = pEx->ExceptionRecord;
+	_Log( "\n*** CRASH: exception 0x%08x at 0x%p (thread %lu)\n", (unsigned)pRec->ExceptionCode, pRec->ExceptionAddress, GetCurrentThreadId() );
+	if( pRec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && pRec->NumberParameters >= 2 )
+	{
+		_Log( "    access violation: %s address 0x%p\n", pRec->ExceptionInformation[0] == 0 ? "reading" : (pRec->ExceptionInformation[0] == 1 ? "writing" : "executing"), (void *)pRec->ExceptionInformation[1] );
+	}
+
+	HANDLE hProcess = GetCurrentProcess();
+	SymSetOptions( SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS );
+	SymInitialize( hProcess, NULL, TRUE );
+
+	CONTEXT Ctx = *pEx->ContextRecord;
+	STACKFRAME64 Frame;
+	memset( &Frame, 0, sizeof(Frame) );
+	Frame.AddrPC.Offset = Ctx.Eip;		Frame.AddrPC.Mode = AddrModeFlat;
+	Frame.AddrFrame.Offset = Ctx.Ebp;	Frame.AddrFrame.Mode = AddrModeFlat;
+	Frame.AddrStack.Offset = Ctx.Esp;	Frame.AddrStack.Mode = AddrModeFlat;
+
+	for( int i = 0; i < 40; i++ )
+	{
+		if( !StackWalk64( IMAGE_FILE_MACHINE_I386, hProcess, GetCurrentThread(), &Frame, &Ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL ) ) break;
+		if( Frame.AddrPC.Offset == 0 ) break;
+
+		char aSymBuf[sizeof(SYMBOL_INFO) + 256];
+		SYMBOL_INFO *pSym = (SYMBOL_INFO *)aSymBuf;
+		memset( pSym, 0, sizeof(aSymBuf) );
+		pSym->SizeOfStruct = sizeof(SYMBOL_INFO);
+		pSym->MaxNameLen = 255;
+
+		DWORD64 nDisp64 = 0;
+		DWORD nDisp = 0;
+		IMAGEHLP_LINE64 Line;
+		memset( &Line, 0, sizeof(Line) );
+		Line.SizeOfStruct = sizeof(Line);
+
+		const bool bSym = !!SymFromAddr( hProcess, Frame.AddrPC.Offset, &nDisp64, pSym );
+		const bool bLine = !!SymGetLineFromAddr64( hProcess, Frame.AddrPC.Offset, &nDisp, &Line );
+		if( bSym && bLine )	_Log( "    #%d 0x%08x %s  (%s:%lu)\n", i, (unsigned)Frame.AddrPC.Offset, pSym->Name, Line.FileName, Line.LineNumber );
+		else if( bSym )		_Log( "    #%d 0x%08x %s\n", i, (unsigned)Frame.AddrPC.Offset, pSym->Name );
+		else				_Log( "    #%d 0x%08x\n", i, (unsigned)Frame.AddrPC.Offset );
+	}
+
+	fflush( stdout );
+	if( _pLog ) fflush( _pLog );
+	return EXCEPTION_EXECUTE_HANDLER;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +275,8 @@ static bool _PickVideoMode( FVidWin_t *pWin )
 int main( int argc, char **argv )
 {
 	_nMainThreadId = GetCurrentThreadId();
+	SetUnhandledExceptionFilter( _CrashFilter );
+	setvbuf( stdout, NULL, _IONBF, 0 );
 
 	if( !_ParseArgs( argc, argv ) )
 	{

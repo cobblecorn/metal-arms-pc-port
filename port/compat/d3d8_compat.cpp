@@ -4,8 +4,22 @@
 #include "d3dx8.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+
+static void _CompatLog( const char *pszFormat, ... )
+{
+	char szBuf[512];
+	va_list Args;
+	va_start( Args, pszFormat );
+	_vsnprintf( szBuf, sizeof(szBuf) - 1, pszFormat, Args );
+	va_end( Args );
+	szBuf[sizeof(szBuf) - 1] = 0;
+	OutputDebugStringA( szBuf );
+	fputs( szBuf, stdout );
+	fflush( stdout );
+}
 
 // ===========================================================================
 // Vertex shader declaration translation
@@ -358,13 +372,18 @@ HRESULT IDirect3DDevice8::CreateVertexShader( CONST DWORD *pDecl, CONST DWORD *p
 	IDirect3DVertexShader9 *pVS = NULL;
 
 	HRESULT hr = _CreateDeclFromD3D8Tokens( m_pDev, pDecl, &pVDecl );
-	if( FAILED( hr ) ) return hr;
+	if( FAILED( hr ) )
+	{
+		_CompatLog( "d3d8compat: vertex declaration translation/creation failed (hr=0x%08x)\n", (unsigned)hr );
+		return hr;
+	}
 
 	if( pFunc )
 	{
 		hr = m_pDev->CreateVertexShader( pFunc, &pVS );
 		if( FAILED( hr ) )
 		{
+			_CompatLog( "d3d8compat: CreateVertexShader failed (hr=0x%08x, version token 0x%08x)\n", (unsigned)hr, (unsigned)pFunc[0] );
 			pVDecl->Release();
 			return hr;
 		}
@@ -429,7 +448,11 @@ HRESULT IDirect3DDevice8::CreatePixelShader( CONST DWORD *pFunc, DWORD *pHandle 
 {
 	IDirect3DPixelShader9 *pPS = NULL;
 	HRESULT hr = m_pDev->CreatePixelShader( pFunc, &pPS );
-	if( FAILED( hr ) ) return hr;
+	if( FAILED( hr ) )
+	{
+		_CompatLog( "d3d8compat: CreatePixelShader failed (hr=0x%08x, version token 0x%08x)\n", (unsigned)hr, pFunc ? (unsigned)pFunc[0] : 0u );
+		return hr;
+	}
 
 	if( m_nPShaderCount == m_nPShaderCap )
 	{

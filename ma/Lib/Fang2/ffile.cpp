@@ -1176,6 +1176,12 @@ static BOOL _ReadMasterDir( void ) {
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	// Port: the retail master file is a GameCube (big-endian) file. Every field, including
+	// the signature, is byte-swapped relative to this little-endian PC build.
+	Header.ChangeEndian();
+#endif
+
 	//////////////////////////////////
 	// CHECK THE MASTER FILE SIGNATURE
 	if( Header.Version.nSignature != FVERSION_FILE_SIGNATURE ) {
@@ -1187,8 +1193,17 @@ static BOOL _ReadMasterDir( void ) {
 
 	///////////////////////////////////////////////
 	// CHECK THE VARIOUS FILE TYPE VERSION NUMBERS
-	u32 nTgaVersion, nApeVersion; 
-#if (FANG_PLATFORM_WIN | FANG_PLATFORM_XB)
+	u32 nTgaVersion, nApeVersion;
+#if FANG_WINGC
+	if( Header.Version.nVersion != FDATA_PRJFILE_GC_VERSION ) {
+		// Incorrect version...
+		DEVPRINTF( "ffile _ReadMasterDir(): Version mismatch in master file '%s' (version word 0x%08x).\n", Fang_ConfigDefs.pszFile_MasterFilePathName, Header.Version.nVersion );
+		DEVPRINTF( "                        Switching to Directory Mode.\n" );
+		return FALSE;
+	}
+	nTgaVersion = FDATA_PRJFILE_GC_TGA_VERSION;
+	nApeVersion = FDATA_PRJFILE_GC_APE_VERSION;
+#elif (FANG_PLATFORM_WIN | FANG_PLATFORM_XB)
 	if( Header.Version.nVersion != FDATA_PRJFILE_XB_VERSION ) {
 		// Incorrect version...
 		DEVPRINTF( "ffile _ReadMasterDir(): Version mismatch in master file '%s'.\n", Fang_ConfigDefs.pszFile_MasterFilePathName );
@@ -1235,10 +1250,23 @@ static BOOL _ReadMasterDir( void ) {
 		Header.nFprCompilerVersion != FDATA_PRJFILE_FPR_VERSION ||
 		Header.nCamCompilerVersion != FDATA_PRJFILE_CAM_VERSION ) {
 		// One or more file type compiler versions don't match...
+#if FANG_WINGC
+		// Port: the retail data was built with slightly newer data compilers than the source
+		// snapshot this was ported from. Carry on, but say so: layouts may differ.
+		DEVPRINTF( "ffile _ReadMasterDir(): NOTE: '%s' was built by newer data compilers than this source.\n", Fang_ConfigDefs.pszFile_MasterFilePathName );
+		DEVPRINTF( "  (file/source) tga %u/%u ape %u/%u mtx %u/%u csv %u/%u fnt %u/%u sma %u/%u gt %u/%u wvb %u/%u fpr %u/%u cam %u/%u\n",
+			Header.nTgaCompilerVersion, nTgaVersion, Header.nApeCompilerVersion, nApeVersion, Header.nMtxCompilerVersion, (u32)FDATA_PRJFILE_MTX_VERSION,
+			Header.nCsvCompilerVersion, (u32)FDATA_PRJFILE_CSV_VERSION, Header.nFntCompilerVersion, (u32)FDATA_PRJFILE_FNT_VERSION,
+			Header.nSmaCompilerVersion, (u32)FDATA_PRJFILE_SMA_VERSION, Header.nGtCompilerVersion, (u32)FDATA_PRJFILE_GT_VERSION,
+			Header.nWvbCompilerVersion, (u32)FDATA_PRJFILE_WVB_VERSION, Header.nFprCompilerVersion, (u32)FDATA_PRJFILE_FPR_VERSION,
+			Header.nCamCompilerVersion, (u32)FDATA_PRJFILE_CAM_VERSION );
+	}
+#else
 		DEVPRINTF( "ffile_ModuleStartup(): One or more file type compiler version mismatchs in '%s', please re-PASM.\n", Fang_ConfigDefs.pszFile_MasterFilePathName );
 		DEVPRINTF( "                       Switching to Directory Mode.\n" );
 		return FALSE;
 	}
+#endif
 
 	// Compute dir size...
 	_nMasterDirEntries = Header.nNumEntries;
@@ -1271,6 +1299,12 @@ static BOOL _ReadMasterDir( void ) {
 		DEVPRINTF( "                        Switching to Directory Mode.\n" );
 		goto _ExitWithError;
 	}
+#if FANG_WINGC
+	for( i=0; i < _nMasterDirEntries; i++ ) {
+		pEntries[i].ChangeEndian();
+	}
+#endif
+
 	// Allocate a smaller chunk of memory to hold the permanent directory structure...
 	nMasterDirBytes = _nMasterDirEntries * sizeof(FFileMasterEntry_t);
 	_pMasterDir = (const FFileMasterEntry_t *)fres_AlignedAlloc( nMasterDirBytes, 4 );

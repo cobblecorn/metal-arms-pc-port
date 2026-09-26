@@ -104,7 +104,7 @@ target_link_libraries(ma_port PRIVATE
     ma_game fang2 smallamx
     ${MA_ROOT}/Lib/Bink/binkw32.lib
     d3d9 dinput8 dxguid dsound winmm ws2_32 msacm32
-    user32 gdi32 advapi32 ole32 shell32 comdlg32)
+    user32 gdi32 advapi32 ole32 shell32 comdlg32 dbghelp)
 add_custom_command(TARGET ma_port POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${MA_ROOT}/App/ma/win/binkw32.dll $<TARGET_FILE_DIR:ma_port>

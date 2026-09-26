@@ -133,3 +133,38 @@ before the handler runs: `gcdata_Convert(resType, buf, nBytes)`. Per type:
 > implement section 4a (GC master file loading in `ffile.cpp` `_ReadMasterDir`), then the `fresload` conversion hook (4d) starting with
 > csv/mtx/sma/gt/fnt, then textures, then meshes/worlds. Build with the commands in section 2, run `ma_port.exe -log build/logs/run.log` after each
 > step, commit small steps on `x86-port`, and keep PORTING.md current. Set `bInstallAudio = FALSE` until audio is handled.
+
+---
+
+## 8. ADDENDUM (end of session 1, after the sections above were written)
+
+**Done since section 4a was written (committed):**
+- `ffile.cpp` `_ReadMasterDir()` now reads the GameCube master file under `FANG_WINGC`: swaps header + directory entries, accepts
+  `FDATA_PRJFILE_GC_VERSION`, and only *warns* about the newer retail data-compiler versions. Verified: the log now prints
+  `NOTE: ... built by newer data compilers ... (file/source) tga 7/6 ape 57/55 mtx 21/20 csv 12/11 fnt 11/10 sma 4/3 gt 12/10 wvb 4/3 fpr 4/3 cam 1/0`
+  and the game proceeds past the old "Unrecognized signature / must select a valid master file" wall.
+- `port/main_win.cpp`: added a crash handler (`SetUnhandledExceptionFilter`) that logs the exception and a **symbolized stack** (uses the .pdb; links dbghelp).
+- `port/compat/d3d8_compat.cpp`: `CreateVertexShader/CreatePixelShader` now log the HRESULT on failure.
+
+**Current run result (`./build/Debug/ma_port.exe -log build/logs/run.log > build/logs/run.out 2>&1`):**
+1. Master file loads. Engine starts, D3D device created on the RTX 5070 Ti.
+2. **Every `CreateVertexShader` fails with `0x8876086c` (D3DERR_INVALIDCALL)**, version token `0xfffe0101` (vs_1_1), even trivial pass-through shaders.
+   Device is created with `D3DCREATE_HARDWARE_VERTEXPROCESSING`. So the cause is either how the shaders were assembled or a device-level issue.
+3. Then the process **segfaults** (exit 139). The new crash handler should print `*** CRASH` + stack, but the output was flooded by the shader errors and
+   I did not get to read it: run and `grep -v _SetupVertexShaders build/logs/run.out | grep -A40 CRASH`.
+
+**Immediate next steps:**
+- Diagnose (2). A standalone probe is at `build/probe/probe.cpp` (build/ is git-ignored; recreate if missing). It creates a HAL device with HW/SW/MIXED vertex
+  processing, prints caps (VS version, MaxVertexShaderConst), and tries: the generated `dwFdx8PassThru_1tcVertexShader`, a trivial `vs.1.1` assembled with and
+  without `D3DCOMPILE_SKIP_VALIDATION`. It did **not compile yet**: `D3DAssemble` was "not found" (fix: check `d3dcompiler.h` include / declare via
+  `LoadLibrary("d3dcompiler_47.dll")`+`GetProcAddress`, or use the same ctypes path as `tools/build_shaders.py`). Build/run it with `cmd //c build\probe\build.bat`
+  (the .bat calls vcvarsall x86; ignore the harmless `vswhere` message).
+  Hypotheses: (a) D3D9 runtime rejects `SKIP_VALIDATION` output (try assembling with validation ON and fixing/predeclaring inputs, or emit a `dcl`-free form);
+  (b) constant register range: check `CV_*` max in `fdx8vshader_const.h` vs `MaxVertexShaderConst`; (c) vertex declaration/ shader mismatch.
+  Fallback: translate the vs_1_1 assembly to HLSL (vs_2_0/3_0) at build time, or use legacy `D3DXAssembleShader` if `d3dx9_43.dll` is installed.
+- Then read the crash stack (3) and fix; then continue with section 4d (per-type GC data conversion via the `fresload` hook).
+
+**Tooling gotchas learned late:**
+- The harness collapses backslash escapes in tool inputs: a Python string `"\n"` became a real newline inside C literals. For C string edits use the
+  Edit tool, or build backslashes with `chr(92)`. Python `open(p,"w")` on Windows writes CRLF; read/write with `newline=""` to control it.
+- Editing CRLF files with the Edit tool can leave mixed endings: normalize afterwards (read bytes, `\r\n`->`\n`->`\r\n`).
