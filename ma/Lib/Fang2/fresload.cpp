@@ -1115,7 +1115,14 @@ _LoadMeshPortionError:
 	// Failure
 	FResload_bLoadingWorld = FALSE;
 	fres_ReleaseFrame( ResFrame );
-	fang_Free( pMeshBase );
+	// Port: pMeshBase was allocated via fmem_Alloc()/fres_AlignedAlloc() (both CFHeap-backed,
+	// released above by fres_ReleaseFrame(ResFrame), which was captured before pMeshBase was
+	// allocated) - never via fang_Malloc(). The fang_Free() that used to be here read whatever
+	// bytes happened to precede the CFHeap block as a fang_Malloc tracking header and corrupted
+	// them trying to unlink it, crashing in flinklist_Remove(). This path was apparently never
+	// exercised on the original platforms (retail PASM output never failed to convert); this
+	// port's GameCube mesh converter can genuinely reject an unsupported display list, which is
+	// how this was found.
 	return NULL;
 }
 

@@ -867,6 +867,20 @@ void CPlayer::Work( void ) {
 				if ( pPlayerBot->m_pWorldMesh && !pPlayerBot->IsDeadOrDying() ) {
 					FVisVolume_t *pCenterVol = pPlayerBot->m_pWorldMesh->GetCenterpointVolume();
 					bOutOfWorldExperience = (pCenterVol == NULL || (pCenterVol->nVolumeID == FVIS_SLOP_BUCKET_ID && FWorld_pWorld->nVolumeCount != 1) );
+#if FANG_WINGC
+					// Port diagnostic: which of the two NULL-volume cases is this, and where is the
+					// player actually standing? Remove once the out-of-world loop is understood.
+					{
+						static u32 nLogged = 0;
+						if( nLogged < 12 ) {
+	DEVPRINTF( "PORT-DIAG player pos=(%.1f,%.1f,%.1f) pCenterVol=%p volID=%d intersects=%u out=%d\n",
+								pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.x, pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.y, pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.z,
+								pCenterVol, pCenterVol ? pCenterVol->nVolumeID : -1,
+								pPlayerBot->m_pWorldMesh->GetIntersectCount(), bOutOfWorldExperience );
+							nLogged++;
+						}
+					}
+#endif
 				}
 
 				if ( bOutOfWorldExperience ) {

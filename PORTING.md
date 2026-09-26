@@ -71,16 +71,27 @@ the WLD resource, then exits before localized setup and gameplay entity creation
       the loader's own offset-to-pointer fixup runs. This was crashing every launch (a wild
       pointer read while drawing the first piece of HUD text); see the CRT diagnostics entry
       below for how this was actually diagnosed instead of just hanging.
+- [x] Fixed a real, pre-existing engine bug (not GC-specific) in `fresload.cpp`'s mesh-portion
+      loader: its failure path called `fang_Free()` on memory that was actually allocated via
+      `fmem_Alloc()`/`fres_AlignedAlloc()` (both `CFHeap`-backed, a completely different
+      allocator with no `fang_Malloc`-style tracking header). `fang_Free()` read whatever bytes
+      happened to precede the block as if they were that header and corrupted them trying to
+      unlink it, crashing in `flinklist_Remove()`. This was presumably always latent - retail
+      PASM output apparently never failed a mesh conversion, so this path was never exercised -
+      until this port's own (still incomplete) GameCube mesh converter genuinely rejected an
+      unsupported display list and hit it. Removed the redundant, wrong free (the
+      `fres_ReleaseFrame()` immediately above it already reclaims the same memory, since its
+      frame marker was captured before the allocation). This turned a hard crash into a clean
+      "this mesh/level can't fully load yet" outcome on real single-player levels.
 - [ ] Extend mesh support to skinned/streaming display lists and translate GameCube
       collision trees (`kDOP`, embedded per-mesh in `.ape`/world mesh data, same one converter
       for both a prop's mesh and a level's static geometry). The current adapter drops this
-      data entirely. **This is the current blocker on real gameplay**: with no collision, the
-      player falls through the floor immediately after spawning, dies, and the level appears
-      to fully reload from scratch on a ~7-second cycle (same bot GUIDs recreated each time -
-      see the known-issues entry below). Worth trying first: a temporary flat ground-plane
-      collision volume for the world, to confirm this diagnosis before investing in a full
-      kDOP-tree translation.
-- [ ] Convert scripts (`.sma`) and other runtime resources.
+      data entirely. A real single-player level (`wecdsneak01`) now fails to load *cleanly*
+      (see the fix above) specifically because one of its meshes needs this.
+- [ ] Convert scripts (`.sma`) and other runtime resources. Confirmed via
+      `CFScriptSystem::LoadScriptsFromFile : No script names found for this level.` that no
+      scripts even attempt to run for the levels tested so far - so whatever else is wrong,
+      it isn't yet a script-conversion problem for these specific levels.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
 - [ ] Input: keyboard/mouse and XInput mapping onto the game's pad layer. DirectInput gamepad
       enumeration works; remapping is disabled when no device/map is configured.
@@ -110,6 +121,22 @@ the WLD resource, then exits before localized setup and gameplay entity creation
 - A regular `-level we01multi01` launch now passes wrapper and world setup and reaches
   `END OF BOOTUP`. Audio remains disabled: `fsndfx.cpp` skips parsing GC SFX banks, so sound groups
   have no loaded sound definitions.
+- **`we01multi01` (a multiplayer arena map) repeats a ~7-second cycle instead of reaching stable
+  gameplay**: the same three bot GUIDs are recreated by `BotDispenser` each time, `AIBrainman`
+  retakes control of a fresh `Player0` each time, and the (now harmless) weapon-inventory assert
+  fires each time. **The cause is not yet found - two plausible theories were checked and ruled
+  out, don't re-chase them**: (1) NOT the player falling through missing collision and hitting the
+  "out of world -> restore checkpoint" path in `player.cpp` (`CBot::GetCenterpointVolume()`) - a
+  temporary diagnostic print confirmed the player stays in a valid volume (`out=0`) throughout;
+  (2) NOT a broken/unconverted `.sma` script calling `game_GotoLevel("restart")` - no scripts even
+  load for this level (see the `.sma` status item above). `we01multi01` is a multiplayer map (name
+  literally means "multiplayer map 1"); its own match-state machine (`MultiplayerMgr.cpp`,
+  `MP_STATE_EXITING`/`MP_STATE_EXIT_CONFIRM`) was only briefly looked at and not ruled out, but its
+  exit-confirm step requires a button press this headless run never sends, so it's an unlikely
+  sole cause too. **Next step: test a real single-player level instead** (e.g. `wecdsneak01`,
+  once it can fully load - see the mesh/collision status item above) to see whether this loop is
+  `we01multi01`-specific (multiplayer match logic behaving oddly under a single-player debug
+  launch) or a general symptom; that answer was still unknown when this was written.
 - The animation adapter bounds-checks offsets, counts, and track ranges. It rejects animations
   with overlapping track ranges and files with more bones than the source runtime's 127-bone
   limit; those assets still need a format-specific review.

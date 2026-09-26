@@ -426,3 +426,87 @@ once collision is fixed and the loop (if it's really collision) is confirmed gon
 
 Build still succeeds with `cmake --build build --config Debug --target ma_port -- -nologo -v:m`.
 Latest instrumented run logs: `build/logs/weapon-fix.log` / `.out`.
+
+## 14. ADDENDUM (session 7) - the collision theory was wrong; found and fixed a real crash instead
+
+**Correction: session 6's "missing world collision" diagnosis for the `we01multi01` restart loop
+is wrong. Don't re-investigate it that way.** Added a temporary diagnostic print in `player.cpp`
+right where `GetCenterpointVolume()` is checked (`PORT-DIAG player pos=... pCenterVol=... out=...`,
+gated `#if FANG_WINGC`, capped at 12 log lines, harmless to leave in). It proved the player stays
+in a valid volume (`volID=13`, `intersects=1`, `out=0`) the entire time - the "falls out of world,
+checkpoint-restore fires" mechanism never triggers. That part of session 6's writeup was a
+plausible-sounding hypothesis that turned out to be wrong; this is why it's worth actually
+instrumenting and checking instead of reasoning from log evidence alone, even when the reasoning
+seems solid.
+
+**Also checked and ruled out: `.sma` scripts.** `CFScriptSystem::LoadScriptsFromFile : No script
+names found for this level.` - no scripts even attempt to run for `we01multi01`, so a broken/
+unconverted script calling `game_GotoLevel("restart")` isn't it either.
+
+**`we01multi01`'s actual root cause is still unknown.** It's a multiplayer arena map (the name
+means "multiplayer map 1"); `MultiplayerMgr.cpp`'s `MP_STATE_EXITING`/`MP_STATE_EXIT_CONFIRM`
+match-end state machine was glanced at but not properly traced - its exit-confirm step gates on a
+button press this headless run never sends, so it's an unlikely sole explanation, but what puts
+the match into `MP_STATE_EXITING` in the first place was never checked. **Do that next if you
+want to understand this specific level's loop** - but consider first just testing a real
+single-player level instead (see below), since `we01multi01` may simply be behaving oddly because
+a multiplayer match is being launched through the single-player debug path.
+
+**Found and fixed a real, separate, pre-existing engine bug instead**, while testing on an actual
+single-player level (`wecdsneak01`, chosen because `we01multi01` matched "multi" and campaign
+levels are the better test of "does gameplay actually work"). It crashed almost immediately:
+
+```
+*** CRASH: exception 0xc0000005 at 0x0098B418 (thread ...)
+    access violation: writing address 0x656C646D
+    #0 _RemoveLink (flinklist.cpp:399)
+    #1 flinklist_Remove (flinklist.cpp:194)
+    #2 fang_Free (fang.cpp:886)
+    #3 _LoadMeshPortionOfWorld (fresload.cpp:1118)
+    ...
+```
+
+Root cause: `_LoadMeshPortionOfWorld()`'s failure path called `fang_Free(pMeshBase)`, but
+`pMeshBase` is allocated via `fmem_Alloc()` or `fres_AlignedAlloc()` (both `CFHeap`-backed,
+`fres.h`/`fres.cpp`), never `fang_Malloc()`. `fang_Free()` unconditionally reads a
+`_MallocInfo_t` tracking header from 12/16 bytes before the pointer (`fang.cpp:885`,
+`pInfo = (_MallocInfo_t*)pMemBlock - 1`) and calls `flinklist_Remove()` on it - on `CFHeap`
+memory that header was never written, so it read garbage (in this case, bytes that read like
+stray ASCII) and crashed trying to unlink it. The `fres_ReleaseFrame(ResFrame)` call on the line
+*immediately above* the buggy `fang_Free()` already reclaims the same memory correctly (`ResFrame`
+was captured via `fres_GetFrame()` before `pMeshBase` was allocated - checked this explicitly, see
+`fresload.cpp` around line 928). Fix: just remove the extra `fang_Free()` call; nothing else
+needed. This is presumably a bug in the *original* Fang engine, dormant because retail PASM output
+apparently never produced a mesh `pFcnCreate()` couldn't convert - this port is likely the first
+thing to ever legitimately hit this failure path, because its own GameCube mesh converter is still
+incomplete and genuinely rejects some display lists.
+
+**Result**: `wecdsneak01` (a real single-player level) now fails to load *cleanly* instead of
+crashing - it gets through the AI graph (448 verts), world visibility (102 portals/67 volumes/67
+cells), and 2 of 3 world meshes, then reports `gcmesh: unable to convert 'wecdsneak01002'
+(unsupported data or invalid display list)` and exits with code 0. That remaining mesh needs the
+already-known skinned/streaming display-list support `gcmesh.cpp` doesn't have yet - probably the
+real next blocker for actual single-player gameplay, not collision.
+
+**Verified no regression**: `-level we01multi01` still boots the same as before this session's fix
+(reaches `END OF BOOTUP`, still loops on its own separate mystery, same 3 harmless weapon-inventory
+asserts as always). This fix only changes behavior on the failure path, which `we01multi01` never
+hit.
+
+**Suggested next steps, in priority order:**
+1. Extend `port/gcmesh.cpp` to support the display-list format `wecdsneak01002` needs (skinned
+   and/or streaming). This is the most direct path to a single-player level fully loading and
+   actually being playable. Start by adding a diagnostic dump of *why* it's rejected (which check
+   fails) in `gcmesh.cpp`'s `unsupported data or invalid display list` path if that isn't already
+   clear from the existing validation logging.
+2. Once a single-player level loads, redo the "does it actually reach playable gameplay" check
+   fresh - the `we01multi01` loop may turn out to be entirely multiplayer-specific and irrelevant.
+3. If a single-player level *also* loops/fails to reach stable gameplay, trace
+   `MultiplayerMgr.cpp`'s state machine anyway to close that out, and look at whatever the
+   single-player equivalent trigger is.
+4. `.sma` scripts remain unconverted but are confirmed not-yet-relevant (no scripts load for
+   either level tested). Revisit once the above is resolved.
+
+The user is switching to the Opus model after this session for more capability on what's shaping
+up to be a genuinely deep remaining task (display-list format support). Everything above is
+committed and pushed to `x86-port` on the private GitHub remote.
