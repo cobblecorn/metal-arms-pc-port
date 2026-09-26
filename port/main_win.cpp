@@ -145,6 +145,52 @@ static void _LogStack( CONTEXT Ctx, int nMaxFrames )
 	}
 }
 
+// Asserts and run-time checks continue after logging, so one firing every frame can flood
+// the log (each line is flushed) until the game appears frozen. Each distinct report is
+// logged for its first 10 occurrences, with a stack on the first, then at 100, 1000, ...
+static SRWLOCK _ReportLock = SRWLOCK_INIT;
+
+// Returns how many times this report text has been seen. Call with _ReportLock held.
+static unsigned _CountReport( const char *pszKey )
+{
+	static unsigned anSeen[128], anCount[128];
+	static int nNumSeen = 0;
+	unsigned nHash = 2166136261u;
+	for( const char *psz = pszKey; psz && *psz; ++psz ) nHash = (nHash ^ (unsigned char)*psz) * 16777619u;
+	for( int i = 0; i < nNumSeen; ++i ) if( anSeen[i] == nHash ) return ++anCount[i];
+	if( nNumSeen < (int)(sizeof(anSeen) / sizeof(anSeen[0])) )
+	{
+		anSeen[nNumSeen] = nHash;
+		anCount[nNumSeen] = 1;
+		++nNumSeen;
+	}
+	return 1;
+}
+
+static bool _ShouldLogReport( unsigned nCount )
+{
+	if( nCount <= 10 ) return true;
+	for( unsigned nPow = 100; nPow && nPow <= nCount; nPow = (nPow <= 0xFFFFFFFFu / 10) ? nPow * 10 : 0 )
+	{
+		if( nCount == nPow ) return true;
+	}
+	return false;
+}
+
+// Logs the repeat note (after the report text) and, on the first occurrence, the stack.
+static void _LogReportDetails( unsigned nCount )
+{
+	if( nCount == 10 ) _Log( "    (10 occurrences; further repeats are logged at 100, 1000, ...)\n" );
+	else if( nCount > 10 ) _Log( "    (occurrence %u)\n", nCount );
+	if( nCount == 1 )
+	{
+		CONTEXT Ctx;
+		RtlCaptureContext( &Ctx );
+		_Log( "    (first occurrence; stack follows)\n" );
+		_LogStack( Ctx, 24 );
+	}
+}
+
 static int __cdecl _RTCErrorHandler( int nErrType, const char *pszFile, int nLine, const char *pszModule, const char *pszFormat, ... )
 {
 	char szMsg[1024];
@@ -154,8 +200,15 @@ static int __cdecl _RTCErrorHandler( int nErrType, const char *pszFile, int nLin
 	va_end( Args );
 	szMsg[sizeof(szMsg) - 1] = 0;
 
-	_Log( "\n*** RUN-TIME CHECK FAILURE (type %d) at %s:%d [%s]:\n    %s\n", nErrType, pszFile ? pszFile : "?", nLine, pszModule ? pszModule : "?", szMsg );
-	if( _pLog ) fflush( _pLog );
+	AcquireSRWLockExclusive( &_ReportLock );
+	const unsigned nCount = _CountReport( szMsg );
+	if( _ShouldLogReport( nCount ) )
+	{
+		_Log( "\n*** RUN-TIME CHECK FAILURE (type %d) at %s:%d [%s]:\n    %s\n", nErrType, pszFile ? pszFile : "?", nLine, pszModule ? pszModule : "?", szMsg );
+		_LogReportDetails( nCount );
+		if( _pLog ) fflush( _pLog );
+	}
+	ReleaseSRWLockExclusive( &_ReportLock );
 	return 0;	// 0 = continue running (like clicking "Ignore"); nonzero = break into a debugger
 }
 
@@ -182,27 +235,15 @@ static void __cdecl _SigAbortHandler( int )
 static int __cdecl _CrtReportHook( int nReportType, char *pszMessage, int *pnReturnValue )
 {
 	static const char *const apszType[] = { "WARN", "ERROR", "ASSERT" };
-	_Log( "\n*** CRT %s: %s\n", (nReportType >= 0 && nReportType <= 2) ? apszType[nReportType] : "REPORT", pszMessage ? pszMessage : "(no message)" );
 
-	// Asserts continue after logging, so a repeated one can flood the log without
-	// naming its caller. Log the stack the first time each distinct report is seen.
-	static SRWLOCK Lock = SRWLOCK_INIT;
-	static unsigned anSeen[128];
-	static int nNumSeen = 0;
-	unsigned nHash = 2166136261u;
-	for( const char *psz = pszMessage; psz && *psz; ++psz ) nHash = (nHash ^ (unsigned char)*psz) * 16777619u;
-	AcquireSRWLockExclusive( &Lock );
-	bool bFirst = nNumSeen < (int)(sizeof(anSeen) / sizeof(anSeen[0]));
-	for( int i = 0; bFirst && i < nNumSeen; ++i ) if( anSeen[i] == nHash ) bFirst = false;
-	if( bFirst )
+	AcquireSRWLockExclusive( &_ReportLock );
+	const unsigned nCount = _CountReport( pszMessage );
+	if( _ShouldLogReport( nCount ) )
 	{
-		anSeen[nNumSeen++] = nHash;
-		CONTEXT Ctx;
-		RtlCaptureContext( &Ctx );
-		_Log( "    (first occurrence; stack follows)\n" );
-		_LogStack( Ctx, 24 );
+		_Log( "\n*** CRT %s: %s\n", (nReportType >= 0 && nReportType <= 2) ? apszType[nReportType] : "REPORT", pszMessage ? pszMessage : "(no message)" );
+		_LogReportDetails( nCount );
 	}
-	ReleaseSRWLockExclusive( &Lock );
+	ReleaseSRWLockExclusive( &_ReportLock );
 
 	if( _pLog ) fflush( _pLog );
 	if( pnReturnValue ) *pnReturnValue = 0;
