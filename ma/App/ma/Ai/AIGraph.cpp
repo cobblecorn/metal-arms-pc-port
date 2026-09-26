@@ -4270,7 +4270,7 @@ BOOL CAIGraphDataAccess::InitEdgeToPoiLookup(void)
 		GraphVert* pV = m_pGraph->GetVert(i);
 		if (pV->m_nVertSlotStatus == VERT_SLOT_FREE)
 		{
-			uEdgeCount+=6; //skip unused edge slots
+			uEdgeCount+=AIGRAPH_NUM_EDGES_PER_VERT; //skip unused edge slots (5 in the retail GC graph, not 6)
 			continue;
 		}
 
@@ -4321,7 +4321,7 @@ BOOL CAIGraphDataAccess::InitEdgeToPoiLookup(void)
 		{
 			const GraphEdge* pReverseE = m_pGraph->GetEdge(j);
 			const GraphEdge* pE = pReverseE->GetReverseEdge(m_pGraph);
-			m_pauEdgeToPoi[j] = m_pauEdgeToPoi[m_pGraph->GetEdgeId(pE)];
+			m_pauEdgeToPoi[j] = pE ? m_pauEdgeToPoi[m_pGraph->GetEdgeId(pE)] : 0;
 		}
 	}
 
