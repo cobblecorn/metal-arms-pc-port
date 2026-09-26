@@ -157,10 +157,7 @@ memory. The HUD and debris/explosion lines added earlier worked around three of 
   The light was already removed from the world (`RemoveFromWorld()` right after `Init()`), and its memory
   is reclaimed with the frame. This is the engine's normal ownership of world-mesh lights created while
   a world exists.
-- `level_Load()`'s own error path (`_LevelLoadError`) releases the world frame without
-  `CEntity::RemoveAndDestroyAll()`, and `game_UnloadLevel()` later uninitializes the alarm and spawn
-  systems created in that frame. The fix would mirror `level_Unload()`, but `RemoveAndDestroyAll()`
-  requires a live `FWorld_pWorld`, and whether a failed WLD load leaves one needs a run to check.
+- `level_Load()`'s own error path: see entry 10 (entities turned out to be handled already).
 
 **Checked.** Syntax check of `game.cpp`. **Verify in a run:** `-mission wewchold_01` (or any level that
 fails after world load) exits or returns cleanly, with no crash or assert during teardown. Also check
@@ -230,3 +227,24 @@ they never reach 32.
 **Checked.** Syntax check of the changed files and the script system; a native test of the helper.
 **Verify in a run:** nothing new expected; a level with 32+ script events would now ignore the upper
 ones instead of misfiring.
+
+## 10. Failed `level_Load()`: tear down alarm and spawn networks first (`ma/App/ma/level.cpp`)
+
+**Correction to entry 5.** A failed `level_Load()` does destroy the world's entities. Releasing the
+world frame runs the world resource's destroy callback (`fvis.cpp` `_ResDestroyWorldCallback`), which
+announces `FWORLD_EVENT_WORLD_PREDESTROY`. The entity system handles that event with
+`CFWire::Destroy(); _DestroyAll();`, the same work `RemoveAndDestroyAll()` does, and `fres_ReleaseFrame()`
+runs these callbacks before freeing memory.
+
+**What was still wrong.** `level_Load()` and `level_LoadGenericLevel()` create the alarm and spawn
+systems (`AlarmSys_InitLevel()`, `CSpawnSys::InitLevel()`) inside the world frame. On failure they
+released that frame, then `game_UnloadLevel()` walked and `fdelete`d the alarm nets, doors, dispensers,
+switches and spawn nets from released memory.
+
+**What changed.** Both error paths call `AlarmSys_UninitLevel()` and `CSpawnSys::UninitLevel()` before
+releasing the frame, the same order as a normal unload. Both functions reset their lists, so the later
+calls in `game_UnloadLevel()` do nothing. If the failure came before those systems were initialized,
+the calls do what `game_UnloadLevel()` already did at that point.
+
+**Checked.** Syntax check. **Verify in a run:** a level that fails inside `level_Load()` (a missing or
+unconvertible world, or a failing level load function) exits cleanly.

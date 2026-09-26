@@ -1762,6 +1762,10 @@ BOOL level_Load( cchar *pszLevelTitle, BOOL bShowLoadingScreen, cwchar *pwszLoad
 
 	// Error...
 _LevelLoadError:
+	// The alarm and spawn networks live in the frame released below; tear them down first, as
+	// game_UnloadLevel() does before level_Unload(). Its later calls then find nothing to do.
+	AlarmSys_UninitLevel();
+	CSpawnSys::UninitLevel();
 	CMAScriptTypes::UninitLevel();
 	CTalkSystem2::UninitLevel();
 	CFScriptSystem::LevelUninit();
@@ -1856,7 +1860,9 @@ BOOL level_LoadGenericLevel( cchar *pszWorldResName ) {
 
 	// Error...
 _LevelLoadError:
-
+	// See level_Load().
+	AlarmSys_UninitLevel();
+	CSpawnSys::UninitLevel();
 	CMAScriptTypes::UninitLevel();
 	CTalkSystem2::UninitLevel();
 	CFScriptSystem::LevelUninit();

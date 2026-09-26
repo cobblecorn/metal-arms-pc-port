@@ -105,8 +105,9 @@ Changed from a cloud session, **not yet verified in a run** (details and checks 
 
 - PC save backend rewrite: `%APPDATA%\Metal Arms PC Port\Saves` (`-save-dir`), safe file names,
   atomic writes, `ValidateProfile` now reports missing profiles.
-- Failed level loads tear down before releasing memory (`game.cpp`).
+- Failed level loads tear down before releasing memory (`game.cpp`, `level.cpp`).
 - GC-layout math: `CFVec4A::ReceiveUnitXZ` and `CFMtx44A::Mul( rM, f )` now match retail.
+- Script event masks: events 32-63 behave as on the GameCube (ignored) instead of misfiring.
 
 ## Open work, roughly in priority order
 
@@ -120,8 +121,9 @@ Changed from a cloud session, **not yet verified in a run** (details and checks 
    vehicle reticle, dialog balance, throwables, the Q/E menu mapping vs the adapter's intent.
 5. Mouse-driven menus: follow `docs/mouse-menus-design.md` (clickable button prompts first).
 6. Remaining black scenery surfaces.
-7. `level_Load()`'s own error path (`_LevelLoadError`) releases the world without destroying its
-   entities; see `CLOUD_SESSION_LOG.md` entry 5 for what to check first.
+7. Failed-load teardown beyond what `CLOUD_SESSION_LOG.md` entries 5 and 10 cover: systems
+   created during `level_Load()` other than alarms/spawns (e.g. `aimain_InitSystem()`) have no
+   explicit teardown on that path; check a failing level's log for asserts after the failure.
 8. Retail features loaded but not implemented: laser charged burst, particle/sound fields of several
    weapons, `Difficulty.csv` (20 fields vs 8), barter EUK kits and battery upgrades.
 9. Missing damage profiles retail lacks too (`Debris`, `SentinelCannon`): probably nothing to do.
