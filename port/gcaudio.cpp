@@ -145,9 +145,10 @@ BOOL _IndexSamples( const u8 *pSdir, u32 nSdirBytes ) {
 	return TRUE;
 }
 
-// Decodes GameCube DSP-ADPCM (8-byte frames of 14 samples) to 16-bit PCM.
-void _DecodeDspAdpcm( const u8 *pFrames, u32 nSamples, const s16 *pnCoefs, s16 *pnOut ) {
-	s32 nHist1 = 0, nHist2 = 0;
+// Decodes GameCube DSP-ADPCM (8-byte frames of 14 samples) to 16-bit PCM, writing every
+// nStride'th output sample. pnHist carries the two previous samples across calls.
+void _DecodeDspAdpcm( const u8 *pFrames, u32 nSamples, const s16 *pnCoefs, s16 *pnOut, u32 nStride, s32 *pnHist ) {
+	s32 nHist1 = pnHist[0], nHist2 = pnHist[1];
 	for( u32 nDone = 0; nDone < nSamples; pFrames += 8 ) {
 		const u32 nHeader = pFrames[0];
 		const s32 nScale = 1 << (nHeader & 0xF);
@@ -158,12 +159,20 @@ void _DecodeDspAdpcm( const u8 *pFrames, u32 nSamples, const s16 *pnCoefs, s16 *
 			if( nNibble >= 8 ) nNibble -= 16;
 			s32 nSample = ( ( (nNibble * nScale) << 11 ) + 1024 + nCoef1 * nHist1 + nCoef2 * nHist2 ) >> 11;
 			FMATH_CLAMP( nSample, -32768, 32767 );
-			pnOut[nDone] = (s16)nSample;
+			pnOut[nDone * nStride] = (s16)nSample;
 			nHist2 = nHist1;
 			nHist1 = nSample;
 		}
 	}
+	pnHist[0] = nHist1;
+	pnHist[1] = nHist2;
 }
+
+// .wvs stream header (FGCData_WvsFile_Header_t): six u32/f32 fields, then 16 coefficients
+// per channel for two channels, padded to 96 bytes. Channel data follows in chunks of
+// nChunkBytes, interleaved by channel; the last chunk of each channel may be shorter.
+const u32 _WVS_HEADER_BYTES = 96;
+const u32 _WVS_CHUNK_BYTES = 4096;
 
 } // namespace
 
@@ -322,7 +331,8 @@ FDataWvbFile_Bank_t *gcaudio_ConvertBank( const void *pData, u32 nBytes, cchar *
 			}
 			if( pAdpcm && ffile_Seek( _hSamples, (s32)pSample->nOffset, FFILE_SEEK_SET ) >= 0 &&
 				ffile_Read( _hSamples, nFrameBytes, pAdpcm ) == (s32)nFrameBytes ) {
-				_DecodeDspAdpcm( pAdpcm, nSamples, pSample->anCoefs, (s16 *)( pPcm + nPcmOffset ) );
+				s32 anHist[2] = { 0, 0 };
+				_DecodeDspAdpcm( pAdpcm, nSamples, pSample->anCoefs, (s16 *)( pPcm + nPcmOffset ), 1, anHist );
 			} else {
 				++nMissing;		// left as zeroed silence
 			}
@@ -337,4 +347,55 @@ FDataWvbFile_Bank_t *gcaudio_ConvertBank( const void *pData, u32 nBytes, cchar *
 		DEVPRINTF( "gcaudio: %d of %d waves in '%s' have no GameCube sample and are silent.\n", nMissing, nWaves, pszResName ? pszResName : "(unnamed)" );
 	}
 	return pBank;
+}
+
+
+BOOL gcaudio_ReadStreamHeader( const void *pHeader, u32 nHeaderBytes, u32 nFileBytes, GCAudioStreamInfo_t *pInfo ) {
+	const u8 *pBytes = (const u8 *)pHeader;
+	if( !pBytes || !pInfo || nHeaderBytes < _WVS_HEADER_BYTES ) {
+		return FALSE;
+	}
+	const u32 nChannels = _BE32( pBytes );
+	const f32 fSeconds = _BEF32( pBytes + 4 ), fRate = _BEF32( pBytes + 8 );
+	const u32 nChunkBytes = _BE32( pBytes + 12 ), nChunks = _BE32( pBytes + 16 ), nBytesPerChannel = _BE32( pBytes + 20 );
+	if( nChannels < 1 || nChannels > 2 || nChunkBytes != _WVS_CHUNK_BYTES || !( fRate >= 4000.0f && fRate <= 48000.0f ) ||
+		!( fSeconds >= 0.0f ) || !nBytesPerChannel || nChunks != ( nBytesPerChannel + nChunkBytes - 1 ) / nChunkBytes ||
+		!_InRange( _WVS_HEADER_BYTES, nChannels * nBytesPerChannel, nFileBytes ) ) {
+		return FALSE;
+	}
+	pInfo->nChannels = nChannels;
+	pInfo->nRate = (u32)fRate;
+	pInfo->nSamplesPerChannel = ( nBytesPerChannel / 8 ) * 14;
+	pInfo->nBytesPerChannel = nBytesPerChannel;
+	pInfo->fSeconds = (f32)pInfo->nSamplesPerChannel / fRate;
+	for( u32 i = 0; i < 2 * 16; ++i ) {
+		pInfo->anCoefs[i] = (s16)_BE16( pBytes + 24 + i * 2 );
+	}
+	return TRUE;
+}
+
+
+BOOL gcaudio_DecodeStream( const void *pFile, u32 nFileBytes, const GCAudioStreamInfo_t *pInfo, s16 *pnOut, volatile long *pnCancel ) {
+	const u8 *pBytes = (const u8 *)pFile;
+	if( !pBytes || !pInfo || !pnOut || !_InRange( _WVS_HEADER_BYTES, pInfo->nChannels * pInfo->nBytesPerChannel, nFileBytes ) ) {
+		return FALSE;
+	}
+	const u32 nChannels = pInfo->nChannels;
+	s32 aanHist[2][2] = { { 0, 0 }, { 0, 0 } };
+	u32 nOffset = _WVS_HEADER_BYTES, nRemaining = pInfo->nBytesPerChannel, nSamplesDone = 0;
+	while( nRemaining >= 8 ) {
+		if( pnCancel && *pnCancel ) {
+			return FALSE;
+		}
+		const u32 nChunk = FMATH_MIN( nRemaining, _WVS_CHUNK_BYTES );
+		const u32 nSamples = ( nChunk / 8 ) * 14;
+		for( u32 c = 0; c < nChannels; ++c ) {
+			_DecodeDspAdpcm( pBytes + nOffset + c * nChunk, nSamples, &pInfo->anCoefs[c * 16],
+				pnOut + nSamplesDone * nChannels + c, nChannels, aanHist[c] );
+		}
+		nSamplesDone += nSamples;
+		nOffset += nChannels * nChunk;
+		nRemaining -= nChunk;
+	}
+	return TRUE;
 }
