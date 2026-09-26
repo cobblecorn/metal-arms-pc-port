@@ -3017,10 +3017,18 @@ void CBot::VelocityHasChanged( void ) {
 //--------------------------------------------------------------------------------------------------------------------------------
 f32 CBot::TakeMouseLookDelta( BOOL bPitch ) {
 #if defined(MA_PC_INPUT)
+	// A bot operating a vehicle or gun leaves the mouse to it (taking a delta consumes it).
+	if( m_pCurMech ) {
+		return 0.0f;
+	}
 	if( m_bControls_Human && m_nPossessionPlayerIndex >= 0 && !IsImmobileOrPending() &&
 		!IsSleeping() && !IgnoreControls() && !MultiplayerMgr.IgnoreControls( m_nPossessionPlayerIndex ) ) {
 		CPlayer &Player = Player_aPlayer[m_nPossessionPlayerIndex];
-		if( Player.HasEntityControl() && Player.m_pEntityCurrent == this ) {
+		// Vehicles and manned guns are operated, not possessed: the player's current entity stays the
+		// driver, whose m_pCurMech is this.
+		const BOOL bOperatedByPlayer = Player.m_pEntityCurrent && ( Player.m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT ) &&
+			((CBot *)Player.m_pEntityCurrent)->GetCurMech() == this;
+		if( Player.HasEntityControl() && ( Player.m_pEntityCurrent == this || bOperatedByPlayer ) ) {
 			f32 fDelta = pcinput_TakeMouseAxis( Player.m_nControllerIndex, bPitch != FALSE );
 			fDelta *= Player.ComputeLookSensitivityMultiplier();
 			return bPitch && Player.GetInvertLook() ? -fDelta : fDelta;
