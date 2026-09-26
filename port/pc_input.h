@@ -16,6 +16,20 @@ struct PcInputState {
 
 void pcinput_MapSample(const PcInputState &state, bool primary,
 	FPadio_InputEmulationPlatform_e platform, FPadio_Sample_t *sample);
+
+// Which devices feed which game port (the game assigns ports to players). SHARED merges the
+// keyboard/mouse with XInput pad 1 on port 0 and puts pads 2-4 on ports 1-3, for one player
+// switching freely between devices. SEPARATE keeps the keyboard/mouse alone on port 0 and puts
+// pads 1-3 on ports 1-3, so a keyboard player and pad players are different players.
+// Set with -input-layout or MA_PORT_INPUT_LAYOUT (shared, separate).
+enum PcInputLayout { PCINPUT_LAYOUT_SHARED, PCINPUT_LAYOUT_SEPARATE };
+bool pcinput_ParseLayout(const char *text, PcInputLayout *layout);
+// The XInput pad index feeding a game port, or -1 for none.
+int pcinput_PadForPort(PcInputLayout layout, u32 port);
+// The game port the keyboard and mouse feed.
+u32 pcinput_KeyboardPort();
+// The layout chosen at install.
+PcInputLayout pcinput_Layout();
 bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform);
 void pcinput_Uninstall();
 void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info);

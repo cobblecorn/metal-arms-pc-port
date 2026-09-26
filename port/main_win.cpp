@@ -19,6 +19,8 @@
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
 //   -mouse-sensitivity <n> raw mouse sensitivity in degrees per count (default 0.1)
 //   -aim-assist <auto|on|off> target assistance: auto = controller aiming only (default)
+//   -input-layout <shared|separate> shared: keyboard/mouse and pad 1 drive port 0 (default);
+//                   separate: keyboard/mouse alone on port 0, pads 1-3 on ports 1-3 (local co-op)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 
 #include "fang.h"
@@ -322,7 +324,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -364,6 +366,14 @@ static bool _ParseArgs( int argc, char **argv )
 				return false;
 			}
 			SetEnvironmentVariableA( "MA_PORT_AIM_ASSIST", argv[++i] );
+		}
+		else if( !_stricmp( pszArg, "-input-layout" ) && bHasValue ) {
+			PcInputLayout nLayout;
+			if( !pcinput_ParseLayout( argv[i + 1], &nLayout ) ) {
+				_Log( "-input-layout must be shared or separate.\n" );
+				return false;
+			}
+			SetEnvironmentVariableA( "MA_PORT_INPUT_LAYOUT", argv[++i] );
 		}
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );

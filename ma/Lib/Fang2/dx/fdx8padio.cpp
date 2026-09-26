@@ -377,7 +377,11 @@ FPadio_Error_e fpadio_Install( const FPadio_Init_t *poInit /* = NULL */ )
 	DEVPRINTF( "PC input: raw mouse %s (sensitivity: MA_PORT_MOUSE_SENSITIVITY degrees/count).\n", bRawMouse ? "available" : "unavailable; use arrow keys" );
 	DEVPRINTF( "PC input: WASD move; arrows look; Space jump; E action; F melee; Q/R weapons.\n" );
 	DEVPRINTF( "PC input: mouse buttons fire; F1 toggles mouse look; Escape releases it/pauses; Enter pauses.\n" );
-	DEVPRINTF( "PC input: keyboard uses port 1; XInput controllers use ports 1-4 (hotplug supported).\n" );
+	if( pcinput_Layout() == PCINPUT_LAYOUT_SEPARATE ) {
+		DEVPRINTF( "PC input: keyboard/mouse alone on port %u; XInput controllers 1-3 on ports 2-4 (hotplug supported).\n", pcinput_KeyboardPort() + 1 );
+	} else {
+		DEVPRINTF( "PC input: keyboard/mouse share port %u with XInput controller 1; controllers 2-4 on ports 2-4 (hotplug supported).\n", pcinput_KeyboardPort() + 1 );
+	}
 	_bModuleInstalled = TRUE;
 	ResumeThread( _hPollingThread );
 	return FPADIO_NO_ERROR;

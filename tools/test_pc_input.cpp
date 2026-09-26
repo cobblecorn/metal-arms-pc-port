@@ -75,6 +75,11 @@ int main() {
 	state.pad.wButtons=XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_LEFT_THUMB | XINPUT_GAMEPAD_RIGHT_THUMB | XINPUT_GAMEPAD_RIGHT_SHOULDER | XINPUT_GAMEPAD_LEFT_SHOULDER;
 	pcinput_MapSample(state,false,FPADIO_INPUT_EMULATION_PLATFORM_XB,&out);
 	Check(Value(out,FPADIO_INPUT_XB_DBUTTON_BACK)==1 && Value(out,FPADIO_INPUT_XB_DBUTTON_STICK_LEFT)==1 && Value(out,FPADIO_INPUT_XB_DBUTTON_STICK_RIGHT)==1 && Value(out,FPADIO_INPUT_XB_ABUTTON_BLACK)==1 && Value(out,FPADIO_INPUT_XB_ABUTTON_WHITE)==1, "Xbox aliases use Xbox semantics");
+	Check(pcinput_PadForPort(PCINPUT_LAYOUT_SHARED,0)==0 && pcinput_PadForPort(PCINPUT_LAYOUT_SHARED,3)==3, "shared layout keeps pad n on port n");
+	Check(pcinput_PadForPort(PCINPUT_LAYOUT_SEPARATE,0)==-1 && pcinput_PadForPort(PCINPUT_LAYOUT_SEPARATE,1)==0 && pcinput_PadForPort(PCINPUT_LAYOUT_SEPARATE,3)==2, "separate layout moves pads off the keyboard port");
+	Check(pcinput_PadForPort(PCINPUT_LAYOUT_SHARED,FPADIO_MAX_DEVICES)==-1, "ports past the last device have no pad");
+	PcInputLayout layout = PCINPUT_LAYOUT_SHARED;
+	Check(pcinput_ParseLayout("Separate",&layout) && layout==PCINPUT_LAYOUT_SEPARATE && !pcinput_ParseLayout("split",&layout) && layout==PCINPUT_LAYOUT_SEPARATE, "layout names parse case-insensitively and bad names change nothing");
 	printf("PC input mapping checks: %s\n", failures ? "FAILED" : "passed");
 	return failures ? 1 : 0;
 }

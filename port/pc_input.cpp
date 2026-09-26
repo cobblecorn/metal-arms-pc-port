@@ -9,14 +9,15 @@ static HMODULE s_xinput;
 typedef DWORD (WINAPI *GetStateFn)(DWORD, XINPUT_STATE *);
 static GetStateFn s_getState;
 static FPadio_InputEmulationPlatform_e s_platform;
-static bool s_connected[FPADIO_MAX_DEVICES];
+static PcInputLayout s_layout = PCINPUT_LAYOUT_SHARED;
+static bool s_connected[FPADIO_MAX_DEVICES];		// by XInput pad index
 static DWORD s_lastProbe[FPADIO_MAX_DEVICES];
 static volatile LONG s_mouseLook, s_mouseDX, s_mouseDY;
 static bool s_rawMouse;
 static float s_mouseDegrees = 0.1f;
 static float s_frameYaw, s_framePitch;
 static PcAimAssistMode s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
-static volatile LONG s_mouseAiming;	// port 0's most recent aiming came from the mouse
+static volatile LONG s_mouseAiming;	// the keyboard port's most recent aiming came from the mouse
 
 static float Clamp(float value, float low, float high) {
 	return value < low ? low : value > high ? high : value;
@@ -142,6 +143,10 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 	s_mouseAiming = 0;
 	length = GetEnvironmentVariableA("MA_PORT_AIM_ASSIST", assist, sizeof(assist));
 	if (length && length < sizeof(assist)) pcinput_ParseAimAssistMode(assist, &s_aimAssistMode);
+	char layout[16];
+	s_layout = PCINPUT_LAYOUT_SHARED;
+	length = GetEnvironmentVariableA("MA_PORT_INPUT_LAYOUT", layout, sizeof(layout));
+	if (length && length < sizeof(layout)) pcinput_ParseLayout(layout, &s_layout);
 	RAWINPUTDEVICE mouse = {0x01, 0x02, 0, s_window};
 	s_rawMouse = RegisterRawInputDevices(&mouse, 1, sizeof(mouse)) != FALSE;
 	memset(s_connected, 0, sizeof(s_connected));
@@ -170,10 +175,32 @@ void pcinput_Uninstall() {
 	memset(s_connected, 0, sizeof(s_connected));
 }
 
+bool pcinput_ParseLayout(const char *text, PcInputLayout *layout) {
+	if (!text) return false;
+	if (!_stricmp(text, "shared")) *layout = PCINPUT_LAYOUT_SHARED;
+	else if (!_stricmp(text, "separate")) *layout = PCINPUT_LAYOUT_SEPARATE;
+	else return false;
+	return true;
+}
+
+int pcinput_PadForPort(PcInputLayout layout, u32 port) {
+	if (port >= FPADIO_MAX_DEVICES) return -1;
+	if (layout == PCINPUT_LAYOUT_SEPARATE) return port == 0 ? -1 : int(port) - 1;
+	return int(port);
+}
+
+u32 pcinput_KeyboardPort() { return 0; }
+
+PcInputLayout pcinput_Layout() { return s_layout; }
+
 void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info) {
 	memset(info, 0, sizeof(*info));
-	if (index >= FPADIO_MAX_DEVICES || (index && !s_connected[index])) return;
-	sprintf(info->szName, index ? "XInput controller %u" : "Keyboard/mouse + XInput controller %u", index + 1);
+	const int pad = pcinput_PadForPort(s_layout, index);
+	const bool keyboard = index == pcinput_KeyboardPort();
+	if (index >= FPADIO_MAX_DEVICES || (!keyboard && (pad < 0 || !s_connected[pad]))) return;
+	if (keyboard && pad >= 0) sprintf(info->szName, "Keyboard/mouse + XInput controller %d", pad + 1);
+	else if (keyboard) sprintf(info->szName, "Keyboard/mouse");
+	else sprintf(info->szName, "XInput controller %d", pad + 1);
 	info->oeID = FPADIO_INPUT_DX_GAMEPAD;
 	info->uInputs = FPADIO_MAX_INPUTS;
 	for (u32 i = 0; i < FPADIO_MAX_INPUTS; i++) info->aeInputIDs[i] = (FPadio_InputID_e)(i + 1);
@@ -182,20 +209,22 @@ void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info) {
 void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 	PcInputState state = {};
 	if (index >= FPADIO_MAX_DEVICES) { memset(sample, 0, sizeof(*sample)); return; }
+	const int pad = pcinput_PadForPort(s_layout, index);
+	const bool keyboard = index == pcinput_KeyboardPort();
 	const DWORD now = GetTickCount();
-	if (s_getState && (s_connected[index] || now - s_lastProbe[index] >= 2000)) {
+	if (pad >= 0 && s_getState && (s_connected[pad] || now - s_lastProbe[pad] >= 2000)) {
 		XINPUT_STATE padState = {};
-		s_lastProbe[index] = now;
-		s_connected[index] = s_getState(index, &padState) == ERROR_SUCCESS;
-		if (s_connected[index]) state.pad = padState.Gamepad;
+		s_lastProbe[pad] = now;
+		s_connected[pad] = s_getState(pad, &padState) == ERROR_SUCCESS;
+		if (s_connected[pad]) state.pad = padState.Gamepad;
 	}
+	state.connected = pad >= 0 && s_connected[pad];
 	// Aiming with the right stick hands target assistance back to the controller.
-	if (index == 0 && state.connected &&
+	if (keyboard && state.connected &&
 		(abs(state.pad.sThumbRX) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || abs(state.pad.sThumbRY) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE))
 		InterlockedExchange(&s_mouseAiming, 0);
-	state.connected = s_connected[index];
 	state.focused = s_window && GetForegroundWindow() == s_window && !IsIconic(s_window);
-	if (index == 0) {
+	if (keyboard) {
 		if (state.focused) {
 			// Only inspect gameplay keys, and only while the game owns focus.
 			const int keys[] = { 'W','A','S','D','E','Q','R','F','1','2','3','4', VK_SPACE,
@@ -203,7 +232,7 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 			for (u32 i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) state.keys[keys[i]] = (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
 		}
 	}
-	pcinput_MapSample(state, index == 0, s_platform, sample);
+	pcinput_MapSample(state, keyboard, s_platform, sample);
 }
 
 bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
@@ -263,12 +292,12 @@ bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode) {
 bool pcinput_AimAssistAllowed(u32 controller) {
 	if (s_aimAssistMode == PCINPUT_AIM_ASSIST_ON) return true;
 	if (s_aimAssistMode == PCINPUT_AIM_ASSIST_OFF) return false;
-	// Only port 0 receives the mouse; captured mouse look that aimed last disables assistance.
-	return !(controller == 0 && MouseLook() && InterlockedCompareExchange(&s_mouseAiming, 0, 0));
+	// Only the keyboard port receives the mouse; captured mouse look that aimed last disables assistance.
+	return !(controller == pcinput_KeyboardPort() && MouseLook() && InterlockedCompareExchange(&s_mouseAiming, 0, 0));
 }
 
 float pcinput_TakeMouseAxis(u32 controller, bool pitch) {
-	if (controller != 0) return 0;
+	if (controller != pcinput_KeyboardPort()) return 0;
 	float &axis = pitch ? s_framePitch : s_frameYaw;
 	const float delta = axis;
 	axis = 0; // Repeated bot work/substeps cannot apply the same mouse delta twice.
