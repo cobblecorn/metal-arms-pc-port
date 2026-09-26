@@ -33,12 +33,19 @@ For the mission path with engine captures:
 
     ma_port -data gamedata/files -mission wecdsneak01 -log build/logs/mission.log -shots build/shots-mission -shot-every 1800
 
-Mission launch builds successfully but has not been exercised in-game. Script execution,
-objectives, transitions and saves remain unverified; this is not a complete campaign launch.
+`-mission wecdsneak01` loads Night Sneak's configuration, attaches and initializes its eight
+retail scripts (no unresolved natives, no script errors), and reaches gameplay. Objectives,
+level transitions and saves have not been verified; this is not yet a complete campaign launch.
 
 `tools/mst_list.py` lists/extracts a `.mst` master file (GameCube byte order).
 `tools/gamedata_dump.py` inspects extracted binary `.csv` game-data tables as indexed JSON;
 write reports under ignored `build/` because they contain retail asset values.
+`tools/dol_vocab.py` recovers the retail game-data vocabularies (field type, conversion,
+size and clamp range) from `gamedata/sys/main.dol` by following its `FGameDataMap_t` tables,
+e.g. `python tools/dol_vocab.py gamedata/sys/main.dol LaserL1`. `tools/dol_xref.py` finds and
+lists retail PowerPC code that references a data address (a minimal decoder, enough to see
+which structure offsets feed which runtime fields). Use them to resolve schema drift from
+retail evidence instead of guessing; keep their output under `build/`.
 
 ## Desktop controls
 
@@ -141,12 +148,15 @@ environment variables remain available.
 - [ ] Extend mesh coverage beyond the currently supported data. Collision conversion failures
       still drop collision for that mesh; display lists with more than four bones use an
       approximation that needs review.
-- [ ] Convert scripts (`.sma`) and other runtime resources. Confirmed via
-      `CFScriptSystem::LoadScriptsFromFile : No script names found for this level.` that no
-      scripts were requested by the generic `Level01` launch configuration. The retail
-      `wecdsneak01` configuration does contain scripts; use the new mission path to investigate
-      their actual loading and execution. The old generic-run log does not establish mission
-      script compatibility.
+- [x] Load retail scripts (`.sma`). All 393 are compact little-endian AMX (file version 5,
+      AMX version 4) that the bundled interpreter runs without byte swapping. The loader
+      validates headers and symbol tables before allocating. Across the corpus, 10 natives
+      are missing from this source (`Checkpoint_Save2`, `Audio_Play2DSoundEx`,
+      `Bot_IsPosessed`, `Bot_IsRecruited`, `Bot_Recruit`, `Console_Enable`, `FX_StompRing`,
+      `Misc_GetDifficulty`, `Misc_GetValue`, `Misc_SetValue`); none is used by Night Sneak.
+      Scripts importing them still load, the missing names are logged, and a call to one
+      aborts that script callback with `AMX_ERR_NOTFOUND` instead of calling a NULL pointer.
+- [ ] Implement the 10 missing script natives above, then verify objectives/transitions.
 - [ ] Audio (GC MusyX / DSP-ADPCM streams) and Bink video hookup.
 - [x] Keyboard controls and direct raw mouse look, confirmed interactively in `wecdsneak01`.
       XInput mapping includes deadzones, separate triggers, focus handling, and hotplug support.
@@ -169,7 +179,27 @@ environment variables remain available.
 - Retail `Difficulty.csv` has 20 fields in its `Diff` table; this source expects 8 fields
   for four difficulty levels and therefore falls back to its defaults. The retail flamer
   table also has newer tail columns, which are ignored by the older source vocabulary.
-- Retail `w_laser.csv` uses a substantially newer schema and remains unavailable. The blaster
+- Retail `w_laser.csv` (73 fields; a charge/burst redesign) is mapped onto the source's
+  primary-fire laser from retail evidence: the `LaserL1` vocabulary in `main.dol` and the retail
+  `CWeaponLaser` InitSystem/ClassHierarchyBuild/fire code. Mesh, muzzle bone, tracer texture
+  and RGBA color, clip (reserve forced infinite, as retail does), fire rate, tracer
+  speed/length/width/range, target-assist range, cull distance, recoil, damage profile and
+  decal come from the retail fields. The recharge rate is inferred from the retail refill step
+  (fields 39/40). Retail L3 fires tracers, so the WINGC build uses the tracer path instead of
+  the source's continuous L3 beam. Not implemented: the charged burst (fields 19-28, 60-64,
+  67-72), particle muzzle/smoke effects (47-58) and sound groups (65-70).
+- Retail `afDataTable` (the float table vocabulary min/max indices point into) inserts `4.0`
+  after `3.0`, so retail indices from 12 up are one higher than this source's
+  `F32_DATATABLE_*`. Data files are unaffected; compare retail vocabularies with
+  `tools/dol_vocab.py`, which uses the DOL's own table.
+- Retail GameCube AI graphs have 5 edge slots per vertex. `InitEdgeToPoiLookup` skipped free
+  vertices with a hard-coded 6, misaligning (and overrunning) the edge-to-POI table and
+  asserting thousands of times during mission AI setup; it now uses the slot constant.
+- Grunts carrying lasers previously failed to build, so mission scripts could not find them
+  (`E_Find() : Could not find entity named 'added_grunt3c'`). Other retail damage profiles
+  (`Debris`, `SentinelCannon`, `SpewSmoke`, `ScoutSiren`) are still missing from the loaded
+  damage tables.
+- The blaster
   loader now reads its 45-field layout and handles the three available player variants without
   initializing absent military variants. Its two extra numeric fields are retained but their
   behavior is not implemented. Blaster resource creation, firing and upgrades need runtime
@@ -209,7 +239,8 @@ environment variables remain available.
   box nobody is there to click. This is how the font crash below was actually found, instead of
   just timing out. Non-fatal asserts now log and continue (matching "Ignore"); this can let a
   real bug run further than it would on the original platforms before something else notices -
-  treat a firing assert as a real bug to fix, not background noise.
+  treat a firing assert as a real bug to fix, not background noise. The first occurrence of
+  each distinct assert also logs a symbolized call stack, so a repeating assert names its caller.
 - Found via the above: `CBotGlitch::_InitInventory()` was passing a retail inventory's current-
   weapon slot straight to `_ChangeWeaponIndex()` with no bounds check against this source's
   reduced weapon set (see the laser/blaster schema note above) - a real out-of-bounds array read

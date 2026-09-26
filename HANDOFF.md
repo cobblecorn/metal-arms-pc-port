@@ -709,3 +709,73 @@ snapshot or runtime test was performed. Next runtime invocation can retain the c
 This is a mission debugging entry point, not complete profile/campaign progression. Script
 bytecode/native binding compatibility, mission startup, objectives and level transitions remain
 unproven. Do not claim that the previous generic scene demonstrates any of those requirements.
+
+
+## 21. ADDENDUM (2026-09-26) - mission scripts run; AI edge stride; retail laser from main.dol
+
+First runtime test of `-mission wecdsneak01`. Reviewed and finished Astra's uncommitted script
+loader hardening (`FScript.cpp`, `FScriptInst.cpp`):
+
+- Header checks now compare signed fields as signed (the earlier mix of `s32` and `sizeof`
+  let negative sizes/offsets wrap past the checks). A scan of all 393 retail `.sma` files
+  confirmed compact little-endian AMX v5/v4 headers with no layout problems.
+- Unresolved natives no longer disable a script. Their names are logged. `amx_Callback`
+  (SmallAMX) returns `AMX_ERR_NOTFOUND`/`AMX_ERR_INDEX` instead of calling a NULL/out-of-range
+  native, a crash in the original too. Only 10 natives in the whole retail corpus are
+  missing from this source (listed in PORTING.md); Night Sneak uses none.
+- `CFScriptSystem::AttachObjectToScript` walked off the instance array when a pooled script's
+  first instance had failed to initialize, and the pool/instance limits were `FASSERT`-only.
+  Both are now bounded. `amx_Init` mutates the shared program image, so a failed script is
+  not retried.
+- Event masks use `1 << n` on a `u64` with a 64-entry event table: events 32+ alias on x86
+  and are dropped on PPC. Night Sneak has 19 events, so this is not live yet; revisit if a
+  level defines 32 or more.
+
+Night Sneak run results: 8 scripts attach, no unresolved natives. The on-screen script error
+box the user saw was two `E_Find()` failures for `added_grunt3c` / `added_grunt4e`. Those
+grunts failed `ClassHierarchyBuild` because their laser could not be created. That failure
+path also leaked a `CFWorldAttachedLight` (FRES warning in `botgrunt.cpp`); it is no longer
+hit, but not fixed either.
+
+`port/main_win.cpp`: the CRT report hook logs a symbolized stack the first time each distinct
+assert fires (shared `_LogStack` with the crash filter). This immediately located the next bug:
+
+- 8,721 `AIGraph.h(323) nVertId < m_nNumVerts` asserts during mission load came from
+  `CAIGraphDataAccess::InitEdgeToPoiLookup`, which skipped free vertices with a hard-coded
+  `uEdgeCount+=6`. The retail GC graph has 5 slots per vertex (session 6), so the index
+  drifted, overran the `(edges+1)` allocation and fed garbage edges to `GetReverseEdge`. It now
+  uses `AIGRAPH_NUM_EDGES_PER_VERT`, with a NULL guard for a missing reverse edge. 0 asserts after.
+
+Retail laser (previously disabled, which removed every laser grunt):
+
+- New `tools/dol_vocab.py` follows retail `FGameDataMap_t` entries in `main.dol` (name
+  string -> vocabulary pointer) and decodes the retail `FGameData_TableEntry_t` arrays.
+  `LaserL1`: 73 fields, 296-byte struct (1480 bytes / 5 variants, consistent with the map's
+  destination addresses). The retail `afDataTable` inserts 4.0 after 3.0, so retail range
+  indices >= 12 are shifted by one relative to the source enum; the tool uses the DOL table.
+- New `tools/dol_xref.py` (minimal PPC decoder) located the retail CWeaponLaser code via the
+  props array address 0x8048dd38. InitSystem fills Info_t from +28/+56/+60/+180/+188. The fire
+  routine (0x801f9dd4) fills TracerDef_t RGBA from +12..+24, then speed/length/width/range from a
+  10-field set (normal shot fields 9-18, burst 19-28). ClassHierarchyBuild uses +176 for mesh
+  cull and FindBone(field 1).
+- `CWeaponLaser::_ReadRetailProperties` maps those fields into the source `_UserProps_t`.
+  Details and the unimplemented parts (charged burst, particles, sound groups) are in
+  PORTING.md and the function comment. The derived recharge rate (fields 39/40) is an
+  inference, not a confirmed mapping. L3 uses tracers under WINGC, as retail does. The muzzle
+  comes from the at-rest `Primary_Fire` bone because the mesh is built with NOBONES.
+- Result: `CWeaponLaser: loaded 5 retail variants`, no grunt build errors, no script errors,
+  no CRT asserts, no crash in a 60-second run. Captures in `build/shots-laser/` show gameplay
+  with HUD and a targeted enemy. The user may have been controlling the window during these
+  runs; that does not confirm laser firing, damage, or grunt combat.
+
+Next candidates, in order:
+1. Cross-check Astra's blaster +2 shift against the retail `BlasterL1` vocabulary and code
+   (`python tools/dol_vocab.py gamedata/sys/main.dol BlasterL1`). Also check the retail
+   `w_blaster` fields 38/39.
+2. Use the same tools on the other schema gaps: `Difficulty.csv` (20 vs 8 fields),
+   collectables (`EUK`, `washer`, `pup_energy`, `coring charge`), barter items, missing damage
+   profiles, flamer tail columns, and the 'shield' user-property command.
+3. Implement the 10 missing script natives, then the laser charged burst.
+4. Fix the `botgrunt.cpp` failure-path light leak (CFWorldAttachedLight not deleted before
+   `fres_ReleaseFrame`).
+5. GC audio.
