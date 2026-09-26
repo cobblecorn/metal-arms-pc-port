@@ -62,6 +62,9 @@ static BOOL _bMoviePaused; //is the movie paused?
 static BOOL _bNextFrameReady;
 static u32 _nSkippedFrames;
 static u32 _uPlayFlags = FMOVIE2_PLAYFLAGS_NONE;
+#if FANG_WINGC
+static IDirect3DSurface9 *_pMovieSurface;	// movie-sized decode target, stretched to the back buffer
+#endif
 
 #if !_USE_STREAMING_MEMORY
 //windows management variables
@@ -383,6 +386,12 @@ void fmovie2_Unload( void ) {
 	_bMoviePaused = FALSE;
 	_bNextFrameReady = FALSE;
 	_nSkippedFrames = 0;
+#if FANG_WINGC
+	if( _pMovieSurface ) {
+		_pMovieSurface->Release();
+		_pMovieSurface = NULL;
+	}
+#endif
 }
 
 
@@ -699,12 +708,56 @@ BOOL _BltWinFrame( void ) {
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	// The port's surfaces come from the D3D8-on-D3D9 shim, which Bink cannot inspect through
+	// BinkDX8SurfaceType (it called through a null method). The copy below is BINKSURFACE32,
+	// so require a 32-bit back buffer instead.
+	dwBinkSurfaceType = BINKSURFACE32;
+#else
 	dwBinkSurfaceType = BinkDX8SurfaceType( pDX8BackBuffer );
+#endif
 	if( FAILED( pDX8BackBuffer->GetDesc( &BackBufferSurfaceDesc ) ) ) {
 		DEVPRINTF( "[ FMOVIE2 ] Error : Could not get DX8 Backbuffer Description!\n");
         pDX8BackBuffer->Release();
 		return FALSE;
 	}
+#if FANG_WINGC
+	if( ( BackBufferSurfaceDesc.Format != D3DFMT_X8R8G8B8 && BackBufferSurfaceDesc.Format != D3DFMT_A8R8G8B8 ) ||
+		BackBufferSurfaceDesc.Width < _hBink->Width || BackBufferSurfaceDesc.Height < _hBink->Height ) {
+		DEVPRINTF( "[ FMOVIE2 ] Error : Back buffer is not a 32-bit surface large enough for the movie.\n" );
+		pDX8BackBuffer->Release();
+		return FALSE;
+	}
+
+	// Decode into a movie-sized surface and stretch it over the largest 4:3 area of the back
+	// buffer: GameCube movies are 512x448 frames meant for a 4:3 television. On any failure,
+	// fall through to the original unscaled, centered copy.
+	IDirect3DDevice9 *pDev9 = FDX8_pDev->GetD3D9Device();
+	if( !_pMovieSurface && FAILED( pDev9->CreateOffscreenPlainSurface( _hBink->Width, _hBink->Height, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &_pMovieSurface, NULL ) ) ) {
+		_pMovieSurface = NULL;
+	}
+	D3DLOCKED_RECT MovieRect;
+	if( _pMovieSurface && SUCCEEDED( _pMovieSurface->LockRect( &MovieRect, NULL, 0 ) ) ) {
+		BinkCopyToBuffer( _hBink, MovieRect.pBits, MovieRect.Pitch, _hBink->Height, 0, 0, BINKSURFACE32 | BINKCOPYALL );
+		_pMovieSurface->UnlockRect();
+
+		u32 uW = BackBufferSurfaceDesc.Width, uH = BackBufferSurfaceDesc.Height;
+		if( uW * 3 > uH * 4 ) {
+			uW = uH * 4 / 3;
+		} else {
+			uH = uW * 3 / 4;
+		}
+		RECT DestRect;
+		DestRect.left = (LONG)( BackBufferSurfaceDesc.Width - uW ) / 2;
+		DestRect.top = (LONG)( BackBufferSurfaceDesc.Height - uH ) / 2;
+		DestRect.right = DestRect.left + (LONG)uW;
+		DestRect.bottom = DestRect.top + (LONG)uH;
+		if( SUCCEEDED( pDev9->StretchRect( _pMovieSurface, NULL, pDX8BackBuffer, &DestRect, D3DTEXF_LINEAR ) ) ) {
+			pDX8BackBuffer->Release();
+			return TRUE;
+		}
+	}
+#endif
 
 	//now, figure out the center position of the movie...
 	u32 uX = ( BackBufferSurfaceDesc.Width - _hBink->Width ) / 2;
