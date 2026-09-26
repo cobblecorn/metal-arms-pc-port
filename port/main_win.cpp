@@ -22,6 +22,7 @@
 //   -input-layout <shared|separate> shared: keyboard/mouse and pad 1 drive port 0 (default);
 //                   separate: keyboard/mouse alone on port 0, pads 1-3 on ports 1-3 (local co-op)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
+//   -save-dir <dir> where player profiles are saved (default: %APPDATA%\Metal Arms PC Port\Saves)
 
 #include "fang.h"
 #include "fclib.h"
@@ -324,7 +325,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-save-dir <dir>]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -377,6 +378,7 @@ static bool _ParseArgs( int argc, char **argv )
 		}
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );
+		else if( !_stricmp( pszArg, "-save-dir" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SAVE_DIR", argv[++i] );	// read by Fang2/dx/fdx8storage.cpp
 		else if( !_stricmp( pszArg, "-res" ) && bHasValue )
 		{
 			if( sscanf( argv[++i], "%dx%d", &_nReqWidth, &_nReqHeight ) != 2 || _nReqWidth < 320 || _nReqHeight < 200 )

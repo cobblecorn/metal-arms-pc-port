@@ -21,7 +21,7 @@ Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see belo
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-save-dir <dir>]
 
 `-level <world>` starts the generic debug level path using `Level01` configuration.
 `-mission <world>` resolves a registered single-player mission and uses its own configuration,
@@ -46,6 +46,21 @@ e.g. `python tools/dol_vocab.py gamedata/sys/main.dol LaserL1`. `tools/dol_xref.
 lists retail PowerPC code that references a data address (a minimal decoder, enough to see
 which structure offsets feed which runtime fields). Use them to resolve schema drift from
 retail evidence instead of guessing; keep their output under `build/`.
+
+`tools/syntax_check.py` syntax-checks the C/C++ sources without MSVC, for sessions that cannot
+build (Linux/cloud): clang against MinGW-w64 headers with flags that mimic the MSVC build. It
+catches type errors and wrong API use, not everything MSVC would; it never links or runs.
+`python3 tools/syntax_check.py --changed HEAD` checks the C/C++ files changed since HEAD.
+
+## Saves
+
+Player profiles are saved in `%APPDATA%\Metal Arms PC Port\Saves` (override with `-save-dir <dir>`
+or `MA_PORT_SAVE_DIR`); the log names the directory at startup. Each profile is one file,
+`profile-<hex>.sav`, whose name is the profile name's UTF-16 code units in hex (profile names may
+contain characters Windows file names can't, or differ only by case). Saves are written to a
+`.tmp` copy that replaces the profile once complete. Profiles that earlier builds saved as
+`profile-<name>` in the working directory are copied into the save directory at startup; the
+originals are left in place. In-level checkpoints are memory-only, as on the consoles.
 
 ## Desktop controls
 
@@ -178,7 +193,11 @@ environment variables remain available.
 - [x] Keyboard controls and direct raw mouse look, confirmed interactively in `wecdsneak01`.
       XInput mapping includes deadzones, separate triggers, focus handling, and hotplug support.
 - [ ] Verify physical XInput controllers, vehicle-specific mouse aiming, and rumble.
-- [ ] Save games (memory-card layer -> files).
+- [ ] Save games. The front end uses the Xbox flow with the PC's single "hard disk" device
+      (`dx/fdx8storage.cpp`). That backend was rewritten: per-user save directory, safe file names,
+      atomic writes, and `ValidateProfile` now reports a missing profile (it always said "valid",
+      so `CPlayerProfile::IsOnCard()` could never fail). Syntax-checked only; creating, loading,
+      renaming, deleting and in-game saving still need a run.
 - [x] Engine back-buffer BMP capture through `-shots` / `-shot-every`. The original
       `port/screenshot_port.cpp` keyboard shortcut implementation is still a stub.
 
