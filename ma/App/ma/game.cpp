@@ -210,6 +210,11 @@ static BOOL8 _bGameUnloadedNeeded = FALSE;// prevents game_unload from being cal
 static BOOL8 _bAllowCutSceneSkip;
 static BOOL8 _bCompletedLevel;
 static ControlMode_e _aeControlMode[MAX_PLAYERS];
+#if defined(MA_PC_INPUT)
+#define _WEAPONSELECT_HOLD_SECS		( 0.5f )	// user-chosen hold before a weapon list opens
+static BOOL8 _aabWeaponSelectArmed[MAX_PLAYERS][2];	// [player][0 = primary, 1 = secondary]
+static f32 _aafWeaponSelectHeldSecs[MAX_PLAYERS][2];
+#endif
 static CFStringTable *_pCutSceneTable = NULL;
 static cchar *_pszCurCutSceneName = NULL;
 static const GameInitInfo_t *_pCurrentGameInit=NULL;
@@ -612,6 +617,45 @@ void game_ControlModeWork() {
 					break;
 				}
 			} else {
+#if defined(MA_PC_INPUT)
+				// Desktop: a weapon list opens only once its button has been held for
+				// _WEAPONSELECT_HOLD_SECS, so a tap (which reloads the primary weapon) never flashes it.
+				// A release within that time replays the original press-and-release.
+				static const u32 _anSelectAction[2] = { GAMEPAD_MAIN_SELECT_PRIMARY, GAMEPAD_MAIN_SELECT_SECONDARY };
+				BOOL bStarted = FALSE;
+				for( u32 uSide = 0; uSide < 2 && !bStarted; ++uSide ) {
+					const u32 uLatches = Gamepad_aapSample[nControlIndex][ _anSelectAction[uSide] ]->uLatches;
+					BOOL8 &rbArmed = _aabWeaponSelectArmed[nPlayer][uSide];
+					f32 &rfHeldSecs = _aafWeaponSelectHeldSecs[nPlayer][uSide];
+					if( uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
+						rbArmed = TRUE;
+						rfHeldSecs = 0.0f;
+					}
+					if( !rbArmed ) {
+						continue;
+					}
+					CInventory *pInventory = ((CBot *)Player_aPlayer[nPlayer].m_pEntityCurrent)->m_pInventory;
+					if( uLatches & FPAD_LATCH_ON ) {
+						rfHeldSecs += FLoop_fRealPreviousLoopSecs;
+						if( rfHeldSecs >= _WEAPONSELECT_HOLD_SECS ) {
+							rbArmed = FALSE;
+							bStarted = pHud->StartWeaponSelect( uSide, pInventory, FALSE );
+						}
+					} else {
+						rbArmed = FALSE;
+						// Only a release seen this frame counts as a tap; one that happened while
+						// another control mode ran (pause, barter) is dropped.
+						if( uLatches & ( FPAD_LATCH_CHANGED | FPAD_LATCH_SPIKED ) ) {
+							bStarted = pHud->StartWeaponSelect( uSide, pInventory, TRUE );
+						}
+					}
+				}
+				if( bStarted ) {
+					_aabWeaponSelectArmed[nPlayer][0] = _aabWeaponSelectArmed[nPlayer][1] = FALSE;
+					_aeControlMode[nPlayer] = CONTROLMODE_WEAPONSELECT;
+					break;
+				}
+#else
 				if( (Gamepad_aapSample[nControlIndex][GAMEPAD_MAIN_SELECT_PRIMARY]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK )
 					&& pHud->StartWeaponSelect(0, ((CBot *)Player_aPlayer[nPlayer].m_pEntityCurrent)->m_pInventory, TRUE) ) {
 					_aeControlMode[nPlayer] = CONTROLMODE_WEAPONSELECT;
@@ -622,6 +666,7 @@ void game_ControlModeWork() {
 					_aeControlMode[nPlayer] = CONTROLMODE_WEAPONSELECT;
 					break;
 				}
+#endif
 			}
 			break;
 			

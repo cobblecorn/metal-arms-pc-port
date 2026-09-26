@@ -76,11 +76,11 @@ originals are left in place. In-level checkpoints are memory-only, as on the con
 | F1 | Turn automatic mouse look off (free cursor) / back on |
 | Mouse / arrow keys | Look / turn |
 | Space | Jump |
-| E | Action (traced in source; one run was reported to open the weapons menu, see below) |
+| E | Action / interact |
 | F | Melee |
 | Left / right mouse button | Primary / secondary fire (requires a supported weapon) |
-| Q | Hold for the primary weapons list (traced; one run was reported to open throwables) |
-| R | Hold for the secondary (throwables) list (traced) |
+| Q | Hold 0.5 s for the throwables (secondary) list |
+| R | Tap to reload; hold 0.5 s for the weapons (primary) list |
 | 1 / 2 / 3 / 4 | Quick-select up / right / down / left |
 | Escape / Enter | Pause; Escape also releases the mouse |
 | Alt-Tab | Releases the mouse; moving it over the game again recaptures it |
@@ -89,11 +89,11 @@ originals are left in place. In-level checkpoints are memory-only, as on the con
 The user confirmed responsive mouse look and reported that some weapons appear to work.
 Traced in source (keys → Fang pad inputs in `port/pc_input.cpp` → the single `MAIN1` control map
 in `gamepad.cpp`, used for both the Xbox and GameCube layouts → `Hud2.cpp`): Space → `CROSS_BOTTOM` →
-jump; E → `CROSS_TOP` → action; Q → `CROSS_RIGHT` → select primary (the HUD opens hand 0, weapons);
-R → `CROSS_LEFT` → select secondary (hand 1, throwables); F → GameCube Z → melee. No other control map is
-compiled (`Main2`-`Main4` are commented out and `player.cpp` clamps the profile's controller config to
-`MAIN1`). An earlier run was reported as Q = throwables and E = weapons, which this trace can't explain:
-please re-check by holding Q, then R, then E, and note which list appears. With a throwable equipped
+jump; E → `CROSS_TOP` → action; R → `CROSS_RIGHT` → select primary (hand 0, weapons; a tap reloads);
+Q → `CROSS_LEFT` → select secondary (hand 1, throwables); F → GameCube Z → melee. Q and R were swapped
+from the adapter's first mapping at the user's request. On the desktop a weapon list opens only after
+its button is held for 0.5 s (`_WEAPONSELECT_HOLD_SECS` in `game.cpp`, pads included); a shorter tap
+replays the original press-and-release, so R still reloads without the list flashing up. With a throwable equipped
 and ammo available, right mouse maps to secondary fire and starts the throw. The HUD selection code
 accepts W/S to scroll while a selection menu is held open; releasing the menu button equips the
 selection. Throwable behavior has not yet been confirmed interactively.

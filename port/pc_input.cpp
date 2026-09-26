@@ -90,8 +90,10 @@ void pcinput_MapSample(const PcInputState &state, bool primary,
 	v[FPADIO_INPUT_STICK_RIGHT_Y-1] = Stronger(v[FPADIO_INPUT_STICK_RIGHT_Y-1], y);
 	if (k[VK_SPACE]) v[FPADIO_INPUT_CROSS_BOTTOM-1] = 1.0f;
 	if (k['E']) v[FPADIO_INPUT_CROSS_TOP-1] = 1.0f;
-	if (k['Q']) v[FPADIO_INPUT_CROSS_RIGHT-1] = 1.0f;
-	if (k['R']) v[FPADIO_INPUT_CROSS_LEFT-1] = 1.0f;
+	// GAMEPAD_MAP_MAIN1: CROSS_LEFT selects the secondary (throwables) list, CROSS_RIGHT the primary
+	// (guns); a tap of the primary button reloads. Q = throwables, R = guns/reload (user choice).
+	if (k['Q']) v[FPADIO_INPUT_CROSS_LEFT-1] = 1.0f;
+	if (k['R']) v[FPADIO_INPUT_CROSS_RIGHT-1] = 1.0f;
 	if (k[VK_ESCAPE] || k[VK_RETURN]) v[FPADIO_INPUT_START-1] = 1.0f;
 	if (k[VK_LBUTTON]) v[FPADIO_INPUT_TRIGGER_RIGHT-1] = 1.0f;
 	if (k[VK_RBUTTON]) v[FPADIO_INPUT_TRIGGER_LEFT-1] = 1.0f;

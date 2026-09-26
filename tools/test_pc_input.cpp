@@ -65,6 +65,14 @@ int main() {
 	pcinput_MapSample(state,true,gc,&out);
 	Check(Value(out,FPADIO_INPUT_CROSS_RIGHT)==1 && Value(out,FPADIO_INPUT_CROSS_LEFT)==1 && Value(out,FPADIO_INPUT_START)==1, "weapon selection and pause");
 	Check(Value(out,FPADIO_INPUT_DPAD_X)==1 && Value(out,FPADIO_INPUT_DPAD_Y)==1, "keyboard quick-select directions");
+	state = PcInputState(); state.focused = true; state.keys['Q'] = true;
+	pcinput_MapSample(state,true,gc,&out);
+	Check(Value(out,FPADIO_INPUT_CROSS_LEFT)==1 && Value(out,FPADIO_INPUT_CROSS_RIGHT)==0, "Q opens the throwables (secondary) list");
+	state.keys['Q'] = false; state.keys['R'] = true;
+	pcinput_MapSample(state,true,gc,&out);
+	Check(Value(out,FPADIO_INPUT_CROSS_RIGHT)==1 && Value(out,FPADIO_INPUT_CROSS_LEFT)==0, "R opens the gun (primary) list and reloads on a tap");
+	state.keys[VK_RIGHT]=state.keys[VK_DOWN]=true; state.keys['R'] = false;
+	pcinput_MapSample(state,true,gc,&out);
 	Check(Value(out,FPADIO_INPUT_STICK_RIGHT_X)==1 && Value(out,FPADIO_INPUT_STICK_RIGHT_Y)==-1, "arrow keys preserve controller look directions");
 	state = PcInputState(); state.focused=state.connected=true;
 	state.pad.sThumbLX=32767; state.keys['W']=true;
