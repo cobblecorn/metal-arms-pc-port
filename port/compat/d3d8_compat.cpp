@@ -746,7 +746,23 @@ HRESULT IDirect3D8::CreateDevice( UINT nAdapter, D3DDEVTYPE nType, HWND hFocus, 
 
 IDirect3D8 *Direct3DCreate8( UINT )
 {
-	IDirect3D9 *pD3D9 = Direct3DCreate9( D3D_SDK_VERSION );
+	IDirect3D9 *pD3D9 = NULL;
+	HMODULE hD3D9 = GetModuleHandleA( "d3d9.dll" );
+	if( !hD3D9 ) hD3D9 = LoadLibraryA( "d3d9.dll" );
+	if( hD3D9 )
+	{
+		typedef HRESULT (WINAPI *Direct3DCreate9Ex_t)(UINT, IDirect3D9Ex**);
+		Direct3DCreate9Ex_t pCreateEx = (Direct3DCreate9Ex_t)GetProcAddress( hD3D9, "Direct3DCreate9Ex" );
+		if( pCreateEx )
+		{
+			IDirect3D9Ex *pEx = NULL;
+			if( SUCCEEDED( pCreateEx( D3D_SDK_VERSION, &pEx ) ) && pEx )
+			{
+				pD3D9 = pEx;
+			}
+		}
+	}
+	if( !pD3D9 ) pD3D9 = Direct3DCreate9( D3D_SDK_VERSION );
 	if( !pD3D9 ) return NULL;
 	return new IDirect3D8( pD3D9 );
 }
