@@ -364,7 +364,7 @@ private:
 	void _DriverEnter( CBot *pDriverBot, cchar *pszAttachPointBoneName=NULL );
 	void _DriverExit( CBot *pDriverBot );
 
-	void _YawPitchWork( f32 fControllerX, f32 fControllerY );
+	void _YawPitchWork( f32 fControllerX, f32 fControllerY, f32 fMouseYaw = 0.0f, f32 fMousePitch = 0.0f );
 	void _BarrelWork( void );
 	void _PrimaryWeaponWork( BOOL bPrimaryFireDown );
 	void _SecondaryWeaponWork( BOOL bSecondaryFireDown );

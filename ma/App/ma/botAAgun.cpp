@@ -654,16 +654,23 @@ void CBotAAGun::ClassHierarchyWork() {
 
 	// get a copy of our controls	
     f32 fControllerX, fControllerY;
+	f32 fMouseYaw = 0.0f, fMousePitch = 0.0f;
 	BOOL bFire1, bFire2;
 
-	if( m_nPossessionPlayerIndex > -1 && 
-		m_eCameraState == CAMERA_STATE_IN_VEHICLE && 
+	if( m_nPossessionPlayerIndex > -1 &&
+		m_eCameraState == CAMERA_STATE_IN_VEHICLE &&
 		m_bAllowDriverMovement ) {
-		
+
 		fControllerX = m_fControls_RotateCW;
 		fControllerY = m_fControls_AimDown;
 		bFire1 = (m_fControls_Fire1 > 0.1f);
 		bFire2 = (m_fControls_Fire2 > 0.1f);
+#if defined(MA_PC_INPUT)
+		// Mouse look turns the gun directly, as it does the other manned guns (site weapons): the AA gun
+		// only read the right stick, so with the mouse (Hold Your Ground's base defense) it never moved.
+		fMouseYaw = TakeMouseLookDelta( FALSE );
+		fMousePitch = TakeMouseLookDelta( TRUE );
+#endif
 	} else {
 		fControllerX = 0.0f;
 		fControllerY = 0.0f;
@@ -672,7 +679,7 @@ void CBotAAGun::ClassHierarchyWork() {
 	}	
 
 	// move the barrels based on the x y controllers
-	_YawPitchWork( fControllerX, fControllerY );
+	_YawPitchWork( fControllerX, fControllerY, fMouseYaw, fMousePitch );
 
 	_BarrelWork();
 
@@ -730,13 +737,13 @@ void CBotAAGun::_ParticleEmitterCallback( FParticle_EmitterHandle_t hHandle, voi
 	*phHandle = FPARTICLE_INVALID_HANDLE;
 }
 
-void CBotAAGun::_YawPitchWork( f32 fControllerX, f32 fControllerY ) {
+void CBotAAGun::_YawPitchWork( f32 fControllerX, f32 fControllerY, f32 fMouseYaw, f32 fMousePitch ) {
 	f32 fDeltaAngle, fOldAngle;
 	BOOL bAngleChanged = FALSE;
 
     // based off the controls, compute the heading
 	fOldAngle = m_fGunHeading;
-	fDeltaAngle = fControllerX * (m_fHeadingPerSec * FLoop_fPreviousLoopSecs);
+	fDeltaAngle = fControllerX * (m_fHeadingPerSec * FLoop_fPreviousLoopSecs) + fMouseYaw;
 	m_fGunHeading += fDeltaAngle;
 	if( m_bLimitHeading ) {
 		if( m_fGunHeading > m_fMaxHeading ) {
@@ -751,7 +758,7 @@ void CBotAAGun::_YawPitchWork( f32 fControllerX, f32 fControllerY ) {
 	
 	// based off the controls, compute the pitch
 	fOldAngle = m_fGunPitch;
-	fDeltaAngle = fControllerY * (m_fPitchPerSec * FLoop_fPreviousLoopSecs);
+	fDeltaAngle = fControllerY * (m_fPitchPerSec * FLoop_fPreviousLoopSecs) + fMousePitch;
 	m_fGunPitch += fDeltaAngle;
 	if( m_fGunPitch > m_fMaxPitch ) {
 		m_fGunPitch = m_fMaxPitch;
