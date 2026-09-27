@@ -119,10 +119,18 @@
 	#else
 		// xbox and dx versions
 		static cchar *_pszControllerScreenPosTableName = "Xbox_Screen_Pos";
+	#if FANG_WINGC
+		// the PC build plays the GameCube disc's movies
+		static cchar * _pszSierraLogoMovie = "GC_SOL_logo.bik";
+		static cchar *_pszVUGLogoMovie = "GC_VUG_Logo.bik";
+		static cchar * _pszSASLogoMovie = "GC_SAS_Logo.bik";
+		static cchar * _pszDemoMovie = "GC_Demo_Mov.bik";
+	#else
 		static cchar * _pszSierraLogoMovie = "XB_SOL_logo.bik";
 		static cchar *_pszVUGLogoMovie = "XB_VUG_Logo.bik";
 		static cchar * _pszSASLogoMovie = "XB_SAS_logo.bik";
 		static cchar * _pszDemoMovie = "XB_Demo_Mov.bik";
+	#endif
 		static cchar * _pszTextureTableName = "XB_Textures";
 		static cchar *_pszPlatformPhrasesTableName = "xb_phrases";
 	#endif

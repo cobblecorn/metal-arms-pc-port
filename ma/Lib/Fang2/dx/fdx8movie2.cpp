@@ -413,6 +413,20 @@ FMovie2Status_e fmovie2_GetStatus( void ) {
 
 BOOL fmovie2_MovieExists( cchar* pszFileName ) {
 	BOOL bRetVal = FALSE;
+#if FANG_WINGC
+	{
+		// Movie audio through the game's DirectSound device rather than a second device of Bink's own
+		// (two devices contending showed as clipped, stuttering cutscene audio). The device exists once
+		// audio is installed, which is after this module installs, so hand it over here.
+		extern void *fdx8audio_GetDirectSound( void );
+		static void *_pBinkDS = NULL;
+		void *pDS = fdx8audio_GetDirectSound();
+		if( pDS && pDS != _pBinkDS && BinkSoundUseDirectSound( pDS ) ) {
+			_pBinkDS = pDS;
+		}
+	}
+#endif
+
 	//search the MovieFilenameTable to see if this movie is in our table...
 	_MovieTableEntry_t *pMovieEntry = NULL;
 	for( u32 ui=0; ui<_uNumMovieTableEntries; ui++ ) {
@@ -436,6 +450,13 @@ BOOL fmovie2_Draw( BOOL bBlockTillNextFrame ) {
 
 	if( !_bModuleInstalled )
 		return TRUE;
+
+#if FANG_WINGC
+	// Never spin until the next movie frame is due: show each new frame on the first display frame after
+	// Bink says it's due and let the swap interval pace presentation. Spinning and then waiting for vsync
+	// made the two clocks beat (uneven frame times) and held a CPU core that Bink's audio thread needed.
+	bBlockTillNextFrame = FALSE;
+#endif
 
 	BOOL bUnloadMovie = FALSE;
 	if( _hBink ) {

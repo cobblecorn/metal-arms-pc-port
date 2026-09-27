@@ -227,6 +227,14 @@ static FResLoadReg_t _oLoadReg;
 // Directsound.
 static LPDIRECTSOUND8 _poDS;
 
+#if FANG_WINGC
+// The game's DirectSound device, for Bink to play movie audio through (fdx8movie2.cpp).
+void *fdx8audio_GetDirectSound( void )
+{
+	return _poDS;
+}
+#endif
+
 // Real Listeners.
 static LPDIRECTSOUND3DLISTENER _poDSRealListener;
 
@@ -2975,10 +2983,12 @@ void CFAudioEmitter::SetVolume( f32 fVolume )
 	FASSERT(flinklist_IsLinkInList(poVirtualEmitter->paoVirtualEmittersListActive, flinklist_GetLinkPointer(poVirtualEmitter->paoVirtualEmittersListActive, poVirtualEmitter)));
 #endif
 
+#if !FANG_WINGC	// the GameCube chain (see _GCMusyxVolume) balances 2D and 3D itself; gc/fgcaudio.cpp has no such cut
 	if( ! ( poVirtualEmitter->uProperties & _EMITTER_PROPERTIES_3D ) )
 	{
 		fVolume *= 0.1f; // Hack to attenuate 2D sounds, which are much louder than 3D.
 	}
+#endif
 	//
 	////
 
