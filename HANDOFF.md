@@ -101,6 +101,49 @@ Working (verified by runs or by the user, see `PORTING.md` for detail):
   laser is audible, music no longer drowns dialog ("still slightly loud" was before the 2D fix below).
 - Bink movies; checkpoints (1 MB streams on Windows). Saves in `%APPDATA%\Metal Arms PC Port\Saves`.
 - Many retail schema changes mapped from `main.dol`.
+- Pause menu with the pointer (user confirmed 2026-09-27), Discord Rich Presence (connects under the
+  port's own application by default), typed profile names, keyboard/Xbox/PlayStation prompts.
+
+## Session of 2026-09-27: another model's commits, reviewed and continued
+
+An intervening session added:
+Direct3D 9Ex (`Direct3DCreate9Ex`/`CreateDeviceEx`, managed pool mapped to default + dynamic, because
+plain D3D9 HAL caps failed on the user's RTX 5070 Ti after a driver change), pause-menu mouse and Q/E
+pages, `-button-prompts auto|keyboard|xbox|playstation`, typed profile names (`pcinput_SetTextInput`,
+WM_CHAR queue), Discord asset options, and **the fix for Glitch's dark legs**: `fmesh_InitNormalSphere()`
+was never called on the PC, so every unskinned GameCube normal decoded as straight up (verified on
+screen: the legs are lit now). Reviewed; kept, with these fixes and additions on top:
+
+1. **Pointer in the pause menu actually works**: the pause menu switches to the menu control map only
+   while it samples buttons, so `pcinput_BeginFrame` saw the gameplay map and kept the mouse captured.
+   `gamepad_Sample()` now passes `allowLook = MAIN1 map && !FLoop_bGamePaused`. With that, Escape is
+   Back in the pause menu (it resumes), and an Escape press that began before a gameplay/menu switch
+   is ignored until released (`escapeHeldOver` in `pcinput_Sample`), so pausing never unpauses.
+2. **Settings screens opened from the pause menu** (Advanced Settings etc., the in-game wrappers) lost
+   the pointer: `_MouseDrawOverlay` drew in `_pViewportOrtho3D`, which only exists in the front end.
+   In-game it now uses the viewport `wpr_system_IG_Draw` drew with (`_pMouseIGViewport`), from the
+   overlay hook after the text. **Not yet confirmed by the user.**
+3. Q is no longer Back in menus (GameCube map: CROSS_LEFT = Back, so Q both flipped the pause page and
+   closed the pause menu). The pause keys read through `pcinput_KeyHeld` (focus-aware) instead of raw
+   `GetAsyncKeyState`.
+4. **Prompt layout** (user request: "flush left instead of a weird off angle"): every icon style is
+   sized to its text line, centered on it and flush left of the text (`wpr_drawutils_DrawButtonOverlay`,
+   PC version; tuning constants `_PROMPT_ICON_SIZE/_CENTER/_ART_FILL`). **Not yet seen by the user.**
+   The pause menu draws key caps (Space/Esc at the bottom, right-aligned to the art; Q/E on the tabs).
+   PlayStation glyphs are now solid round buttons with thick symbols (`wpr_drawutils_DrawPlayStationGlyph`).
+5. Menu prompt wording follows the port it addresses (`pcinput_PromptStyleForPort`): other players'
+   pads never get key names (co-op).
+6. Typed names accept only characters the on-screen keyboard has (`_ProfileName_HasKey`; a stray
+   profile "Profile1&&&" was made while the old filter let `_`/`'` through); Enter is Done and is not
+   also START while typing.
+7. **Discord**: the user's application ID `1553650972218363985` is the default
+   (`_szDefaultDiscordAppId` in `main_win.cpp`; `-discord-app-id off` disables). The worker logs
+   "Discord: connected", a refused handshake, or Discord's error answer to SET_ACTIVITY. Verified: it
+   connects and Discord accepts the activity. No Rich Presence image asset is set (Discord shows the
+   application's icon).
+8. `-test-keys "62:0x1B,70:0x51"` (`MA_PORT_TEST_KEYS`): scripted key presses the game reads without
+   focus, for unattended `-shots` tests. `port/compat/d3d8.h` restored to CRLF (the D3D9Ex commit
+   rewrote its line endings).
 
 ## Session of 2026-09-26 (evening): what changed, and where it stopped
 
@@ -161,28 +204,31 @@ All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newes
   relaunch a session for them — the user asked for this explicitly; don't make them wait.
 - Driving the menus without touching the real mouse: the scratchpad script `drive.py` posted
   WM_MOUSEMOVE/WM_LBUTTONDOWN to the game window (client pixels); pointer input comes from those
-  messages, so this works. Screenshots: `-shots <dir> -shot-every N` writes back-buffer BMPs.
+  messages, so this works. Keys are read with `GetAsyncKeyState` and need focus, and Windows won't
+  hand focus to a background process — use `-test-keys` instead of synthesizing key presses.
+  Screenshots: `-shots <dir> -shot-every N` writes back-buffer BMPs (they cost frame time; don't leave
+  them on in sessions the user plays). The first mission's intro takes Escape as "skip" until ~50 s.
+- `sed -i` in this Git Bash strips CRs from CRLF files (most sources are CRLF); edit with a script that
+  keeps line endings, or the Edit tool.
 - Commit trailer: `Co-Authored-By: parallel session Opus 5.5 <noreply@collaborator.com>`; push to `origin x86-port`.
   Never commit retail data (`gamedata/`, `main.dol`, dumps) — keep derived reports under `build/`.
 
 ## Open work, roughly in priority order
 
-1. **Confirm with the user** (build `6cfcd81`): music vs dialog balance after the 2D fix; movie
-   micro-stutter and cutscene audio clipping (#4); key-cap prompts; Esc/Enter in menus; PC wording.
-2. **Dark textures on Glitch's legs/feet** (user report, not investigated): take a `-shots` capture of
-   the player; suspect lighting/color streams on the skinned mesh (`SetColorStreams` warnings in logs)
-   or a material pass.
-3. **Pause menu mouse support** (`PauseScreen.cpp`/`MenuTypes.cpp`, `CMenuMgr`), same approach as
-   `wpr_system.cpp` (record item boxes when drawn, hover/click in the input read). Its L/R shoulder
-   page flip currently only works with the mouse buttons as triggers; give it keys (e.g. Q/E or Tab).
-4. **PlayStation-style prompts** (user asked for Xbox/PS/keyboard icons): Xbox art exists (`tfh_a`..),
-   keyboard key caps are drawn; PS would need generated glyphs and a way to detect or choose the pad
-   type (XInput can't tell; maybe an option).
-5. **Discord**: get the application ID from the user, test (`-discord-app-id`), maybe bake a default.
-6. Name keyboard: accept typed characters (WM_CHAR) — needs a text-entry mode in `pc_input` so letters
-   don't also fire their game bindings (Q = Back in menus).
-7. Performance: the user plays the **Debug** build; a Release/RelWithDebInfo configuration has not been
+1. **Confirm with the user**: the pointer in settings opened from the pause menu; the flush-left prompt
+   layout (tune `_PROMPT_ICON_SIZE`/`_PROMPT_ART_FILL` from a `-shots` capture if icons look off);
+   music vs dialog balance after the 2D fix; movie micro-stutter and cutscene audio clipping (#4).
+2. Pause menu hit boxes for its page tabs and bottom prompts are fixed fractions (`CPauseScreen::Work`);
+   derive them from `m_avtxButton` and the text areas if the layout ever changes.
+3. PlayStation prompts are chosen with `-button-prompts playstation`; there is no in-game option and
+   no pad-type detection (XInput can't tell). An options entry would help.
+4. D3D9Ex: default-pool resources survive device resets on Ex, but alt-tab / fullscreen switching and
+   window resizing have not been retested since `4d13270`.
+5. Performance: the user plays the **Debug** build; a Release/RelWithDebInfo configuration has not been
    tried. Worth trying for smoother play.
+6. Discord: optional Rich Presence image (needs an asset uploaded to the application).
+7. Pause-menu page flips with a pad's shoulders work as before; check they still do with the keyboard
+   map change (Q no longer CROSS_LEFT in menus).
 8. Older items: verify the save flow from the menus; Hold Your Ground's retail features (Mini_Game
    fields 62-103); `CFQuatTang3` NaN on scripted carts; laser charged burst and other weapons'
    particle/sound fields; `Difficulty.csv` extra fields' meaning; barter EUK kits; failed-load

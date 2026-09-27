@@ -21,7 +21,7 @@ Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see belo
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-no-audio] [-debug-info] [-save-dir <dir>] [-console] [-port-diag] [-discord-app-id <id>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-no-audio] [-debug-info] [-save-dir <dir>] [-console] [-port-diag] [-discord-app-id <id>|off] [-test-keys <s:vk,...>]
 
 `ma_port.exe` is a windowed app with no console window; `-console` opens one showing the log (engine
 output and the level scripts' own print messages, such as "NONETRIPWIRE ENTER EVENT"). The log
@@ -31,15 +31,21 @@ first plays of each sound, `PORT-MIX` a snapshot of every playing sound's level 
 `PORT-TALK` bot dialog and `PORT-DUCK` audio ducking. They are off by default because writing them
 every few seconds caused visible hitches.
 
-`-discord-app-id <id>` (or `MA_PORT_DISCORD_APP_ID`) turns on Discord Rich Presence: "In the menus",
-or the level ("Level 4: Clean Up") with "Campaign" / "Multiplayer: <game type> (N players)" and the
-elapsed time. It needs an application created at discord.com/developers; Discord's generic
-registered-game detection cannot supply that ID or a Rich Presence icon. Set the application's icon
-in the Developer Portal, then upload an image on its Rich Presence assets page and launch with
-`-discord-large-image <asset-key>` (or `MA_PORT_DISCORD_LARGE_IMAGE`).
-`-discord-large-text <tooltip>` / `MA_PORT_DISCORD_LARGE_TEXT` is optional. The port talks to the
+`-test-keys "62:0x1B,70:0x51"` presses those virtual keys (Escape, Q) that many seconds after start,
+for unattended tests with `-shots`: they reach the game without its window having focus, so a test
+never takes the keyboard from the desktop. (`MA_PORT_TEST_KEYS` is the same.)
+
+Discord Rich Presence is on by default: "In the menus", or the level ("Level 4: Clean Up") with
+"Campaign" / "Multiplayer: <game type> (N players)" and the elapsed time, under the port's own Discord
+application (its ID is `_szDefaultDiscordAppId` in `port/main_win.cpp`; the application's name and
+icon are what Discord shows as "Playing ..."). `-discord-app-id <id>` (or `MA_PORT_DISCORD_APP_ID`)
+uses another application, and `-discord-app-id off` turns presence off. A Rich Presence image is
+optional: upload one on the application's Rich Presence assets page and launch with
+`-discord-large-image <asset-key>` (or `MA_PORT_DISCORD_LARGE_IMAGE`);
+`-discord-large-text <tooltip>` / `MA_PORT_DISCORD_LARGE_TEXT` sets its tooltip. The port talks to the
 local Discord client's pipe directly, so nothing else is installed, and it does nothing when Discord
-isn't running.
+isn't running. The log says when it connects, and quotes Discord's answer when Discord refuses the
+application ID or an activity (for example an unknown asset key).
 
 `-level <world>` starts the generic debug level path using `Level01` configuration.
 `-mission <world>` resolves a registered single-player mission and uses its own configuration,
@@ -101,8 +107,9 @@ originals are left in place. In-level checkpoints are memory-only, as on the con
 | R | Tap to reload; hold 0.3 s for the weapons (primary) list |
 | 1 / 2 / 3 / 4 | Quick-select up / right / down / left |
 | Escape / Enter | Pause (gameplay); Escape also releases the mouse |
-| Enter / Space | Menus: accept |
+| Enter / Space | Menus: accept (in the pause menu Space selects; Enter resumes) |
 | Escape | Menus: back (also leaves the pause menu and skips movies) |
+| Q / E, Tab / Shift+Tab | Pause menu: previous / next page |
 | Alt-Tab | Releases the mouse; moving it over the game again recaptures it |
 | Alt-F4 | Close the game |
 
@@ -144,19 +151,33 @@ on the name keyboard all land. While a menu draws its own pointer the mouse butt
 the triggers (a held right trigger starts the launch screen's level-unlock code and blocks input).
 `MA_PORT_POINTER_DEBUG=1` outlines every hit box and logs each click's target.
 
-The in-game pause menu uses the same in-engine pointer. Hovering a row selects it; left click
-selects it, the bottom prompts accept or resume, and right click resumes. Click the upper left or
-right tab regions to change pause pages; the wheel moves the current selection. Q/E and Tab/Shift+Tab
-also change pause pages from the keyboard.
+The in-game pause menu uses the same in-engine pointer, and so do the settings screens opened from it.
+Hovering a row selects it; left click selects it, the bottom prompts accept or resume, and right click
+resumes. Click the upper left or right tab regions to change pause pages; the wheel moves the current
+selection. Q/E and Tab/Shift+Tab also change pages. The pause menu reads its buttons through the menu
+control map only for the moment it samples them, so the input layer treats a paused game as a menu
+(`FLoop_bGamePaused` in `gamepad_Sample()`): the mouse is released for the pointer, Escape is Back
+(which resumes), and Q is not also Back there. An Escape press that began before such a switch is
+ignored until released, so pausing with Escape never immediately backs out again.
 
 `-button-prompts auto` (the default) switches between keyboard key caps and retail Xbox art with the
 most recently used input device. `keyboard` and `xbox` lock that choice. `playstation` uses generated
-Cross, Circle, Triangle, and Square glyphs in front-end and pause prompts and PlayStation wording in
-menu and in-world instructions; it needs no additional assets. `MA_PORT_BUTTON_PROMPTS` accepts the same
-values. Profile-name entry accepts typed letters, digits, spaces, hyphens, underscores, apostrophes,
-and Backspace while the name screen is open; those keystrokes do not trigger gameplay bindings.
-Storage text talks about the save folder instead of memory cards (`wpr_datatypes_PcText()`; format
-becomes reset, blocks become space).
+Cross, Circle, Triangle, and Square glyphs (a dark round button with the colored symbol) in front-end
+and pause prompts and PlayStation wording in menu and in-world instructions; it needs no additional
+assets. `MA_PORT_BUTTON_PROMPTS` accepts the same values. Ports without the keyboard (other players'
+pads) always get pad wording. The pause menu draws key caps too (Space, Esc, and Q/E on its page tabs).
+
+Prompt layout (`wpr_drawutils_DrawButtonOverlay()`): the retail layout floats each button icon above
+and to the left of its text. On the PC every style's icon (pad art, PlayStation glyph, key cap) is
+sized to the prompt's text line, centered on it and sits flush left of the text; prompts sharing a row
+flow left to right without overlapping. The font's line metrics are measured from the prompts as they
+print (`_fPromptLineHeightPerScale`); `_PROMPT_ICON_SIZE`, `_PROMPT_ICON_CENTER` and `_PROMPT_ART_FILL`
+tune the icon.
+
+Profile-name entry accepts typed characters that the on-screen keyboard has (either case), spaces
+(not first) and Backspace while the name screen is open; Enter is Done. Those keystrokes do not
+trigger gameplay bindings, and Enter is not also START there. Storage text talks about the save folder
+instead of memory cards (`wpr_datatypes_PcText()`; format becomes reset, blocks become space).
 
 XInput controllers can connect after launch. `-input-layout shared` (default) puts the keyboard/mouse
 and controller 1 on port 1 and controllers 2-4 on ports 2-4. `-input-layout separate` keeps the
