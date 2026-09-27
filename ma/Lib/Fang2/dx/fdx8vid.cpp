@@ -757,7 +757,11 @@ void fvid_End( void )
 //
 //
 //
-BOOL fvid_Swap( void ) 
+#if FANG_WINGC
+volatile LONG FVid_nPortSwapTick, FVid_nPortGameThreadId;
+#endif
+
+BOOL fvid_Swap( void )
 {
 	FASSERT( _bModuleInitialized );
 	FASSERT( FVid_bOnline );
@@ -768,23 +772,49 @@ BOOL fvid_Swap( void )
 	frenderer_PopAll();
 
 #if FANG_WINGC
+	// Port diagnostics: frames that took far longer than the running average (PORT-HITCH), and every
+	// 10 seconds the frame rate, the worst frame and the time spent before presenting (PORT-PERF; run
+	// with -no-vsync to see the work time as the frame time).
+	static LARGE_INTEGER _nPerfFreq, _nPresentEnd;
 	if( Fang_bPortDiag )
 	{
-		// Port diagnostic: frames that took far longer than the running average.
-		static LARGE_INTEGER _nFreq, _nLast;
+		// for main_win.cpp's stall watchdog: when the game thread last swapped, and which thread it is
+		InterlockedExchange( &FVid_nPortSwapTick, (LONG)GetTickCount() );
+		FVid_nPortGameThreadId = (LONG)GetCurrentThreadId();
+		static LARGE_INTEGER _nLast, _nWindowStart;
 		static f32 _fAvgMs = 16.0f;
-		static u32 _nFrames = 0;
+		static u32 _nFrames = 0, _nWindowFrames = 0;
+		static f64 _fWindowWorkMs = 0.0, _fWindowWorstMs = 0.0;
 		LARGE_INTEGER nNow;
 		QueryPerformanceCounter( &nNow );
-		if( !_nFreq.QuadPart ) QueryPerformanceFrequency( &_nFreq );
+		if( !_nPerfFreq.QuadPart ) QueryPerformanceFrequency( &_nPerfFreq );
+		const f64 fMsPerTick = 1000.0 / (f64)_nPerfFreq.QuadPart;
 		if( _nLast.QuadPart )
 		{
-			f32 fMs = (f32)( (f64)( nNow.QuadPart - _nLast.QuadPart ) * 1000.0 / (f64)_nFreq.QuadPart );
+			f32 fMs = (f32)( (f64)( nNow.QuadPart - _nLast.QuadPart ) * fMsPerTick );
 			if( ++_nFrames > 60 && fMs > 40.0f && fMs > 2.5f * _fAvgMs )
 			{
-				DEVPRINTF( "PORT-HITCH frame %u: %.1f ms (average %.1f ms), t=%.2f s\n", FVid_nFrameCounter, fMs, _fAvgMs, (f32)( (f64)nNow.QuadPart / (f64)_nFreq.QuadPart ) );
+				DEVPRINTF( "PORT-HITCH frame %u: %.1f ms (average %.1f ms), t=%.2f s\n", FVid_nFrameCounter, fMs, _fAvgMs, (f32)( (f64)nNow.QuadPart / (f64)_nPerfFreq.QuadPart ) );
 			}
 			_fAvgMs += ( fMs - _fAvgMs ) * 0.05f;
+
+			_nWindowFrames++;
+			if( _nPresentEnd.QuadPart ) _fWindowWorkMs += (f64)( nNow.QuadPart - _nPresentEnd.QuadPart ) * fMsPerTick;
+			if( fMs > _fWindowWorstMs ) _fWindowWorstMs = fMs;
+			const f64 fWindowMs = (f64)( nNow.QuadPart - _nWindowStart.QuadPart ) * fMsPerTick;
+			if( fWindowMs >= 10000.0 )
+			{
+				DEVPRINTF( "PORT-PERF %u frames in %.1f s: %.1f fps, frame %.2f ms average, worst %.1f ms, work before present %.2f ms average\n",
+					_nWindowFrames, fWindowMs / 1000.0, _nWindowFrames * 1000.0 / fWindowMs, fWindowMs / _nWindowFrames,
+					_fWindowWorstMs, _fWindowWorkMs / _nWindowFrames );
+				_nWindowStart = nNow;
+				_nWindowFrames = 0;
+				_fWindowWorkMs = _fWindowWorstMs = 0.0;
+			}
+		}
+		else
+		{
+			_nWindowStart = nNow;
 		}
 		_nLast = nNow;
 	}
@@ -793,8 +823,17 @@ BOOL fvid_Swap( void )
 	if( _bBeginEndCalled )
 	{
 		_bBeginEndCalled = FALSE;
+#if FANG_WINGC
+		const BOOL bSwapped = _SwapBuffers();
+		if( Fang_bPortDiag )
+		{
+			QueryPerformanceCounter( &_nPresentEnd );
+		}
+		return bSwapped;
+#else
 		return _SwapBuffers();
-	} 
+#endif
+	}
 	else 
 	{
 		DEVPRINTF( "fvid_Swap(): Begin/End vid functions have not been called. Cannot render.\n" );

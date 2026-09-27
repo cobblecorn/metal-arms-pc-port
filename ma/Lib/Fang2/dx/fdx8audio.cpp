@@ -904,6 +904,8 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+static void _WaitForStreamLoads( void );
+
 void faudio_Uninstall( void )
 {
 	if( ! FAudio_bModuleInstalled )
@@ -914,6 +916,7 @@ void faudio_Uninstall( void )
 	CFAudioEmitter::DestroyAll();
 #if FANG_WINGC
 	CFAudioStream::DestroyAll();
+	_WaitForStreamLoads();
 #endif
 
 	u32 uIndex;
@@ -4141,15 +4144,28 @@ struct _Stream_t
 	f32 fSecondsPlayed;
 	f32 fSecondsToPlay;
 
-	// Decoding. The worker thread only uses hFile, uFileBytes, oInfo and pPcm, then sets nDecodeResult.
-	HANDLE hThread;
-	HANDLE hFile;
-	u32 uFileBytes;
-	void *pPcm;						// The locked buffer, while decoding.
-	DWORD uPcmBytes;
-	volatile LONG nDecodeResult;	// 0 while decoding, 1 when done, -1 on failure.
-	volatile LONG nCancel;
+	struct _StreamJob_t *pJob;		// While FAUDIO_STREAM_STATE_CREATING: the load on its worker thread.
 };
+
+// A stream is loaded on a worker thread: its file read, its DirectSound buffer made and filled with the
+// decoded track. The game thread only starts the job and, once it is done, takes the buffer; nothing on
+// it waits for the disk or DirectSound (reading a stream's header on the game thread alone stalled
+// frames 100+ ms when the disk was busy). A stream destroyed while loading is abandoned to its worker,
+// which cleans up; the job is shared by reference count.
+struct _StreamJob_t
+{
+	volatile LONG nRefs;			// The stream's and the worker's.
+	volatile LONG nCancel;
+	volatile LONG nResult;			// 0 while loading, 1 done, -1 failed. The worker touches nothing but nRefs after setting it.
+	char szPath[ MAX_PATH ];
+	char szName[ FAUDIO_MAX_ASSET_NAME_LENGTH + 1 ];
+	GCAudioStreamInfo_t oInfo;
+	LPDIRECTSOUNDBUFFER poDSBuffer;
+	u32 uBufferBytes;
+	u32 uBlockAlign;
+};
+
+static volatile LONG _nStreamJobsRunning;
 
 static _Stream_t _aoStreams[ _MAX_TOTAL_STREAMS ];
 static u32 _uMaxStreams;
@@ -4165,46 +4181,99 @@ static void _InitStreams( u32 uMaxStreams )
 		_Stream_t *poStream = &( _aoStreams[ uIndex ] );
 		fang_MemZero( poStream, sizeof( *poStream ) );
 		poStream->oAudioStream.m_uData = (u32)poStream;
-		poStream->hFile                = INVALID_HANDLE_VALUE;
 	}
 }
 
-static DWORD WINAPI _StreamDecodeThread( void *pParam )
+static void _ReleaseStreamJob( _StreamJob_t *pJob )
 {
-	_Stream_t *poStream = (_Stream_t *)pParam;
+	if( 0 == InterlockedDecrement( &pJob->nRefs ) )
+	{
+		FDX8_SAFE_RELEASE( pJob->poDSBuffer );
+		free( pJob );
+	}
+}
 
-	u8 *pFile = (u8 *)malloc( poStream->uFileBytes );
+static BOOL _LoadStream( _StreamJob_t *pJob )
+{
+	HANDLE hFile = CreateFileA( pJob->szPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL );
+	if( INVALID_HANDLE_VALUE == hFile )
+	{
+		DEVPRINTF( "[ FAUDIO ] Error %u: Could not open stream \"%s\" !!!\n", __LINE__, pJob->szPath );
+		return FALSE;
+	}
+	const DWORD uFileBytes = GetFileSize( hFile, NULL );
+	u8 *pFile = ( INVALID_FILE_SIZE != uFileBytes ) ? (u8 *)malloc( uFileBytes ) : NULL;
 	DWORD uRead = 0;
-	BOOL bOK = pFile &&
-		ReadFile( poStream->hFile, pFile, poStream->uFileBytes, &uRead, NULL ) &&
-		uRead == poStream->uFileBytes &&
-		gcaudio_DecodeStream( pFile, poStream->uFileBytes, &poStream->oInfo, (s16 *)poStream->pPcm, &poStream->nCancel );
-	free( pFile );
+	const BOOL bRead = pFile && ReadFile( hFile, pFile, uFileBytes, &uRead, NULL ) && ( uRead == uFileBytes );
+	CloseHandle( hFile );
+	if( ( ! bRead ) || ( ! gcaudio_ReadStreamHeader( pFile, uFileBytes, uFileBytes, &pJob->oInfo ) ) )
+	{
+		DEVPRINTF( "[ FAUDIO ] Error %u: \"%s\" is not a GameCube stream this port plays !!!\n", __LINE__, pJob->szPath );
+		free( pFile );
+		return FALSE;
+	}
+	if( pJob->nCancel )
+	{
+		free( pFile );
+		return FALSE;
+	}
 
-	InterlockedExchange( &poStream->nDecodeResult, bOK ? 1 : -1 );
+	WAVEFORMATEX oFormat;
+	fang_MemZero( &oFormat, sizeof( oFormat ) );
+	oFormat.wFormatTag      = WAVE_FORMAT_PCM;
+	oFormat.nChannels       = (WORD)pJob->oInfo.nChannels;
+	oFormat.nSamplesPerSec  = pJob->oInfo.nRate;
+	oFormat.wBitsPerSample  = 16;
+	oFormat.nBlockAlign     = (WORD)( 2 * pJob->oInfo.nChannels );
+	oFormat.nAvgBytesPerSec = pJob->oInfo.nRate * oFormat.nBlockAlign;
+
+	DSBUFFERDESC oDescription;
+	fang_MemZero( &oDescription, sizeof( oDescription ) );
+	oDescription.dwSize        = sizeof( oDescription );
+	oDescription.dwFlags       = ( DSBCAPS_CTRLFREQUENCY | DSBCAPS_CTRLPAN | DSBCAPS_CTRLVOLUME | DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2 );
+	oDescription.dwBufferBytes = pJob->oInfo.nSamplesPerChannel * oFormat.nBlockAlign;
+	oDescription.lpwfxFormat   = &oFormat;
+
+	void *pPcm = NULL;
+	DWORD uPcmBytes = 0;
+	if( FAILED( _poDS->CreateSoundBuffer( &oDescription, &pJob->poDSBuffer, NULL ) ) )
+	{
+		DEVPRINTF( "[ FAUDIO ] Error %u: CreateSoundBuffer() failed for stream '%s' (%u bytes) !!!\n", __LINE__, pJob->szName, oDescription.dwBufferBytes );
+		pJob->poDSBuffer = NULL;
+		free( pFile );
+		return FALSE;
+	}
+	if( FAILED( pJob->poDSBuffer->Lock( 0, 0, &pPcm, &uPcmBytes, NULL, NULL, DSBLOCK_ENTIREBUFFER ) ) || ( uPcmBytes < oDescription.dwBufferBytes ) )
+	{
+		DEVPRINTF( "[ FAUDIO ] Error %u: Lock() failed for stream '%s' !!!\n", __LINE__, pJob->szName );
+		free( pFile );
+		return FALSE;
+	}
+	const BOOL bDecoded = gcaudio_DecodeStream( pFile, uFileBytes, &pJob->oInfo, (s16 *)pPcm, &pJob->nCancel );
+	pJob->poDSBuffer->Unlock( pPcm, uPcmBytes, NULL, 0 );
+	free( pFile );
+	pJob->uBufferBytes = oDescription.dwBufferBytes;
+	pJob->uBlockAlign  = oFormat.nBlockAlign;
+	return bDecoded;
+}
+
+static DWORD WINAPI _StreamLoadThread( void *pParam )
+{
+	_StreamJob_t *pJob = (_StreamJob_t *)pParam;
+	const BOOL bOK = _LoadStream( pJob );
+	InterlockedExchange( &pJob->nResult, bOK ? 1 : -1 );
+	_ReleaseStreamJob( pJob );
+	InterlockedDecrement( &_nStreamJobsRunning );
 	return 0;
 }
 
-// Waits for the decode thread and unlocks the buffer. Returns TRUE if the stream decoded.
-static BOOL _FinishStreamDecode( _Stream_t *poStream )
+// Audio shutdown: streams still loading must finish with DirectSound before it goes away.
+static void _WaitForStreamLoads( void )
 {
-	if( poStream->hThread )
+	for( u32 uWaited = 0; ( 0 < InterlockedCompareExchange( &_nStreamJobsRunning, 0, 0 ) ) && ( uWaited < 5000 ); uWaited += 10 )
 	{
-		WaitForSingleObject( poStream->hThread, INFINITE );
-		CloseHandle( poStream->hThread );
-		poStream->hThread = NULL;
+		Sleep( 10 );
 	}
-	if( INVALID_HANDLE_VALUE != poStream->hFile )
-	{
-		CloseHandle( poStream->hFile );
-		poStream->hFile = INVALID_HANDLE_VALUE;
-	}
-	if( poStream->pPcm )
-	{
-		poStream->poDSBuffer->Unlock( poStream->pPcm, poStream->uPcmBytes, NULL, 0 );
-		poStream->pPcm = NULL;
-	}
-	return ( 1 == poStream->nDecodeResult );
 }
 
 static void _ApplyStreamMix( _Stream_t *poStream )
@@ -4264,12 +4333,20 @@ static void _StreamsWork( void )
 
 		if( FAUDIO_STREAM_STATE_CREATING == poStream->oeState )
 		{
-			if( 0 == poStream->nDecodeResult )
+			_StreamJob_t *pJob = poStream->pJob;
+			const LONG nResult = InterlockedCompareExchange( &pJob->nResult, 0, 0 );
+			if( 0 == nResult )
 			{
 				continue;
 			}
-			if( _FinishStreamDecode( poStream ) )
+			if( 1 == nResult )
 			{
+				// the job is done with the buffer: take it
+				poStream->oInfo        = pJob->oInfo;
+				poStream->poDSBuffer   = pJob->poDSBuffer;
+				poStream->uBufferBytes = pJob->uBufferBytes;
+				poStream->uBlockAlign  = pJob->uBlockAlign;
+				pJob->poDSBuffer       = NULL;
 				DEVPRINTF( "[ FAUDIO ] Stream '%s' ready: %u channel(s), %u Hz, %.1f seconds.\n", poStream->szName, poStream->oInfo.nChannels, poStream->oInfo.nRate, poStream->oInfo.fSeconds );
 				poStream->oeState = FAUDIO_STREAM_STATE_STOPPED;
 				_ApplyStreamMix( poStream );
@@ -4279,6 +4356,8 @@ static void _StreamsWork( void )
 				DEVPRINTF( "[ FAUDIO ] Error %u: Could not read or decode stream '%s' !!!\n", __LINE__, poStream->szName );
 				poStream->oeState = FAUDIO_STREAM_STATE_ERROR;
 			}
+			poStream->pJob = NULL;
+			_ReleaseStreamJob( pJob );
 			continue;
 		}
 
@@ -4365,89 +4444,49 @@ CFAudioStream *CFAudioStream::Create( cchar *pszName, BOOL bWillBeUsedForMusic/*
 	}
 	_Stream_t *poStream = &( _aoStreams[ uIndex ] );
 
-	// Streams are loose files next to the master file, as on the GameCube.
-	char szPath[ MAX_PATH ];
-	_snprintf( szPath, sizeof( szPath ), "%s%s.wvs", Fang_ConfigDefs.pszFile_GameRootPathName ? Fang_ConfigDefs.pszFile_GameRootPathName : "", pszName );
-	szPath[ sizeof( szPath ) - 1 ] = 0;
-
-	HANDLE hFile = CreateFileA( szPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL );
-	if( INVALID_HANDLE_VALUE == hFile )
+	// Streams are loose files next to the master file, as on the GameCube. Only whether it exists is
+	// checked here (so a missing stream still fails at once, as the callers expect); the load runs on
+	// its own thread.
+	_StreamJob_t *pJob = (_StreamJob_t *)malloc( sizeof( _StreamJob_t ) );
+	if( ! pJob )
 	{
-		DEVPRINTF( "[ FAUDIO ] Error %u: Could not open stream \"%s\" !!!\n", __LINE__, szPath );
+		return NULL;
+	}
+	fang_MemZero( pJob, sizeof( *pJob ) );
+	_snprintf( pJob->szPath, sizeof( pJob->szPath ), "%s%s.wvs", Fang_ConfigDefs.pszFile_GameRootPathName ? Fang_ConfigDefs.pszFile_GameRootPathName : "", pszName );
+	pJob->szPath[ sizeof( pJob->szPath ) - 1 ] = 0;
+	_snprintf( pJob->szName, sizeof( pJob->szName ) - 1, "%s", pszName );
+	if( INVALID_FILE_ATTRIBUTES == GetFileAttributesA( pJob->szPath ) )
+	{
+		DEVPRINTF( "[ FAUDIO ] Error %u: Could not open stream \"%s\" !!!\n", __LINE__, pJob->szPath );
+		free( pJob );
 		return NULL;
 	}
 
-	u8 auHeader[ 96 ];
-	DWORD uRead = 0;
-	const DWORD uFileBytes = GetFileSize( hFile, NULL );
-	GCAudioStreamInfo_t oInfo;
-	if( ( INVALID_FILE_SIZE == uFileBytes ) ||
-		( ! ReadFile( hFile, auHeader, sizeof( auHeader ), &uRead, NULL ) ) || ( sizeof( auHeader ) != uRead ) ||
-		( ! gcaudio_ReadStreamHeader( auHeader, sizeof( auHeader ), uFileBytes, &oInfo ) ) ||
-		( INVALID_SET_FILE_POINTER == SetFilePointer( hFile, 0, NULL, FILE_BEGIN ) ) )
-	{
-		DEVPRINTF( "[ FAUDIO ] Error %u: \"%s\" is not a GameCube stream this port plays !!!\n", __LINE__, szPath );
-		CloseHandle( hFile );
-		return NULL;
-	}
-
-	WAVEFORMATEX oFormat;
-	fang_MemZero( &oFormat, sizeof( oFormat ) );
-	oFormat.wFormatTag      = WAVE_FORMAT_PCM;
-	oFormat.nChannels       = (WORD)oInfo.nChannels;
-	oFormat.nSamplesPerSec  = oInfo.nRate;
-	oFormat.wBitsPerSample  = 16;
-	oFormat.nBlockAlign     = (WORD)( 2 * oInfo.nChannels );
-	oFormat.nAvgBytesPerSec = oInfo.nRate * oFormat.nBlockAlign;
-
-	DSBUFFERDESC oDescription;
-	fang_MemZero( &oDescription, sizeof( oDescription ) );
-	oDescription.dwSize        = sizeof( oDescription );
-	oDescription.dwFlags       = ( DSBCAPS_CTRLFREQUENCY | DSBCAPS_CTRLPAN | DSBCAPS_CTRLVOLUME | DSBCAPS_GLOBALFOCUS | DSBCAPS_GETCURRENTPOSITION2 );
-	oDescription.dwBufferBytes = oInfo.nSamplesPerChannel * oFormat.nBlockAlign;
-	oDescription.lpwfxFormat   = &oFormat;
-
-	LPDIRECTSOUNDBUFFER poDSBuffer = NULL;
-	void *pPcm = NULL;
-	DWORD uPcmBytes = 0;
-	if( FAILED( _poDS->CreateSoundBuffer( &oDescription, &poDSBuffer, NULL ) ) )
-	{
-		DEVPRINTF( "[ FAUDIO ] Error %u: CreateSoundBuffer() failed for stream '%s' (%u bytes) !!!\n", __LINE__, pszName, oDescription.dwBufferBytes );
-		CloseHandle( hFile );
-		return NULL;
-	}
-	if( FAILED( poDSBuffer->Lock( 0, 0, &pPcm, &uPcmBytes, NULL, NULL, DSBLOCK_ENTIREBUFFER ) ) || ( uPcmBytes < oDescription.dwBufferBytes ) )
-	{
-		DEVPRINTF( "[ FAUDIO ] Error %u: Lock() failed for stream '%s' !!!\n", __LINE__, pszName );
-		FDX8_SAFE_RELEASE( poDSBuffer );
-		CloseHandle( hFile );
-		return NULL;
-	}
-
-	fang_MemZero( poStream, FANG_OFFSETOF( _Stream_t, hThread ) );
+	fang_MemZero( poStream, sizeof( *poStream ) );
 	poStream->oAudioStream.m_uData = (u32)poStream;
 	fclib_strcpy( poStream->szName, pszName );
 	poStream->bActive          = TRUE;
 	poStream->bTreatAsSfx      = ! bWillBeUsedForMusic;
 	poStream->oeState          = FAUDIO_STREAM_STATE_CREATING;
 	poStream->ePauseLevel      = FAUDIO_PAUSE_LEVEL_1;
-	poStream->oInfo            = oInfo;
-	poStream->poDSBuffer       = poDSBuffer;
-	poStream->uBufferBytes     = oDescription.dwBufferBytes;
-	poStream->uBlockAlign      = oFormat.nBlockAlign;
 	poStream->fVolume          = 1.0f;
 	poStream->fFrequencyFactor = 1.0f;
-	poStream->hFile            = hFile;
-	poStream->uFileBytes       = uFileBytes;
-	poStream->pPcm             = pPcm;
-	poStream->uPcmBytes        = uPcmBytes;
-	poStream->nDecodeResult    = 0;
-	poStream->nCancel          = 0;
-	poStream->hThread          = CreateThread( NULL, 0, _StreamDecodeThread, poStream, 0, NULL );
-	if( ! poStream->hThread )
+	poStream->pJob             = pJob;
+
+	pJob->nRefs = 2;
+	InterlockedIncrement( &_nStreamJobsRunning );
+	HANDLE hThread = CreateThread( NULL, 0, _StreamLoadThread, pJob, 0, NULL );
+	if( hThread )
 	{
-		DEVPRINTF( "[ FAUDIO ] Error %u: Could not start decoding stream '%s' !!!\n", __LINE__, pszName );
-		poStream->nDecodeResult = -1;
+		CloseHandle( hThread );
+	}
+	else
+	{
+		DEVPRINTF( "[ FAUDIO ] Error %u: Could not start loading stream '%s' !!!\n", __LINE__, pszName );
+		InterlockedDecrement( &_nStreamJobsRunning );
+		pJob->nRefs = 1;
+		pJob->nResult = -1;
 	}
 
 	return &( poStream->oAudioStream );
@@ -4467,8 +4506,10 @@ void CFAudioStream::Destroy( void )
 
 	if( FAUDIO_STREAM_STATE_CREATING == poStream->oeState )
 	{
-		InterlockedExchange( &poStream->nCancel, 1 );
-		_FinishStreamDecode( poStream );
+		// leave the load to its worker, which stops early and cleans up
+		InterlockedExchange( &poStream->pJob->nCancel, 1 );
+		_ReleaseStreamJob( poStream->pJob );
+		poStream->pJob    = NULL;
 		poStream->oeState = FAUDIO_STREAM_STATE_STOPPED;
 	}
 

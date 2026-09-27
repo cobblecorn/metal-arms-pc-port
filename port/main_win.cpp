@@ -16,6 +16,7 @@
 //   -dev-menu       boot into the development launcher (level picker) instead of the retail front end
 //   -console        open a console window showing the log (the game is a windowed app without one)
 //   -port-diag      log the port's periodic PORT-* diagnostics (also MA_PORT_DIAG=1)
+//   -no-vsync       present immediately instead of on the display's refresh (for measuring)
 //   -discord-app-id <id> show Discord Rich Presence under this Discord application instead of the
 //                   port's own (also MA_PORT_DISCORD_APP_ID); "off" turns Rich Presence off
 //   -discord-large-image <asset-key-or-url> rich-presence image from that application's assets
@@ -78,6 +79,7 @@ static bool _bNoAudio = false;
 static bool _bDebugInfo = false;
 static bool _bConsole = false;
 static bool _bPortDiag = false;
+static bool _bNoVsync = false;
 static char _szDiscordAppId[32];
 // The port's own Discord application, used unless -discord-app-id / MA_PORT_DISCORD_APP_ID names another.
 static const char _szDefaultDiscordAppId[] = "1553650972218363985";
@@ -93,6 +95,89 @@ static GameloopInitParm_t _GameInitParms;
 // Logging
 // ---------------------------------------------------------------------------
 
+// The game never writes the log file (or the console) itself: lines go into a buffer that a background
+// thread writes out every 50 ms. Writing and flushing each line from the game thread stalled frames for
+// up to a second whenever the disk was busy. Crash, report and exit paths write synchronously
+// (_LogFlush), so the last lines before a crash still reach the file.
+#define _LOG_BUFFER_MAX		(16u << 20)
+static SRWLOCK _LogBufLock = SRWLOCK_INIT;		// the pending text
+static SRWLOCK _LogWriteLock = SRWLOCK_INIT;	// one writer at a time, in order
+static char *_pLogBuf, *_pLogOut;
+static size_t _nLogBufUsed, _nLogBufCap, _nLogOutCap;
+static unsigned _nLogDropped;
+static HANDLE _hLogThread;
+static volatile LONG _nLogQuit;
+
+static void _LogAppend( const char *psz )
+{
+	const size_t nLen = strlen( psz );
+	AcquireSRWLockExclusive( &_LogBufLock );
+	if( _nLogBufUsed + nLen > _nLogBufCap )
+	{
+		size_t nCap = _nLogBufCap ? _nLogBufCap : 65536;
+		while( nCap < _nLogBufUsed + nLen && nCap < _LOG_BUFFER_MAX ) nCap *= 2;
+		char *pNew = ( nCap >= _nLogBufUsed + nLen ) ? (char *)realloc( _pLogBuf, nCap ) : NULL;
+		if( pNew ) { _pLogBuf = pNew; _nLogBufCap = nCap; }
+	}
+	if( _nLogBufUsed + nLen <= _nLogBufCap )
+	{
+		memcpy( _pLogBuf + _nLogBufUsed, psz, nLen );
+		_nLogBufUsed += nLen;
+	}
+	else
+	{
+		_nLogDropped++;
+	}
+	ReleaseSRWLockExclusive( &_LogBufLock );
+}
+
+// Writes out everything logged so far.
+static void _LogFlush( void )
+{
+	AcquireSRWLockExclusive( &_LogWriteLock );
+	AcquireSRWLockExclusive( &_LogBufLock );
+	size_t nLen = _nLogBufUsed;
+	const unsigned nDropped = _nLogDropped;
+	_nLogDropped = 0;
+	if( nLen > _nLogOutCap )
+	{
+		char *pNew = (char *)realloc( _pLogOut, nLen );
+		if( pNew ) { _pLogOut = pNew; _nLogOutCap = nLen; }
+	}
+	const bool bCopied = nLen <= _nLogOutCap;
+	if( bCopied )
+	{
+		if( nLen ) memcpy( _pLogOut, _pLogBuf, nLen );
+		_nLogBufUsed = 0;
+		ReleaseSRWLockExclusive( &_LogBufLock );
+	}
+	// (out of memory for the copy: write straight from the buffer, holding it)
+	const char *pText = bCopied ? _pLogOut : _pLogBuf;
+	if( nLen )
+	{
+		fwrite( pText, 1, nLen, stdout );
+		if( _pLog ) fwrite( pText, 1, nLen, _pLog );
+	}
+	if( !bCopied )
+	{
+		_nLogBufUsed = 0;
+		ReleaseSRWLockExclusive( &_LogBufLock );
+	}
+	if( nDropped && _pLog ) fprintf( _pLog, "(log: %u lines dropped, the log buffer was full)\n", nDropped );
+	if( ( nLen || nDropped ) && _pLog ) fflush( _pLog );
+	ReleaseSRWLockExclusive( &_LogWriteLock );
+}
+
+static DWORD WINAPI _LogWriter( void * )
+{
+	while( !InterlockedCompareExchange( &_nLogQuit, 0, 0 ) )
+	{
+		Sleep( 50 );
+		_LogFlush();
+	}
+	return 0;
+}
+
 static void _LogV( const char *pszFormat, va_list Args )
 {
 	char szBuf[2048];
@@ -100,12 +185,7 @@ static void _LogV( const char *pszFormat, va_list Args )
 	szBuf[sizeof(szBuf) - 1] = 0;
 
 	OutputDebugStringA( szBuf );
-	fputs( szBuf, stdout );
-	if( _pLog )
-	{
-		fputs( szBuf, _pLog );
-		fflush( _pLog );
-	}
+	_LogAppend( szBuf );
 }
 
 static void _Log( const char *pszFormat, ... )
@@ -181,6 +261,115 @@ static void _LogStack( CONTEXT Ctx, int nMaxFrames )
 	}
 }
 
+// Log already captured code addresses, symbolized.
+static void _LogAddresses( const DWORD *panAddr, int nAddr )
+{
+	HANDLE hProcess = GetCurrentProcess();
+	static bool bSymInit = false;
+	if( !bSymInit )
+	{
+		SymSetOptions( SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS );
+		SymInitialize( hProcess, NULL, TRUE );
+		bSymInit = true;
+	}
+	for( int i = 0; i < nAddr; i++ )
+	{
+		char aSymBuf[sizeof(SYMBOL_INFO) + 256];
+		SYMBOL_INFO *pSym = (SYMBOL_INFO *)aSymBuf;
+		memset( pSym, 0, sizeof(aSymBuf) );
+		pSym->SizeOfStruct = sizeof(SYMBOL_INFO);
+		pSym->MaxNameLen = 255;
+		DWORD64 nDisp64 = 0;
+		DWORD nDisp = 0;
+		IMAGEHLP_LINE64 Line;
+		memset( &Line, 0, sizeof(Line) );
+		Line.SizeOfStruct = sizeof(Line);
+		const bool bSym = !!SymFromAddr( hProcess, panAddr[i], &nDisp64, pSym );
+		const bool bLine = !!SymGetLineFromAddr64( hProcess, panAddr[i], &nDisp, &Line );
+		if( bSym && bLine )	_Log( "    #%d 0x%08x %s  (%s:%lu)\n", i, (unsigned)panAddr[i], pSym->Name, Line.FileName, Line.LineNumber );
+		else if( bSym )		_Log( "    #%d 0x%08x %s\n", i, (unsigned)panAddr[i], pSym->Name );
+		else				_Log( "    #%d 0x%08x\n", i, (unsigned)panAddr[i] );
+	}
+}
+
+// -port-diag: when a frame stalls for over 100 ms (MA_PORT_STALL_MS), log where the game thread is. The thread is
+// suspended only while its return addresses are copied off its frame-pointer chain (no allocation or
+// locks while it is stopped: it might hold them); the symbols are looked up after it resumes. Frame
+// pointers are only reliable in the Debug build. The engine stops drawing while its window is inactive,
+// so stalls are only sampled while it is active.
+extern volatile LONG FVid_nPortSwapTick, FVid_nPortGameThreadId;
+
+static int _CopyFrameChain( DWORD nEip, DWORD nEbp, DWORD *panAddr, int nMax )
+{
+	int nAddr = 0;
+	panAddr[nAddr++] = nEip;
+	while( nAddr < nMax && nEbp )
+	{
+		DWORD nNext = 0, nRet = 0;
+		__try
+		{
+			nNext = ((const DWORD *)nEbp)[0];
+			nRet = ((const DWORD *)nEbp)[1];
+		}
+		__except( EXCEPTION_EXECUTE_HANDLER )
+		{
+			break;
+		}
+		if( !nRet || nNext <= nEbp ) break;
+		panAddr[nAddr++] = nRet;
+		nEbp = nNext;
+	}
+	return nAddr;
+}
+
+static DWORD WINAPI _StallWatchdog( void * )
+{
+	LONG nSampledTick = 0;
+	int nReports = 0;
+	// MA_PORT_STALL_MS lowers (or raises) the threshold to catch shorter hitches
+	char szStallMs[16];
+	DWORD nThresholdMs = 100;
+	if( GetEnvironmentVariableA( "MA_PORT_STALL_MS", szStallMs, sizeof(szStallMs) ) > 0 && atoi( szStallMs ) >= 20 )
+	{
+		nThresholdMs = (DWORD)atoi( szStallMs );
+	}
+	while( nReports < 50 )
+	{
+		Sleep( 10 );
+		const LONG nSwapTick = InterlockedCompareExchange( &FVid_nPortSwapTick, 0, 0 );
+		const DWORD nThreadId = (DWORD)InterlockedCompareExchange( &FVid_nPortGameThreadId, 0, 0 );
+		if( !nSwapTick || !nThreadId || nSwapTick == nSampledTick ) continue;
+		const DWORD nStall = GetTickCount() - (DWORD)nSwapTick;
+		if( nStall < nThresholdMs ) continue;
+		if( fvid_IsMinimized() ) continue;	// inactive: the engine stops drawing on purpose
+		nSampledTick = nSwapTick;
+
+		HANDLE hThread = OpenThread( THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, nThreadId );
+		if( !hThread ) continue;
+		DWORD anAddr[40];
+		int nAddr = 0;
+		if( SuspendThread( hThread ) != (DWORD)-1 )
+		{
+			CONTEXT Ctx;
+			memset( &Ctx, 0, sizeof(Ctx) );
+			Ctx.ContextFlags = CONTEXT_CONTROL;
+			if( GetThreadContext( hThread, &Ctx ) )
+			{
+				nAddr = _CopyFrameChain( Ctx.Eip, Ctx.Ebp, anAddr, 40 );
+			}
+			ResumeThread( hThread );
+		}
+		CloseHandle( hThread );
+		if( nAddr )
+		{
+			_Log( "PORT-STALL the game thread has not finished a frame for %lu ms; it is in:\n", nStall );
+			_LogAddresses( anAddr, nAddr );
+			nReports++;
+		}
+	}
+	return 0;
+}
+
 // Asserts and run-time checks continue after logging, so one firing every frame can flood
 // the log (each line is flushed) until the game appears frozen. Each distinct report is
 // logged for its first 10 occurrences, with a stack on the first, then at 100, 1000, ...
@@ -242,7 +431,7 @@ static int __cdecl _RTCErrorHandler( int nErrType, const char *pszFile, int nLin
 	{
 		_Log( "\n*** RUN-TIME CHECK FAILURE (type %d) at %s:%d [%s]:\n    %s\n", nErrType, pszFile ? pszFile : "?", nLine, pszModule ? pszModule : "?", szMsg );
 		_LogReportDetails( nCount );
-		if( _pLog ) fflush( _pLog );
+		_LogFlush();
 	}
 	ReleaseSRWLockExclusive( &_ReportLock );
 	return 0;	// 0 = continue running (like clicking "Ignore"); nonzero = break into a debugger
@@ -251,21 +440,21 @@ static int __cdecl _RTCErrorHandler( int nErrType, const char *pszFile, int nLin
 static void __cdecl _PurecallHandler( void )
 {
 	_Log( "\n*** PURE VIRTUAL FUNCTION CALL (R6025) - calling abort()\n" );
-	if( _pLog ) fflush( _pLog );
+	_LogFlush();
 	abort();
 }
 
 static void __cdecl _InvalidParameterHandler( const wchar_t *pszExpr, const wchar_t *pszFunc, const wchar_t *pszFile, unsigned int nLine, uintptr_t )
 {
 	_Log( "\n*** CRT INVALID PARAMETER at %ls:%u in %ls(%ls) - calling abort()\n", pszFile ? pszFile : L"?", nLine, pszFunc ? pszFunc : L"?", pszExpr ? pszExpr : L"?" );
-	if( _pLog ) fflush( _pLog );
+	_LogFlush();
 	abort();
 }
 
 static void __cdecl _SigAbortHandler( int )
 {
 	_Log( "\n*** abort() called\n" );
-	if( _pLog ) fflush( _pLog );
+	_LogFlush();
 }
 
 static int __cdecl _CrtReportHook( int nReportType, char *pszMessage, int *pnReturnValue )
@@ -281,7 +470,7 @@ static int __cdecl _CrtReportHook( int nReportType, char *pszMessage, int *pnRet
 	}
 	ReleaseSRWLockExclusive( &_ReportLock );
 
-	if( _pLog ) fflush( _pLog );
+	_LogFlush();
 	if( pnReturnValue ) *pnReturnValue = 0;
 	return TRUE;	// TRUE = we handled it; don't also show the CRT's own dialog
 }
@@ -329,7 +518,7 @@ static LONG WINAPI _CrashFilter( EXCEPTION_POINTERS *pEx )
 	_LogStack( Ctx, 40 );
 
 	fflush( stdout );
-	if( _pLog ) fflush( _pLog );
+	_LogFlush();
 	return EXCEPTION_EXECUTE_HANDLER;
 }
 
@@ -382,6 +571,7 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-debug-info" ) )				_bDebugInfo = true;
 		else if( !_stricmp( pszArg, "-console" ) )					_bConsole = true;
 		else if( !_stricmp( pszArg, "-port-diag" ) )				_bPortDiag = true;
+		else if( !_stricmp( pszArg, "-no-vsync" ) )					_bNoVsync = true;
 		else if( !_stricmp( pszArg, "-discord-app-id" ) && bHasValue )	strncpy( _szDiscordAppId, argv[++i], sizeof(_szDiscordAppId) - 1 );
 		else if( !_stricmp( pszArg, "-discord-large-image" ) && bHasValue ) strncpy( _szDiscordLargeImage, argv[++i], sizeof(_szDiscordLargeImage) - 1 );
 		else if( !_stricmp( pszArg, "-discord-large-text" ) && bHasValue ) strncpy( _szDiscordLargeText, argv[++i], sizeof(_szDiscordLargeText) - 1 );
@@ -547,6 +737,10 @@ int main( int argc, char **argv )
 	}
 	char szDiag[8];
 	Fang_bPortDiag = _bPortDiag || ( GetEnvironmentVariableA( "MA_PORT_DIAG", szDiag, sizeof(szDiag) ) > 0 && szDiag[0] == '1' );
+	if( Fang_bPortDiag )
+	{
+		CloseHandle( CreateThread( NULL, 0, _StallWatchdog, NULL, 0, NULL ) );
+	}
 	if( !_szDiscordAppId[0] )
 	{
 		GetEnvironmentVariableA( "MA_PORT_DISCORD_APP_ID", _szDiscordAppId, sizeof(_szDiscordAppId) );
@@ -581,6 +775,8 @@ int main( int argc, char **argv )
 	}
 
 	_pLog = fopen( _szLogFile, "w" );
+	_hLogThread = CreateThread( NULL, 0, _LogWriter, NULL, 0, NULL );
+	atexit( _LogFlush );	// early error returns and exit() still write the last lines
 
 	_Log( "Metal Arms port\n  data:   %s\n  master: %s\n  movies: %s\n", _szGameRoot, _szMasterFile, _szMovieDir );
 
@@ -663,7 +859,7 @@ int main( int argc, char **argv )
 		fang_Shutdown();
 		return 1;
 	}
-	Win.nSwapInterval = 1;										// vsync
+	Win.nSwapInterval = _bNoVsync ? 0 : 1;						// vsync unless -no-vsync
 	Win.fUnitFSAA = 0.0f;
 	Win.hInstance = GetModuleHandle( NULL );
 	Win.hWnd = 0;
@@ -693,6 +889,14 @@ int main( int argc, char **argv )
 	discord_Stop();
 	fang_Shutdown();
 
+	InterlockedExchange( &_nLogQuit, 1 );
+	if( _hLogThread )
+	{
+		WaitForSingleObject( _hLogThread, 2000 );
+		CloseHandle( _hLogThread );
+		_hLogThread = NULL;
+	}
+	_LogFlush();
 	if( _pLog ) fclose( _pLog );
 	return 0;
 }
