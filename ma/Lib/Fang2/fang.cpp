@@ -69,6 +69,9 @@
 
 
 FangConfigDef_t Fang_ConfigDefs;
+#if FANG_PLATFORM_WIN
+BOOL Fang_bPortDiag = FALSE;
+#endif
 
 
 Fang_LaunchType_e Fang_nLaunchType;

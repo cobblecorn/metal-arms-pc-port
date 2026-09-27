@@ -388,7 +388,7 @@ void CBotTalkInst::Work() {
 			case BOT_TALK_CSV_ACTION_TYPE_STREAM:
 			{
 				// It's a streamed audio clip.
-#if FANG_PLATFORM_WIN
+#if FANG_PLATFORM_WIN && !FANG_WINGC	// the GameCube data ships speech as .wvs streams, played below as on the consoles
 				if( pCurBTA->m_uData2 ) {
 					//causes a stutter, but atleast it works
 					cchar *pszWAVName = (cchar *)pCurBTA->m_uData2;
@@ -946,7 +946,7 @@ void CTalkInst::Work() {
 			case BOT_TALK_CSV_ACTION_TYPE_STREAM:
 			{
 				// It's a streamed audio clip.
-#if FANG_PLATFORM_WIN
+#if FANG_PLATFORM_WIN && !FANG_WINGC
 				if( pCurBTA->m_uData2 ) 
 				{
 					//causes a stutter, but atleast it works

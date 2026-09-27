@@ -319,6 +319,10 @@ static void _ReleaseCodec( void )
 //   DirectSound's own inverse-distance rolloff from 1 unit made anything a few feet away
 //   far too quiet (user report: quiet robot dialog, muffled gunfire).
 // - Streams use _GetVolume()'s curve, and stereo streams (music) a further 0.6.
+// - Sound effect volumes go to MusyX as MIDI volumes, which it turns into amplitude through its
+//   DLS table (main.dol 0x3de80c: entry i = (i/127)^2), so an effect's amplitude is the square of
+//   its volume, distance fade included. Without that, quietly authored and distant sounds (ambient
+//   loops, machinery) played far louder than the dialog and weapons the mix was balanced around.
 #define _GC_3D_VOLUME_SCALE		( 0.80f )
 #define _GC_3D_RADIUS_SCALE		( 1.25f )
 #define _GC_STEREO_STREAM_SCALE	( 0.6f )
@@ -3930,7 +3934,11 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 						fVolume *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? _GC_3D_VOLUME_SCALE : poVirtualEmitter->fDistanceGain;
 					}
 #endif
-					pDSBuffer->SetVolume( _anVolumes[ fmath_FloatToU32( _UNIQUE_FLOAT_VOL_LEVEL_INDICES * fVolume ) ] );					
+#if FANG_WINGC
+					pDSBuffer->SetVolume( _GainToDSVolume( fVolume * fVolume ) );
+#else
+					pDSBuffer->SetVolume( _anVolumes[ fmath_FloatToU32( _UNIQUE_FLOAT_VOL_LEVEL_INDICES * fVolume ) ] );
+#endif
 				}
 				
 				// Frequency.
@@ -4517,6 +4525,9 @@ void CFAudioStream::Play( u32 uLoops /* = 1 */ )
 	}
 
 	poStream->fSecondsPlayed = 0.0f;
+	if( Fang_bPortDiag ) {
+		DEVPRINTF( "PORT-SND stream '%s' vol=%.2f channels=%u music master=%.2f sfx master=%.2f\n", poStream->szName, poStream->fVolume, poStream->oInfo.nChannels, FAudio_fMasterMusicUnitVol, FAudio_fMasterSfxUnitVol );
+	}
 	if( uLoops )
 	{
 		poStream->bLooping       = ( 1 < uLoops );

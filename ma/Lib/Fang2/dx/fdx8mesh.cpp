@@ -610,7 +610,7 @@ BOOL CFMeshInst::DrawMaterialLight_P( FViewportPlanesMask_t nCrossesPlanesMask, 
 		{
 			// Port diagnostic: segment/bone bindings of the player mesh.
 			static u32 _nLoggedGlitch = 0;
-			if ( _nLoggedGlitch < 3 && fclib_stricmp( m_pMesh->szName, "grdggltch00" ) == 0 && nPass == 0 )
+			if ( Fang_bPortDiag && _nLoggedGlitch < 3 && fclib_stricmp( m_pMesh->szName, "grdggltch00" ) == 0 && nPass == 0 )
 			{
 				_nLoggedGlitch++;
 				FDX8MeshMaterial_t *pDXMat = (FDX8MeshMaterial_t *)pMaterial->pPlatformData;

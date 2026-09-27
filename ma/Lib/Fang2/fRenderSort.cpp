@@ -1636,7 +1636,7 @@ void frs_FlushRenderLists( void )
 				{
 					// Port diagnostic: non-world meshes drawn in one frame, with their world position.
 					extern u32 _nPortRSFrame;
-					if ( _nPortRSFrame == 900 )
+					if ( _nPortRSFrame == 900 && Fang_bPortDiag )
 					{
 						const CFVec3A &vPos = pEntry->pMeshInst->m_Xfm.m_MtxF.m_vPos;
 						DEVPRINTF( "PORT-RSMESH %s mtl=%u pos=(%.1f,%.1f,%.1f) flags=%08x\n", pEntry->pMeshInst->m_pMesh->szName,
@@ -1799,7 +1799,7 @@ void frs_FlushRenderLists( void )
 	{
 		// Port diagnostic: how many materials went through each pass.
 		extern u32 _nPortRSFrame;
-		if ( (++_nPortRSFrame % 600) == 1 )
+		if ( (++_nPortRSFrame % 600) == 1 && Fang_bPortDiag )
 		{
 			DEVPRINTF( "PORT-RS frame %u: flags=%08x lighting=%u surface=%u\n", _nPortRSFrame, (u32)FRS_bRenderFlags, (u32)nLightingMaterials, (u32)nSurfaceMaterials );
 		}

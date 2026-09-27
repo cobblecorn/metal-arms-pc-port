@@ -184,7 +184,7 @@ BOOL gamecam_InitSystem( void ) {
 	}
 #if FANG_WINGC
 	// Port diagnostic: the bot camera table read from the retail CSV.
-	for( i=0; i < 2 && i < nNumBots; i++ ) {
+	for( i=0; Fang_bPortDiag && i < 2 && i < nNumBots; i++ ) {
 		DEVPRINTF( "PORT-CAM bot %u: fov=%.3f/%.3f target=(%.2f,%.2f,%.2f) pos=(%.2f,%.2f,%.2f) scaleMP=%.2f lookupY=%.2f closest=%.2f (%u bots, %u fields)\n",
 			i, _paCamBotInfos[i].fHalfFOV, _paCamBotInfos[i].fHalfFOV_MP,
 			_paCamBotInfos[i].TargetPos_MS.x, _paCamBotInfos[i].TargetPos_MS.y, _paCamBotInfos[i].TargetPos_MS.z,
@@ -780,7 +780,7 @@ void gamecam_Work() {
 	{
 		// Port diagnostic: active camera type and world-space position.
 		static u32 _nFrame = 0;
-		if( (_nFrame++ % 240) == 60 ) {
+		if( (_nFrame++ % 240) == 60 && Fang_bPortDiag ) {
 			CFCamera *pCam = fcamera_GetCameraByIndex( _nActivePlayer );
 			const CFXfm *pXfm = pCam ? pCam->GetFinalXfm() : NULL;
 			DEVPRINTF( "PORT-CAMWORK player=%d type=%d debugmode=%d monitor=%d pos=(%.1f,%.1f,%.1f) fwd=(%.2f,%.2f,%.2f)\n",

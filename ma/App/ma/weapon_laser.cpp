@@ -35,6 +35,7 @@
 #include "ItemInst.h"
 #include "LaserBeam.h"
 #include "fsndfx.h"
+#include "fsound.h"
 #include "AI/AIEnviro.h"
 #include "EShield.h"
 #include "damage.h"
@@ -97,6 +98,10 @@ static BOOL _bUserPropsAvailable = FALSE;
 // Retail values without a slot in _UserProps_t (see _ReadRetailProperties).
 static f32 _aRetailTracerColor[CWeapon::EUK_COUNT_LASER][4];
 static cchar *_apszRetailMuzzleBone[CWeapon::EUK_COUNT_LASER];
+// Retail field 65: the firing sound group ("LaserFire"), resolved against the level's banks when a
+// laser is built.
+static cchar *_apszRetailFireGroup[CWeapon::EUK_COUNT_LASER];
+static CFSoundGroup *_apRetailFireGroup[CWeapon::EUK_COUNT_LASER];
 #endif
 
 // The source's third laser level is a continuous beam. The retail GameCube L3 fires
@@ -313,8 +318,8 @@ const FGameDataMap_t CWeaponLaser::m_aUserPropMapTable[] = {
 //   0 mesh, 1 muzzle bone, 2 tracer texture, 3-6 tracer RGBA, 7 clip (reserve is forced
 //   infinite), 8 rounds/sec, 10/11/12/13 tracer speed/length/width/max range,
 //   14 max and 46 min target-assist distance, 43 weapon cull distance, 44 recoil.
-// 59 and 71 are the damage profile and decal by vocabulary type. The charged burst
-// (fields 19-28, 60-64, 67-72) and particle/sound-group effects are not implemented.
+// 59 and 71 are the damage profile and decal by vocabulary type; 65 is the firing sound group. The
+// charged burst (fields 19-28, 60-64, 66-72) and the particle effects are not implemented.
 BOOL CWeaponLaser::_ReadRetailProperties( void ) {
 	// Retail source field for each entry of m_aUserPropVocab, or -1 if it has none.
 	static const s8 anRetailField[] = {
@@ -369,6 +374,7 @@ BOOL CWeaponLaser::_ReadRetailProperties( void ) {
 		// field 39 seconds, add field 40 of a full unit) used to derive the recharge rate.
 		f32 fRefillSecs = 0.0f, fRefillUnit = 0.0f;
 		bOK = fgamedata_GetFieldFromTable( hTable, 1, &RetailString, &_apszRetailMuzzleBone[nLevel] ) &&
+			fgamedata_GetFieldFromTable( hTable, 65, &RetailString, &_apszRetailFireGroup[nLevel] ) &&
 			fgamedata_GetFieldFromTable( hTable, 39, &RetailFloat, &fRefillSecs ) &&
 			fgamedata_GetFieldFromTable( hTable, 40, &RetailFloat, &fRefillUnit );
 		for( u32 i=0; bOK && i<4; ++i ) {
@@ -575,6 +581,17 @@ BOOL CWeaponLaser::ClassHierarchyBuild( void ) {
 		// Parent class could not be built...
 		goto _ExitWithError;
 	}
+
+#if FANG_WINGC
+	// The firing sound is a retail sound group; the level's sound banks are loaded by now.
+	for( i=0; i<EUK_COUNT_LASER; ++i ) {
+		_apRetailFireGroup[i] = NULL;
+		if( _apszRetailFireGroup[i] && fclib_stricmp( _apszRetailFireGroup[i], "None" ) ) {
+			_apRetailFireGroup[i] = CFSoundGroup::RegisterGroup( _apszRetailFireGroup[i] );
+		}
+		m_aUserProps[i].hFiringSound = _apRetailFireGroup[i] ? CFSoundGroup::GetRandomSoundHandle( _apRetailFireGroup[i] ) : FSNDFX_INVALID_FX_HANDLE;
+	}
+#endif
 
 	// Set defaults...
 	_ClearDataMembers();
@@ -1196,6 +1213,16 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 					tracer_NewTracer(m_hTracerGroup, &m_aoTracerDef[m_nUpgradeLevel], 0.2f, FALSE, FALSE, &CDamageForm::m_TempDamager);
 				}
 
+#if FANG_WINGC
+				if( _apRetailFireGroup[m_nUpgradeLevel] ) {
+					// the group carries the retail volume, pitch and radius for the shot
+					if( IsOwnedByPlayer() ) {
+						CFSoundGroup::PlaySound( _apRetailFireGroup[m_nUpgradeLevel], TRUE, &vecMuzzlePoint, GetOwner() ? GetOwner()->m_nPossessionPlayerIndex : -1 );
+					} else {
+						CFSoundGroup::PlaySound( _apRetailFireGroup[m_nUpgradeLevel], FALSE, &vecMuzzlePoint );
+					}
+				} else
+#endif
 				if ( IsOwnedByPlayer() )
 				{
 					fsndfx_Play2D( m_aUserProps[m_nUpgradeLevel].hFiringSound,

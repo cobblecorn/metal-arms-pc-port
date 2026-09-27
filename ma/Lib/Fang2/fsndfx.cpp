@@ -294,6 +294,35 @@ f32 fsndfx_GetUnitPlayVolume( FSndFx_FxHandle_t hHandle ) {
 	return pPlay->fUnitVolume;
 }
 
+#if FANG_WINGC
+// Port diagnostic (-port-diag): the first plays of each sound with its final volume, for mix work.
+static void _PortLogPlay( const FData_SFxBank_Seq_t *pSeq, cchar *pszKind, f32 fVolume, f32 fRadius ) {
+	static cchar *_apszSeen[512];
+	static u8 _anSeen[512];
+	static u32 _nSeen = 0;
+	if( !Fang_bPortDiag ) {
+		return;
+	}
+	u32 i;
+	for( i=0; i < _nSeen && _apszSeen[i] != pSeq->pszName; i++ ) {
+	}
+	if( i == _nSeen ) {
+		if( _nSeen >= 512 ) {
+			return;
+		}
+		_apszSeen[_nSeen] = pSeq->pszName;
+		_anSeen[_nSeen++] = 0;
+	}
+	if( _anSeen[i] < 3 ) {
+		_anSeen[i]++;
+		DEVPRINTF( "PORT-SND %s '%s' vol=%.2f radius=%.0f\n", pszKind, pSeq->pszName, fVolume, fRadius );
+	}
+}
+#define _PORT_LOG_PLAY( pSeq, pszKind, fVolume, fRadius )	_PortLogPlay( pSeq, pszKind, fVolume, fRadius )
+#else
+#define _PORT_LOG_PLAY( pSeq, pszKind, fVolume, fRadius )
+#endif
+
 BOOL fsndfx_Play2D( FSndFx_FxHandle_t hHandle,
 				    f32 fVolumeMultiplier/*=1.0f*/,
 					f32 fFreqMultiplier/*=1.0f*/,
@@ -324,6 +353,7 @@ BOOL fsndfx_Play2D( FSndFx_FxHandle_t hHandle,
 	FData_SFxBank_PlayCmd_t *pPlay = (FData_SFxBank_PlayCmd_t *)pSeq->paCmds[0].pCmdData;
 	FASSERT( pPlay );
 
+	_PORT_LOG_PLAY( pSeq, "2D", pPlay->fUnitVolume * fVolumeMultiplier, 0.0f );
 	if( CFAudioEmitter::Play2D( pPlay->WavHandle,
 								pPlay->fUnitVolume * fVolumeMultiplier,
 								nPriority,
@@ -370,6 +400,7 @@ BOOL fsndfx_Play3D( FSndFx_FxHandle_t hHandle,
 	FData_SFxBank_PlayCmd_t *pPlay = (FData_SFxBank_PlayCmd_t *)pSeq->paCmds[0].pCmdData;
 	FASSERT( pPlay );
 
+	_PORT_LOG_PLAY( pSeq, "3D", pPlay->fUnitVolume * fVolumeMultiplier, fOuterRadius );
 	if( CFAudioEmitter::Play3D( pPlay->WavHandle,
 								pPos_WS,
 								fOuterRadius,
@@ -433,6 +464,7 @@ CFAudioEmitter *fsndfx_AllocNPlay2DSound( FSndFx_FxHandle_t hHandle,
 
 	// set the emitters parameters
 	pEmitter->SetVolume( pPlay->fUnitVolume * fVolumeMultiplier );
+	_PORT_LOG_PLAY( pSeq, "emitter", pPlay->fUnitVolume * fVolumeMultiplier, 0.0f );
 	pEmitter->SetDuckable( bDuckable );
 	pEmitter->SetPan( fPanLeftRight );
 	pEmitter->SetFrequencyFactor( pPlay->fFrequencyFactor * fFreqMultiplier );
@@ -495,6 +527,7 @@ CFAudioEmitter *fsndfx_AllocNPlay3DSound( FSndFx_FxHandle_t hHandle,
 
 	// set the emitters parameters
 	pEmitter->SetVolume( pPlay->fUnitVolume * fVolumeMultiplier );
+	_PORT_LOG_PLAY( pSeq, "emitter", pPlay->fUnitVolume * fVolumeMultiplier, 0.0f );
 	pEmitter->SetDuckable( bDuckable );
 	pEmitter->SetFrequencyFactor( pPlay->fFrequencyFactor * fFreqMultiplier );
 	

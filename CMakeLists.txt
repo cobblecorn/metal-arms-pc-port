@@ -102,6 +102,8 @@ target_link_libraries(ma_game PUBLIC fang2)
 # ---------------------------------------------------------------------------
 add_executable(ma_port port/main_win.cpp port/screenshot_port.cpp)
 ma_common_settings(ma_port)
+# A windowed app: no console window (main_win.cpp's -console opens one). main() stays the entry point.
+target_link_options(ma_port PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
 target_include_directories(ma_port PRIVATE ${MA_ROOT}/App/ma ${MA_ROOT}/App/ma/win)
 target_link_libraries(ma_port PRIVATE
     ma_game fang2 smallamx

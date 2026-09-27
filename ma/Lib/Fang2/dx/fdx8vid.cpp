@@ -767,7 +767,30 @@ BOOL fvid_Swap( void )
 
 	frenderer_PopAll();
 
-	if( _bBeginEndCalled ) 
+#if FANG_WINGC
+	if( Fang_bPortDiag )
+	{
+		// Port diagnostic: frames that took far longer than the running average.
+		static LARGE_INTEGER _nFreq, _nLast;
+		static f32 _fAvgMs = 16.0f;
+		static u32 _nFrames = 0;
+		LARGE_INTEGER nNow;
+		QueryPerformanceCounter( &nNow );
+		if( !_nFreq.QuadPart ) QueryPerformanceFrequency( &_nFreq );
+		if( _nLast.QuadPart )
+		{
+			f32 fMs = (f32)( (f64)( nNow.QuadPart - _nLast.QuadPart ) * 1000.0 / (f64)_nFreq.QuadPart );
+			if( ++_nFrames > 60 && fMs > 40.0f && fMs > 2.5f * _fAvgMs )
+			{
+				DEVPRINTF( "PORT-HITCH frame %u: %.1f ms (average %.1f ms), t=%.2f s\n", FVid_nFrameCounter, fMs, _fAvgMs, (f32)( (f64)nNow.QuadPart / (f64)_nFreq.QuadPart ) );
+			}
+			_fAvgMs += ( fMs - _fAvgMs ) * 0.05f;
+		}
+		_nLast = nNow;
+	}
+#endif
+
+	if( _bBeginEndCalled )
 	{
 		_bBeginEndCalled = FALSE;
 		return _SwapBuffers();

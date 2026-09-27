@@ -395,7 +395,7 @@ void CCamBot::Work_3rdPerson( BOOL bCollide ) {
 	{
 		// Port diagnostic: where the bot camera wants to be.
 		static u32 _nCalls = 0;
-		if( (_nCalls++ % 240) == 30 ) {
+		if( (_nCalls++ % 240) == 30 && Fang_bPortDiag ) {
 			DEVPRINTF( "PORT-CAMBOT bot=(%.1f,%.1f,%.1f) lookat=(%.1f,%.1f,%.1f) desired=(%.1f,%.1f,%.1f) yaw=%.2f pitch=%.2f frontXZ=(%.2f,%.2f)\n",
 				m_pBot->MtxToWorld()->m_vPos.x, m_pBot->MtxToWorld()->m_vPos.y, m_pBot->MtxToWorld()->m_vPos.z,
 				m_LookAtPoint_WS.x, m_LookAtPoint_WS.y, m_LookAtPoint_WS.z,
@@ -621,7 +621,7 @@ void CCamBot::Work_3rdPerson( BOOL bCollide ) {
 #if FANG_WINGC
 	{
 		static u32 _nCalls = 0;
-		if( (_nCalls++ % 240) == 30 ) {
+		if( (_nCalls++ % 240) == 30 && Fang_bPortDiag ) {
 			DEVPRINTF( "PORT-CAMBOT final=(%.1f,%.1f,%.1f) min=(%.1f,%.1f,%.1f) unitDist=%.3f collide=%d impacts=%u\n",
 				vCamPos_WS.x, vCamPos_WS.y, vCamPos_WS.z, m_MinCamPos_WS.x, m_MinCamPos_WS.y, m_MinCamPos_WS.z,
 				m_fLastUnitDist, (int)bCollide, (u32)FColl_nImpactCount );

@@ -872,7 +872,7 @@ void CPlayer::Work( void ) {
 					// every 120 frames, to track movement/falling in logs.
 					{
 						static u32 nLogged = 0, nFrame = 0;
-						if( nLogged < 12 || (++nFrame % 120) == 0 ) {
+						if( Fang_bPortDiag && (nLogged < 12 || (++nFrame % 120) == 0) ) {
 	DEVPRINTF( "PORT-DIAG player pos=(%.1f,%.1f,%.1f) pCenterVol=%p volID=%d intersects=%u out=%d\n",
 								pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.x, pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.y, pPlayerBot->m_pWorldMesh->m_Xfm.m_MtxF.m_vPos.z,
 								pCenterVol, pCenterVol ? pCenterVol->nVolumeID : -1,

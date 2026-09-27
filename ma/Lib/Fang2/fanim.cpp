@@ -2381,7 +2381,7 @@ void CFAnimCombiner::ComputeMtxPalette( BOOL bAllowOffscreenOptimizations/*=FALS
 	{
 		// Port diagnostic: does the palette end up in world space for the player mesh?
 		static u32 _nLogged = 0;
-		if ( _nLogged < 4 && fclib_stricmp( m_pMeshInst->m_pMesh->szName, "grdggltch00" ) == 0 )
+		if ( Fang_bPortDiag && _nLogged < 4 && fclib_stricmp( m_pMeshInst->m_pMesh->szName, "grdggltch00" ) == 0 )
 		{
 			_nLogged++;
 			FMesh_t *pMesh = m_pMeshInst->m_pMesh;

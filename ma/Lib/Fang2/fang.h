@@ -561,6 +561,11 @@ typedef struct {
 
 
 extern FangConfigDef_t Fang_ConfigDefs;
+#if FANG_PLATFORM_WIN
+// PC port: the periodic PORT-* diagnostic log lines, off unless the port's -port-diag option (or
+// MA_PORT_DIAG=1) turns them on. Writing them every few seconds cost frame time.
+extern BOOL Fang_bPortDiag;
+#endif
 
 extern void fang_Init( void );
 extern BOOL fang_Startup( void );
