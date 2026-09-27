@@ -5893,6 +5893,7 @@ void CBotGlitch::_DebugAnimData( void ) {
 
 void CBotGlitch::DrawText( void )
 {
+	const u32 nPromptPort = m_nPossessionPlayerIndex >= 0 ? Player_aPlayer[m_nPossessionPlayerIndex].m_nControllerIndex : 0;
 	// don't draw text while letterbox is up
 	if( letterbox_GetUnitSlideOnAmount() != 0.0f ) {
 		return;
@@ -5903,7 +5904,7 @@ void CBotGlitch::DrawText( void )
 	cwchar* wszFormat = (CPlayer::m_nPlayerCount > 1) ? L"~f9~C92929299~w0~aC~o1%ls" : L"~f1~C92929299~w0~aC~s1.00%ls";
 
 	if( IsPlayerBot() && m_pDrivingVehicle && m_pDrivingVehicle->IsUpsideDown() && !m_pDrivingVehicle->IsDeadOrDying() ) {
-		ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER ] );
+		ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER, nPromptPort ) );
 		return;
 	}
 
@@ -5920,13 +5921,13 @@ void CBotGlitch::DrawText( void )
 
 		if( pVehicleNearby && m_pDrivingVehicle == NULL && !pVehicleNearby->IsDeadOrDying() ) {
 			if( pVehicleNearby->IsUpsideDown() ) {
-				ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER ] );
+				ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER, nPromptPort ) );
 			} else if( !pVehicleNearby->IsPlayerDriveable() ) {
 				ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_VEHICLE_IS_LOCKED ] );
 			} else if( pVehicleNearby->CanOccupyStation( this, CVehicle::STATION_DRIVER ) == CVehicle::STATION_STATUS_EMPTY ) {
-				ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE ] );
+				ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE, nPromptPort ) );
 			} else if( pVehicleNearby->CanOccupyStation( this, CVehicle::STATION_GUNNER ) == CVehicle::STATION_STATUS_EMPTY ) {
-				ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN ] );
+				ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN, nPromptPort ) );
 			}
 		} else if( (m_pActionableEntityNearby->TypeBits() & ENTITY_BIT_BOT) && ((CBot*)m_pActionableEntityNearby)->IsDeadOrDying() ) {
 			//do nothing
@@ -5935,14 +5936,14 @@ void CBotGlitch::DrawText( void )
 				CBotSiteWeapon* pSiteWeapon = (CBotSiteWeapon*)m_pActionableEntityNearby;
 				CBot* pObstructor = pSiteWeapon->IsStationObstructed();
 				if ( ((pObstructor == NULL) || (pObstructor == this)) && pSiteWeapon->CanOccupyStation(this) ) {
-					ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN ] );
+					ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN, nPromptPort ) );
 				}
 		} else if( m_pActionableEntityNearby->TypeBits() & ENTITY_BIT_BOTAAGUN ) {
 			CBotAAGun *pAAGun = (CBotAAGun *)m_pActionableEntityNearby;
 			if( pAAGun->CanOccupyStation( this, CVehicle::STATION_GUNNER ) == CVehicle::STATION_STATUS_EMPTY ) {
 				// gun is not being used
 				if( pAAGun->ShouldEnterTextBeDisplayed() ) {
-                    ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN ] );
+                    ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN, nPromptPort ) );
 				}
 			}
 		} else if ( m_pActionableEntityNearby->IsActionable())	{
@@ -5961,14 +5962,14 @@ void CBotGlitch::DrawText( void )
 						{
 							if (MtxToWorld()->m_vFront.Dot(DeltaToBot) > 0.9f)
 							{
-								ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_RECRUIT_BUDDY ]);   //findfix: put this in gamephrases and then email keith
+								ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_RECRUIT_BUDDY, nPromptPort ));   //findfix: put this in gamephrases and then email keith
 							}
 						}
 						else if (m_pActionableEntityNearby->AIBrain()->GetLeader() == this->AIBrain())
 						{
 							if (MtxToWorld()->m_vFront.Dot(DeltaToBot) > 0.9f)
 							{
-								ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_DISCHARGE_BUDDY] ); //findfix: put this in gamephrases and then email keith
+								ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_DISCHARGE_BUDDY, nPromptPort ) ); //findfix: put this in gamephrases and then email keith
 							}
 						}
 					}
@@ -5997,14 +5998,14 @@ void CBotGlitch::DrawText( void )
 
 					if (bCanUse)
 					{
-						ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_USE_SWITCH] );  //findfix: put this in gamephrases and then email keith
+						ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_USE_SWITCH, nPromptPort ) );  //findfix: put this in gamephrases and then email keith
 					}
 				}
 			}
 			else if (m_pActionableEntityNearby->TypeBitsRecurseParents() & ENTITY_BIT_DETPACKDROP)
 			{
 				if (m_pInventory->m_aoItems[INVPOS_DETPACK].m_nClipAmmo > 0)
-					ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_USE_DET_PACK] );	 
+					ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_USE_DET_PACK, nPromptPort ) );
 				else
 					ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_DETPACK_REQUIRED] );	   
 			}
@@ -6012,7 +6013,7 @@ void CBotGlitch::DrawText( void )
 			{
 				if (bartersystem_IsBarterBot(m_pActionableEntityNearby))
 				{
-					ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_SHOP ] );	   
+					ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_SHOP, nPromptPort ) );
 				}
 			}
 		}

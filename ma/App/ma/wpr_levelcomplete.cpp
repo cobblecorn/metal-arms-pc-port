@@ -454,7 +454,7 @@ static BOOL _SP_Work( void ) {
 		break;
 
 	case _STATE_WAITING_FOR_BUTTON:
-		nStringLen = fclib_wcslen( Game_apwszPhrases[GAMEPHRASE_PRESS_A_TO_CONTINUE] );
+		nStringLen = fclib_wcslen( game_GetPromptPhrase( GAMEPHRASE_PRESS_A_TO_CONTINUE, _nControllerIndex ) );
 
 		_pScreenInfo->nLettersToPrint = _HowManyLettersShouldAppear( nStringLen, _pScreenInfo->fTimer, _CHARACTERS_PER_SECOND );
 		if( _pScreenInfo->nLettersToPrint >= nStringLen && _pScreenInfo->fTimer > 4.0f ) {
@@ -613,7 +613,7 @@ static void _PrintPressButton( f32 fX, f32 fY, s32 nCharsToPrint ) {
 		wchar wszTemp[128];
 
 		FMATH_CLAMPMAX( nCharsToPrint, 128 );
-		fclib_wcsncpy( wszTemp, Game_apwszPhrases[GAMEPHRASE_PRESS_A_TO_CONTINUE], nCharsToPrint );
+		fclib_wcsncpy( wszTemp, game_GetPromptPhrase( GAMEPHRASE_PRESS_A_TO_CONTINUE, _nControllerIndex ), nCharsToPrint );
 		wszTemp[nCharsToPrint] = 0;
 	
 		// print only a portion of the text
@@ -626,7 +626,7 @@ static void _PrintPressButton( f32 fX, f32 fY, s32 nCharsToPrint ) {
 		ftext_Printf( fX, fY,
 			L"~fZ~C%ls~w0~al~s1.20%ls",
 			WprDataTypes_pwszPressStartColor,
-			Game_apwszPhrases[GAMEPHRASE_PRESS_A_TO_CONTINUE] );
+			game_GetPromptPhrase( GAMEPHRASE_PRESS_A_TO_CONTINUE, _nControllerIndex ) );
 	}
 }
 
@@ -759,7 +759,7 @@ static BOOL _SellSheet_Work( void ) {
 
 	gamepad_Sample();
 
-	u32 nStringLen = fclib_wcslen( Game_apwszPhrases[GAMEPHRASE_PRESS_A_TO_CONTINUE] );
+	u32 nStringLen = fclib_wcslen( game_GetPromptPhrase( GAMEPHRASE_PRESS_A_TO_CONTINUE, _nControllerIndex ) );
 
 	_pScreenInfo->nLettersToPrint = _HowManyLettersShouldAppear( nStringLen, _pScreenInfo->fTimer, _CHARACTERS_PER_SECOND );
 	if( _pScreenInfo->nLettersToPrint >= nStringLen && _pScreenInfo->fTimer > 4.0f ) {

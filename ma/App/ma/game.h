@@ -346,6 +346,9 @@ extern BOOL game_LoadLocalizedPhraseTableAndFonts( void );
 // keyboard/mouse port used last. Called every input frame.
 extern void game_PcPromptWork( void );
 #endif
+// Gets a control phrase in the prompt style used by the specified controller port. On non-PC
+// builds, or for phrases without a PC prompt variant, this returns the localized phrase table entry.
+extern cwchar *game_GetPromptPhrase( u32 nPhrase, u32 nPort );
 // This loads the rest of the localized assets and systems... This call takes longer but
 // a localized loading screen is presented to the user at this time so it's not a big deal...
 extern BOOL game_InitLocalizedResources( void );

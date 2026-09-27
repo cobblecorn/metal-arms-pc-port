@@ -60,9 +60,10 @@ extern const GameInitInfo_t *wpr_system_CreateSimpleMultiPlayerGameInit( u32 nNu
 extern BOOL wpr_system_InitControllerConfigData( FGameDataFileHandle_t hFile, WprSystem_ControllerConfigData_t *pData,
 												CFStringTable &rStringTable );
 extern void wpr_system_ControllerConfig_DrawFDraw( Wpr_DataTypes_ControllerConfig_t *pConfig,
-												  CFTexInst *pTexInst,
-												  BOOL bDrawArrows,
-												  f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes );
+												   CFTexInst *pTexInst,
+												   BOOL bDrawArrows,
+											   f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes,
+											   u32 nControllerPort );
 extern void wpr_system_ControllerConfig_DrawOrtho( Wpr_DataTypes_ScreenData_t *pScreen, Wpr_DataTypes_ControllerConfig_t *pConfig,
 												  cwchar *pwszConfigString, u32 nCurrentConfigIndex,
 												  f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes );

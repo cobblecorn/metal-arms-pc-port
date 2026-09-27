@@ -2074,6 +2074,8 @@ void CEConsole::AppendTrackerSkipList(u32& nTrackerSkipListCount, CFWorldTracker
 void CEConsole::DrawText( CBotGlitch *pBotGlitch  )
 {
 	CEConsole *pConsole;
+	const s32 nPossessionPlayerIndex = pBotGlitch->m_nPossessionPlayerIndex;
+	const u32 nPromptPort = nPossessionPlayerIndex >= 0 ? Player_aPlayer[nPossessionPlayerIndex].m_nControllerIndex : 0;
 
 	cwchar* wszFormat;
 	if( CPlayer::m_nPlayerCount > 1 ) {
@@ -2098,7 +2100,7 @@ void CEConsole::DrawText( CBotGlitch *pBotGlitch  )
 						((pConsole->m_pControlBot == NULL || pConsole->m_pControlBot->IsDeadOrDying()) && pConsole->m_pBotDispenser == NULL) ) {
 						ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_CONSOLE_OUT_OF_ORDER ] );
 					} else {
-						ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_USE_CONSOLE ] );
+						ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_USE_CONSOLE, nPromptPort ) );
 					}
 				} else if( uRemainingChips == 1 ) {
 					ftext_Printf( 0.5f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_ONE_CHIP_REQUIRED ] );
@@ -2110,7 +2112,7 @@ void CEConsole::DrawText( CBotGlitch *pBotGlitch  )
 
 				if( uRemainingChips > 0 ) {
 					if( pBotGlitch->m_pInventory->m_aoItems[INVPOS_CHIP].m_nClipAmmo > 0 ) {
-						ftext_Printf( 0.5f, 0.62f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_INSERT_CHIP ] );
+						ftext_Printf( 0.5f, 0.62f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_INSERT_CHIP, nPromptPort ) );
 					} else {
 						ftext_Printf( 0.5f, 0.62f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_NO_CHIPS_TO_INSERT ] );
 					}

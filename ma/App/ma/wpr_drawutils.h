@@ -97,8 +97,9 @@ extern void wpr_drawutils_DrawTextureToScreen( BOOL bColor,
 											  f32 fHeight,
 											  f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes );
 extern void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
-											u32 nDrawButtonMask,
-											f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes );
+										  u32 nDrawButtonMask,
+										 f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes,
+										 u32 nControllerPort );
 extern void wpr_drawutils_DrawPhrase( f32 fX, f32 fY,
 									 cwchar *pszColor,
 									 cwchar *pszAlignmentCode,

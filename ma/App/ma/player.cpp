@@ -730,7 +730,7 @@ void CPlayer::DrawText( void ) {
 		FTextArea_t *pTextArea = ftext_GetAttributes( m_hTextBoxRestart );
 		pTextArea->oColorForeground.Set( fUnitVal, fUnitVal, 0.8f, 1.0f );
 
-		ftext_PrintString( m_hTextBoxRestart, Game_apwszPhrases[GAMEPHRASE_PRESS_A_TO_CONTINUE] );
+		ftext_PrintString( m_hTextBoxRestart, game_GetPromptPhrase( GAMEPHRASE_PRESS_A_TO_CONTINUE, m_nControllerIndex ) );
 	}
 }
 
