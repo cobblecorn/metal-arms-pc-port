@@ -91,50 +91,102 @@ Working (verified by runs or by the user, see `PORTING.md` for detail):
 - Boot, the GameCube master file, and conversion of every retail asset type the game loads: tables,
   textures (GX formats), static/skinned/streamed meshes and kDOP collision, worlds and visibility,
   animations, AI graphs, particles (v8), fonts, camera animations, scripts (all 393 bind every native).
-- All 44 campaign worlds swept with `-mission`; Night Sneak (`wecdsneak01`) is the interactive
-  baseline. Rendering with textures, lighting and HUD; world objects get their baked vertex lighting
-  (GameCube color streams remapped onto the converted vertex buffers, `gcmesh.cpp`/`fdx8mesh.cpp`).
-- Keyboard/mouse (raw mouse look, auto capture) and XInput; mouse aiming for vehicles and manned guns.
-- Audio: sound effects (MusyX banks decoded to PCM), music and speech streams (DSP-ADPCM), with the
-  GameCube mix (MusyX distance model, stream gains); 160 virtual emitters.
-- Bink movies; checkpoints (1 MB streams on Windows).
-- Many retail schema changes mapped from `main.dol` (weapons, bots, goodies, materials, debris,
-  sentries, AA gun, scout, corrosive boss, Spy vs Spy).
+- All 44 campaign worlds swept with `-mission`. Rendering with textures, lighting and HUD; world objects
+  get their baked vertex lighting (GameCube color streams remapped onto the converted vertex buffers).
+- The retail front end boots (language → logo movies → main menu → campaign/multiplayer setup) and is
+  **mouse-driven** (see below). Keyboard/mouse (raw mouse look, auto capture) and XInput; mouse aiming
+  for vehicles and manned guns.
+- Audio: sound effects (MusyX banks → PCM), music/speech streams (DSP-ADPCM), and **the GameCube volume
+  chain** (below). User confirmed 2026-09-26 on the first mission (`wedmmines01`): droids now talk, the
+  laser is audible, music no longer drowns dialog ("still slightly loud" was before the 2D fix below).
+- Bink movies; checkpoints (1 MB streams on Windows). Saves in `%APPDATA%\Metal Arms PC Port\Saves`.
+- Many retail schema changes mapped from `main.dol`.
 
-Changed from a cloud session (details in `CLOUD_SESSION_LOG.md`). Built with MSVC and run on
-2026-09-26: it compiles cleanly; `wewchold_01`'s failed load now exits cleanly (it crashed before);
-the save directory is logged at startup; `wecdsneak01`, `webccolis04` (script errors 6 -> 0),
-`wesrrepair1`, `wesccorros1`, `wessstatn01`, `wewhchase01`, `wewccomm_03`, `weshhangr01` and
-`-level wecdsneak01` load and run. **Still unverified**: the save flow itself (create, load, rename,
-delete, in-game save, kill mid-save), which needs the menus.
+## Session of 2026-09-26 (evening): what changed, and where it stopped
 
-- PC save backend rewrite: `%APPDATA%\Metal Arms PC Port\Saves` (`-save-dir`), safe file names,
-  atomic writes, `ValidateProfile` now reports missing profiles.
-- Failed level loads tear down before releasing memory (`game.cpp`, `level.cpp`).
-- GC-layout math: `CFVec4A::ReceiveUnitXZ` and `CFMtx44A::Mul( rM, f )` now match retail.
-- Script event masks: events 32-63 behave as on the GameCube (ignored) instead of misfiring.
+All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newest first:
+
+1. **Audio, the real GameCube chain** (`ma/Lib/Fang2/dx/fdx8audio.cpp`, block starting "The retail
+   GameCube mix"). From `gc/fgcaudio.cpp` + MusyX: every volume passes `_GetVolume()` (≈ 0.38·(v^¼+v^½)),
+   ×0.8 for 3D effects or ×0.6 for stereo streams, MusyX fades 3D linearly to 0 at 1.25× radius, then
+   MusyX's DLS table squares it (`main.dol` 0x3de80c, entry i = (i/127)²). `_GCMusyxVolume`,
+   `_GC3DDistanceGain`, `_GCStreamGain`, emitter volume at "MIDI volume as fgcaudio.cpp and MusyX
+   compute it". Full-volume music ≈ 0.21 amplitude, full-volume effects/speech ≈ 0.58.
+   Also removed (for FANG_WINGC) the DX layer's `fVolume *= 0.1f; // Hack to attenuate 2D sounds` in
+   `CFAudioEmitter::SetVolume` — it cut the player's weapon and 2D dialog to a tenth. **The user has
+   not heard this last change yet** (build `6cfcd81`); ask whether music is now balanced, and whether
+   anything 2D is now too loud (UI sounds, footsteps).
+2. **Laser firing sound**: retail `w_laser.csv` field 65 is a sound *group* ("LaserFire"); resolved in
+   `CWeaponLaser::ClassHierarchyBuild` and played via `CFSoundGroup::PlaySound` (`weapon_laser.cpp`).
+3. **Streamed bot dialog**: `BotTalkInst.cpp` used Win32 `PlaySound()` on .wav files that don't exist;
+   now uses the console path `level_PlayStreamingSpeech` (the first droids in the mines were silent).
+4. **Movies (#4 of the user's list, not yet confirmed by the user)**: Bink now uses the game's
+   DirectSound device (`fdx8audio_GetDirectSound()`, handed over in `fmovie2_Play`) instead of opening
+   a second one, and `fmovie2_Draw` never spins waiting for the next movie frame (vsync paces it).
+   The front end's logo movies now use the GameCube names (`GC_*_logo.bik`; it asked for `XB_*`).
+5. **Mouse menus** (`wpr_system.cpp` "mouse pointer (PC port)" block, `pc_input.cpp` menu pointer,
+   `ftext_GetLastPrintBounds()` in `ftext.cpp`, button hit boxes in `wpr_drawutils.cpp`): hover
+   selects, click picks, right click = Back, prompts clickable, wheel steps lists/adjusts settings,
+   clicks queued with positions, main-menu items hit-tested from their 3D meshes. Pointer = HUD reticle
+   `tfh_cross01`. `MA_PORT_POINTER_DEBUG=1` outlines hit boxes. User confirmed it mostly works; the pause
+   menu (`PauseScreen.cpp`/`MenuTypes.cpp`) is **not** mouse-enabled yet.
+6. **Retail phrase-table drift fixed**: `wpr_system.cpp` `_anRetailPhraseField` (menu phrases) and
+   `game.cpp` `_anRetailGamePhraseField` (in-game phrases) map the source's enums to retail fields
+   (the retail tables were reordered; e.g. "Delete" showed "You will not be able to save...", the MP
+   join screen showed "head").
+7. **PC wording and prompts**: `wpr_datatypes_PcText()` (storage text: save folder / reset / free
+   space); game phrases `_aPcPhrases` in `game.cpp` name keys ("Press E to drive vehicle") or Xbox
+   buttons, switched by `game_PcPromptWork()` from `pcinput_PromptsForPad()`; menu prompts draw
+   generated key caps (Enter/Esc/E/R) in `wpr_drawutils.cpp` `_DrawKeyCap`. In menus Esc = Back,
+   Enter = accept (`PcInputState::menus`); Esc still pauses in gameplay and skips movies.
+8. **Windowed exe** (`/SUBSYSTEM:WINDOWS`, `-console` to get a console) — the console full of
+   script prints ("NONETRIPWIRE ENTER EVENT") is gone. **Diagnostics off by default**:
+   `Fang_bPortDiag` (`-port-diag` / `MA_PORT_DIAG=1`) gates all `PORT-*` logging; the periodic ones
+   caused the ~5 s lag spikes. With it on: PORT-HITCH, PORT-SND, PORT-MIX (2 s snapshots of every
+   sound's level), PORT-TALK, PORT-DUCK.
+9. **Discord Rich Presence** (`port/discord_rpc.cpp`, IPC pipe, no SDK): `-discord-app-id <id>` /
+   `MA_PORT_DISCORD_APP_ID`. **Untested end to end: the user still has to create a Discord
+   application and give its ID.** Discord runs on the user's PC (`\\.\pipe\discord-ipc-0` exists).
+10. Exe icon from the user's art (`port/res/ma_port.ico`, `.rc`); Q/R weapon-list hold now 0.3 s;
+   the miner bot no longer loads a nonexistent 'Miner' bank.
+
+## How to work with this user (important)
+
+- The user plays the game windows you launch, **while you work**, and reports by ear/eye; they cannot
+  read logs. For subjective issues launch a logged session in the background:
+  `./build/Debug/ma_port.exe -data gamedata/files -mission wedmmines01 -port-diag -log build/logs/<name>.log`
+  (or no `-mission` for the front end) and read its `PORT-*` lines afterwards.
+- A running game locks `build/Debug/ma_port.exe`. **Close it yourself** (taskkill by PID, from
+  `Get-CimInstance Win32_Process -Filter "Name='ma_port.exe'"`) whenever you need to relink, then
+  relaunch a session for them — the user asked for this explicitly; don't make them wait.
+- Driving the menus without touching the real mouse: the scratchpad script `drive.py` posted
+  WM_MOUSEMOVE/WM_LBUTTONDOWN to the game window (client pixels); pointer input comes from those
+  messages, so this works. Screenshots: `-shots <dir> -shot-every N` writes back-buffer BMPs.
+- Commit trailer: `Co-Authored-By: parallel session Opus 5.5 <noreply@collaborator.com>`; push to `origin x86-port`.
+  Never commit retail data (`gamedata/`, `main.dol`, dumps) — keep derived reports under `build/`.
 
 ## Open work, roughly in priority order
 
-1. **Verify the save flow** from the menus (create, load, rename, delete, in-game save; kill the game
-   mid-save). The rest of the cloud-session changes are verified (see above).
-2. `wewchold_01` (Hold Your Ground) loads with the source's minigame logic; the retail version's
-   predators, intro cutscene and timed radio lines (Mini_Game fields 62-103) are not implemented.
-3. `CFQuatTang3::Calculate` NaN (scripted carts in `WEDTtown_01`, `wessstatn02`): a zero XZ tangent is
-   unitized. Check the path tangent input.
-4. User confirmations pending: chase-level AI driver (probably fixed by the XZ math fix), RAT controls,
-   vehicle reticle, dialog balance, throwables, and the new keys: Q = throwables list, R = weapons list
-   (tap to reload), E = action, with lists opening after a 0.5 s hold (`PORTING.md` controls).
-5. Mouse-driven menus: follow `docs/mouse-menus-design.md` (clickable button prompts first).
-6. Rendering fidelity checks against the GameCube (lighting levels, fog, reflections).
-7. Failed-load teardown beyond what `CLOUD_SESSION_LOG.md` entries 5 and 10 cover: systems
-   created during `level_Load()` other than alarms/spawns (e.g. `aimain_InitSystem()`) have no
-   explicit teardown on that path; check a failing level's log for asserts after the failure.
-8. Retail features loaded but not implemented: laser charged burst, particle/sound fields of several
-   weapons, `Difficulty.csv` (20 fields vs 8), barter EUK kits and battery upgrades.
-9. Missing damage profiles retail lacks too (`Debris`, `SentinelCannon`): probably nothing to do.
-10. Co-op: follow `docs/coop-audit.md`.
-11. Later: 64-bit (150+ inline-asm blocks), widescreen, rumble.
+1. **Confirm with the user** (build `6cfcd81`): music vs dialog balance after the 2D fix; movie
+   micro-stutter and cutscene audio clipping (#4); key-cap prompts; Esc/Enter in menus; PC wording.
+2. **Dark textures on Glitch's legs/feet** (user report, not investigated): take a `-shots` capture of
+   the player; suspect lighting/color streams on the skinned mesh (`SetColorStreams` warnings in logs)
+   or a material pass.
+3. **Pause menu mouse support** (`PauseScreen.cpp`/`MenuTypes.cpp`, `CMenuMgr`), same approach as
+   `wpr_system.cpp` (record item boxes when drawn, hover/click in the input read). Its L/R shoulder
+   page flip currently only works with the mouse buttons as triggers; give it keys (e.g. Q/E or Tab).
+4. **PlayStation-style prompts** (user asked for Xbox/PS/keyboard icons): Xbox art exists (`tfh_a`..),
+   keyboard key caps are drawn; PS would need generated glyphs and a way to detect or choose the pad
+   type (XInput can't tell; maybe an option).
+5. **Discord**: get the application ID from the user, test (`-discord-app-id`), maybe bake a default.
+6. Name keyboard: accept typed characters (WM_CHAR) — needs a text-entry mode in `pc_input` so letters
+   don't also fire their game bindings (Q = Back in menus).
+7. Performance: the user plays the **Debug** build; a Release/RelWithDebInfo configuration has not been
+   tried. Worth trying for smoother play.
+8. Older items: verify the save flow from the menus; Hold Your Ground's retail features (Mini_Game
+   fields 62-103); `CFQuatTang3` NaN on scripted carts; laser charged burst and other weapons'
+   particle/sound fields; `Difficulty.csv` extra fields' meaning; barter EUK kits; failed-load
+   teardown beyond `CLOUD_SESSION_LOG.md` 5/10; co-op (`docs/coop-audit.md`); 64-bit, widescreen, rumble.
 
 ## Things that cost time before
 
@@ -146,3 +198,9 @@ delete, in-game save, kill mid-save), which needs the menus.
 - Editing CRLF files with some tools leaves mixed line endings; normalize afterwards.
 - A backgrounded sweep loop outlived the task that started it and kept opening windows: run sweeps
   in the foreground.
+- Retail data drift is the usual cause of "wrong text/sound/value": the retail tables were
+  reordered or extended after this source snapshot. Dump the retail table (`tools/gamedata_dump.py`)
+  and compare with the source enum before changing code; check `main.dol` for names/tables.
+- The Bash tool mangles backslash escapes in heredocs (`
+` became a real newline in C strings):
+  write edit scripts with the Write tool and run them, or use the Edit tool.
