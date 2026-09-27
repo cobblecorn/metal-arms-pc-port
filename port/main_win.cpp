@@ -16,8 +16,8 @@
 //   -dev-menu       boot into the development launcher (level picker) instead of the retail front end
 //   -console        open a console window showing the log (the game is a windowed app without one)
 //   -port-diag      log the port's periodic PORT-* diagnostics (also MA_PORT_DIAG=1)
-//   -discord-app-id <id> show Discord Rich Presence under this Discord application (also
-//                   MA_PORT_DISCORD_APP_ID)
+//   -discord-app-id <id> show Discord Rich Presence under this Discord application instead of the
+//                   port's own (also MA_PORT_DISCORD_APP_ID); "off" turns Rich Presence off
 //   -discord-large-image <asset-key-or-url> rich-presence image from that application's assets
 //                   (also MA_PORT_DISCORD_LARGE_IMAGE)
 //   -debug-info     draw the game's debug overlays: on-screen script messages and errors (errors
@@ -31,6 +31,8 @@
 //   -input-layout <shared|separate> shared: keyboard/mouse and pad 1 drive port 0 (default);
 //                   separate: keyboard/mouse alone on port 0, pads 1-3 on ports 1-3 (local co-op)
 //   -button-prompts <auto|keyboard|xbox|playstation> choose prompt glyphs and wording (default auto)
+//   -test-keys <s:vk,...> press these virtual keys (e.g. 40:0x1B) that many seconds after start, for
+//                   unattended tests with -shots; they work without the window having focus
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 //   -save-dir <dir> where player profiles are saved (default: %APPDATA%\Metal Arms PC Port\Saves)
 
@@ -77,6 +79,8 @@ static bool _bDebugInfo = false;
 static bool _bConsole = false;
 static bool _bPortDiag = false;
 static char _szDiscordAppId[32];
+// The port's own Discord application, used unless -discord-app-id / MA_PORT_DISCORD_APP_ID names another.
+static const char _szDefaultDiscordAppId[] = "1553650972218363985";
 static char _szDiscordLargeImage[128];
 static char _szDiscordLargeText[128];
 static bool _bDevMenu = false;
@@ -110,6 +114,11 @@ static void _Log( const char *pszFormat, ... )
 	va_start( Args, pszFormat );
 	_LogV( pszFormat, Args );
 	va_end( Args );
+}
+
+static void _DiscordLog( const char *pszText )
+{
+	_Log( "%s", pszText );
 }
 
 // Handler that Fang calls for its DEVPRINTF output.
@@ -411,6 +420,7 @@ static bool _ParseArgs( int argc, char **argv )
 			}
 			SetEnvironmentVariableA( "MA_PORT_BUTTON_PROMPTS", argv[++i] );
 		}
+		else if( !_stricmp( pszArg, "-test-keys" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_TEST_KEYS", argv[++i] );	// read by pc_input.cpp
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );
 		else if( !_stricmp( pszArg, "-save-dir" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SAVE_DIR", argv[++i] );	// read by Fang2/dx/fdx8storage.cpp
@@ -549,8 +559,17 @@ int main( int argc, char **argv )
 	{
 		GetEnvironmentVariableA( "MA_PORT_DISCORD_LARGE_TEXT", _szDiscordLargeText, sizeof(_szDiscordLargeText) );
 	}
+	if( !_szDiscordAppId[0] )
+	{
+		strcpy( _szDiscordAppId, _szDefaultDiscordAppId );
+	}
+	if( !_stricmp( _szDiscordAppId, "off" ) || !_stricmp( _szDiscordAppId, "none" ) || !strcmp( _szDiscordAppId, "0" ) )
+	{
+		_szDiscordAppId[0] = 0;
+	}
 	if( _szDiscordAppId[0] )
 	{
+		discord_SetLog( _DiscordLog );
 		if( discord_Start( _szDiscordAppId, _szDiscordLargeImage, _szDiscordLargeText ) )
 		{
 			discord_SetActivity( "Starting up", "", true );

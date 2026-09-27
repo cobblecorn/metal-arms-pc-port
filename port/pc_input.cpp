@@ -43,6 +43,38 @@ static POINT s_menuLastCursor;
 static float s_menuX, s_menuY;
 static int s_menuFrameWheel, s_menuWheelRemainder;
 
+// Scripted key taps for unattended tests and screenshots (MA_PORT_TEST_KEYS / -test-keys
+// "seconds:vk,..."): each key reads as held for a quarter second from that many seconds after install,
+// whichever window has focus, so a test never has to take the keyboard from the desktop.
+struct TestKey { DWORD at; int key; };
+static TestKey s_testKeys[32];
+static int s_testKeyCount;
+static DWORD s_installTick;
+
+static bool TestKeyHeld(int key) {
+	const DWORD elapsed = GetTickCount() - s_installTick;
+	for (int i = 0; i < s_testKeyCount; i++) {
+		if (s_testKeys[i].key == key && elapsed >= s_testKeys[i].at && elapsed < s_testKeys[i].at + 250) return true;
+	}
+	return false;
+}
+
+static void ParseTestKeys(const char *text) {
+	s_testKeyCount = 0;
+	while (text && *text && s_testKeyCount < (int)(sizeof(s_testKeys) / sizeof(s_testKeys[0]))) {
+		char *end;
+		const double seconds = strtod(text, &end);
+		if (end == text || *end != ':') break;
+		text = end + 1;
+		const long key = strtol(text, &end, 0);
+		if (end == text || key <= 0 || key > 255) break;
+		s_testKeys[s_testKeyCount].at = (DWORD)(seconds * 1000.0);
+		s_testKeys[s_testKeyCount].key = (int)key;
+		s_testKeyCount++;
+		text = *end == ',' ? end + 1 : end;
+	}
+}
+
 #define TEXT_INPUT_QUEUE 64
 struct TextInputQueue { wchar_t characters[TEXT_INPUT_QUEUE]; int count; };
 static CRITICAL_SECTION s_textLock;
@@ -122,12 +154,15 @@ void pcinput_MapSample(const PcInputState &state, bool primary,
 		if (k['E']) v[FPADIO_INPUT_CROSS_TOP-1] = 1.0f;
 		// GAMEPAD_MAP_MAIN1: CROSS_LEFT selects the secondary (throwables) list, CROSS_RIGHT the primary
 		// (guns); a tap of the primary button reloads. Q = throwables, R = guns/reload (user choice).
-		if (k['Q']) v[FPADIO_INPUT_CROSS_LEFT-1] = 1.0f;
+		// Not in menus: there CROSS_LEFT is the GameCube Back button (Escape covers it), and the pause
+		// menu uses Q to turn its pages.
+		if (k['Q'] && !state.menus) v[FPADIO_INPUT_CROSS_LEFT-1] = 1.0f;
 		if (k['R']) v[FPADIO_INPUT_CROSS_RIGHT-1] = 1.0f;
 	}
 	// Enter is START (menus accept it); Escape pauses in gameplay and is Back in menus, which is B on
 	// the Xbox layout and the left face button on the GameCube's.
-	if (k[VK_RETURN] || (k[VK_ESCAPE] && !state.menus)) v[FPADIO_INPUT_START-1] = 1.0f;
+	// While a text field is typed into, Enter arrives as a character (the field's Done) instead.
+	if ((k[VK_RETURN] && !state.textInput) || (k[VK_ESCAPE] && !state.menus)) v[FPADIO_INPUT_START-1] = 1.0f;
 	if (k[VK_ESCAPE] && state.menus)
 		v[(platform == FPADIO_INPUT_EMULATION_PLATFORM_GC ? FPADIO_INPUT_CROSS_LEFT : FPADIO_INPUT_CROSS_RIGHT)-1] = 1.0f;
 	if (k[VK_LBUTTON]) v[FPADIO_INPUT_TRIGGER_RIGHT-1] = 1.0f;
@@ -232,6 +267,10 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 	s_layout = PCINPUT_LAYOUT_SHARED;
 	length = GetEnvironmentVariableA("MA_PORT_INPUT_LAYOUT", layout, sizeof(layout));
 	if (length && length < sizeof(layout)) pcinput_ParseLayout(layout, &s_layout);
+	char testKeys[512];
+	s_installTick = GetTickCount();
+	length = GetEnvironmentVariableA("MA_PORT_TEST_KEYS", testKeys, sizeof(testKeys));
+	ParseTestKeys(length && length < sizeof(testKeys) ? testKeys : NULL);
 	char prompts[16];
 	s_promptStyle = PCINPUT_PROMPT_STYLE_AUTO;
 	s_promptsForPad = 0;
@@ -299,6 +338,18 @@ PcPromptStyle pcinput_ResolvedPromptStyle() {
 	return InterlockedCompareExchange(&s_promptsForPad, 0, 0) ? PCINPUT_PROMPT_STYLE_XBOX : PCINPUT_PROMPT_STYLE_KEYBOARD;
 }
 
+PcPromptStyle pcinput_PromptStyleForPort(u32 port) {
+	if (port == pcinput_KeyboardPort()) return pcinput_ResolvedPromptStyle();
+	// Other ports only have a pad: the chosen pad style, or Xbox when the choice is keyboard/auto.
+	return s_promptStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION ? PCINPUT_PROMPT_STYLE_PLAYSTATION : PCINPUT_PROMPT_STYLE_XBOX;
+}
+
+bool pcinput_KeyHeld(int key) {
+	if (s_testKeyCount && TestKeyHeld(key)) return true;
+	if (!s_window || GetForegroundWindow() != s_window || IsIconic(s_window)) return false;
+	return (GetAsyncKeyState(key) & 0x8000) != 0;
+}
+
 bool pcinput_UseKeyboardPrompts() { return pcinput_ResolvedPromptStyle() == PCINPUT_PROMPT_STYLE_KEYBOARD; }
 
 bool pcinput_UsePlayStationPrompts() { return pcinput_ResolvedPromptStyle() == PCINPUT_PROMPT_STYLE_PLAYSTATION; }
@@ -344,18 +395,31 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 			InterlockedExchange(&s_promptsForPad, 1);
 	}
 	if (keyboard) {
+		// Only inspect gameplay keys, and only while the game owns focus (or a test scripts them).
+		const int keys[] = { 'W','A','S','D','E','Q','R','F','1','2','3','4', VK_SPACE,
+			VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,VK_RETURN,VK_ESCAPE,VK_LBUTTON,VK_RBUTTON };
 		if (state.focused) {
-			// Only inspect gameplay keys, and only while the game owns focus.
-			const int keys[] = { 'W','A','S','D','E','Q','R','F','1','2','3','4', VK_SPACE,
-				VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,VK_RETURN,VK_ESCAPE,VK_LBUTTON,VK_RBUTTON };
 			for (u32 i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) {
 				state.keys[keys[i]] = (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
 				if (state.keys[keys[i]]) InterlockedExchange(&s_promptsForPad, 0);
 			}
-			// A menu with its own pointer takes the buttons as clicks, not as the triggers (on the launch
-			// screen a held right trigger starts the level-unlock code and blocks other input).
-			if (MenuDrawsPointer()) state.keys[VK_LBUTTON] = state.keys[VK_RBUTTON] = false;
 		}
+		if (s_testKeyCount) {
+			for (u32 i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) {
+				if (TestKeyHeld(keys[i])) state.keys[keys[i]] = true;
+			}
+		}
+		// A menu with its own pointer takes the buttons as clicks, not as the triggers (on the launch
+		// screen a held right trigger starts the level-unlock code and blocks other input).
+		if (MenuDrawsPointer()) state.keys[VK_LBUTTON] = state.keys[VK_RBUTTON] = false;
+		// Escape is START in gameplay and Back in menus. A press that began before the switch must not
+		// count as the other button: pausing with it would at once back out of the pause menu, and
+		// backing out would pause again.
+		static bool lastMenus, escapeHeldOver;
+		if (state.menus != lastMenus && state.keys[VK_ESCAPE]) escapeHeldOver = true;
+		if (!state.keys[VK_ESCAPE]) escapeHeldOver = false;
+		lastMenus = state.menus;
+		if (escapeHeldOver) state.keys[VK_ESCAPE] = false;
 	}
 	pcinput_MapSample(state, keyboard, s_platform, sample);
 }
@@ -364,7 +428,7 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 	if (!s_window) return false;
 	if (message == WM_CHAR && InterlockedCompareExchange(&s_textInput, 0, 0) && s_textLockReady) {
 		const wchar_t character = (wchar_t)wParam;
-		if (character == L'\b' || (character >= L' ' && character <= L'~')) {
+		if (character == L'\b' || character == L'\r' || (character >= L' ' && character <= L'~')) {
 			EnterCriticalSection(&s_textLock);
 			if (s_textPosted.count < TEXT_INPUT_QUEUE) s_textPosted.characters[s_textPosted.count++] = character;
 			LeaveCriticalSection(&s_textLock);

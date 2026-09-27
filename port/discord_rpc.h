@@ -8,6 +8,8 @@
 // thread; the game only hands over strings.
 #pragma once
 
+// Where connection changes and Discord's error answers are reported (called on the worker thread).
+void discord_SetLog(void (*log)(const char *text));
 bool discord_Start(const char *appId, const char *largeImage = 0, const char *largeText = 0);
 // Sets what Discord shows under the game's name. resetTimer restarts the "elapsed" clock.
 void discord_SetActivity(const char *details, const char *state, bool resetTimer);

@@ -741,11 +741,15 @@ static CFTexInst _MousePointerTex;
 static FVidDrawOverlayFcn_t *_pMousePrevOverlayFcn;
 static BOOL _bMouseOverlayInstalled;
 static BOOL _bMouseDrawPointer;			// the menus drew this frame; draw the pointer over their text
+static FViewport_t *_pMouseIGViewport;	// in-game screens (from the pause menu) draw in the caller's viewport
 static BOOL _bMouseDebug;				// MA_PORT_POINTER_DEBUG: outline the hit boxes and log clicks
 
-// The menu's button phrases follow the configured presentation rather than the retail Xbox wording.
-static cwchar *_PromptPhrase( u32 nPhrase, s32 /*nPort*/ ) {
-	if( pcinput_UsePlayStationPrompts() ) {
+// The menu's button phrases name the keys, or the buttons of the chosen pad style, for the port they
+// address (nPort < 0: whoever is at the keyboard/mouse port). Ports without the keyboard always get
+// pad wording, so a second player's "Press A to join" never names a key.
+static cwchar *_PromptPhrase( u32 nPhrase, s32 nPort ) {
+	const PcPromptStyle nStyle = pcinput_PromptStyleForPort( nPort < 0 ? pcinput_KeyboardPort() : (u32)nPort );
+	if( nStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION ) {
 		switch( nPhrase ) {
 		case WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN:		return L"Press Cross to join";
 		case WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED:	return L"Press Cross to proceed";
@@ -755,7 +759,7 @@ static cwchar *_PromptPhrase( u32 nPhrase, s32 /*nPort*/ ) {
 		default:										return _apwszPhrases[nPhrase];
 		}
 	}
-	if( pcinput_UseKeyboardPrompts() ) {
+	if( nStyle == PCINPUT_PROMPT_STYLE_KEYBOARD ) {
 		switch( nPhrase ) {
 		case WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN:		return L"Press Space to join";
 		case WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED:	return L"Press Space to proceed";
@@ -1035,10 +1039,11 @@ static void _MouseDrawOverlay( void ) {
 	_bMouseDrawPointer = FALSE;
 
 	f32 fX, fY;
-	if( !_pViewportOrtho3D || !_MousePointerTex.GetTexDef() || !pcinput_MenuPointer( &fX, &fY ) ) {
+	FViewport_t *pViewport = _bInGame ? _pMouseIGViewport : _pViewportOrtho3D;
+	if( !pViewport || !_MousePointerTex.GetTexDef() || !pcinput_MenuPointer( &fX, &fY ) ) {
 		return;
 	}
-	FViewport_t *pPrevViewport = fviewport_SetActive( _pViewportOrtho3D );
+	FViewport_t *pPrevViewport = fviewport_SetActive( pViewport );
 	CFXfm::InitStack();
 	frenderer_Push( FRENDERER_DRAW, NULL );
 
@@ -1048,7 +1053,7 @@ static void _MouseDrawOverlay( void ) {
 	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
 	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
 
-	f32 fHalfXRes = _pViewportOrtho3D->HalfRes.x, fHalfYRes = _pViewportOrtho3D->HalfRes.y;
+	f32 fHalfXRes = pViewport->HalfRes.x, fHalfYRes = pViewport->HalfRes.y;
 	f32 fApexX = fX * 2.0f - 1.0f, fApexY = 1.0f - fY * 2.0f;
 	// a dark outline keeps the white reticle readable over bright scenery
 	CFColorRGBA Color;
@@ -1115,6 +1120,7 @@ static void _MouseUninstall( void ) {
 	_nMouseItems = 0;
 	_nMouseItemsScreen = -1;
 	_bMouseDrawPointer = FALSE;
+	_pMouseIGViewport = NULL;
 }
 	#define _PROMPT_PHRASE( nPhrase, nPort )	_PromptPhrase( nPhrase, nPort )
 #else
@@ -3470,8 +3476,9 @@ void wpr_system_IG_Draw( void ) {
 	frenderer_Pop();
 
 #if defined(MA_PC_INPUT)
+	// the overlay draws the pointer after the text, in this screen's viewport
+	_pMouseIGViewport = pViewport;
 	_bMouseDrawPointer = TRUE;
-	_MouseDrawOverlay();
 	pcinput_DrawsMenuPointer();
 #endif
 }
@@ -5461,16 +5468,44 @@ static void _ProfileSettings_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode 
 // 'profile name' functions
 ////////////////////////////
 
+#if defined(MA_PC_INPUT)
+// TRUE when the on-screen name keyboard has a key for this character (in either case), so typed names
+// only use characters the retail keyboard (and its font) offer.
+static BOOL _ProfileName_HasKey( const Wpr_DataTypes_ScreenData_t *pScreen, wchar Character ) {
+	#define _PN_UPPER( c )	( ( (c) >= L'a' && (c) <= L'z' ) ? (wchar)((c) - L'a' + L'A') : (c) )
+	s32 nNumKeys = 0, nRow, i;
+	for( nRow=0; nRow < (s32)_MenuState.nPNNumRows - 2; nRow++ ) {	// the last two rows are Caps/Space/Back and Done
+		nNumKeys += _MenuState.anPNColumnsPerRow[nRow];
+	}
+	for( i=0; i < nNumKeys; i++ ) {
+		cwchar *pwszKey = pScreen->pText[i + _MENU_ITEMS_PN_START_OFFSET].pwszText;
+		if( pwszKey && pwszKey[0] && !pwszKey[1] && _PN_UPPER( pwszKey[0] ) == _PN_UPPER( Character ) ) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+	#undef _PN_UPPER
+}
+#endif
+
 static Wpr_DataTypes_NavCode_e _ProfileName_Work( void ) {
 	Wpr_DataTypes_ScreenData_t *pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_EDIT_PROFILE_NAME];
 
 #if defined(MA_PC_INPUT)
-	// The on-screen keyboard remains available for pads and mouse users. Native character input is
-	// accepted here as well, with the same length and leading-space rules as that keyboard.
+	// The on-screen keyboard remains available for pads and mouse users. Typed characters are accepted
+	// here as well, with the same length and leading-space rules as that keyboard; Enter is Done.
 	BOOL bTextChanged = FALSE, bTextRejected = FALSE;
 	wchar character;
 	while( pcinput_TakeTextInput( &character ) ) {
 		s32 nLenOfString = fclib_wcslen( _MenuState.wszPNCurProfileName );
+		if( character == L'\r' ) {
+			if( _ProfileName_IsNameValid( _MenuState.wszPNCurProfileName ) ) {
+				fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_SUCCESS] );
+				return WPR_DATATYPES_NAV_CODE_FORWARD;
+			}
+			bTextRejected = TRUE;
+			continue;
+		}
 		if( character == L'\b' ) {
 			if( nLenOfString ) {
 				_MenuState.wszPNCurProfileName[nLenOfString-1] = 0;
@@ -5478,9 +5513,7 @@ static Wpr_DataTypes_NavCode_e _ProfileName_Work( void ) {
 			}
 			continue;
 		}
-		const BOOL bNameCharacter = (character >= L'A' && character <= L'Z') ||
-			(character >= L'a' && character <= L'z') || (character >= L'0' && character <= L'9') ||
-			character == L' ' || character == L'-' || character == L'_' || character == L'\'';
+		const BOOL bNameCharacter = character == L' ' || _ProfileName_HasKey( pScreen, character );
 		if( !bNameCharacter || nLenOfString >= PROFILE_NAME_MAX_LENGTH ||
 			(character == L' ' && nLenOfString == 0) ) {
 			bTextRejected = TRUE;

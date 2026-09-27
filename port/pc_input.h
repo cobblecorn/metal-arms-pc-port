@@ -77,11 +77,19 @@ enum PcPromptStyle {
 };
 bool pcinput_ParsePromptStyle(const char *text, PcPromptStyle *style);
 PcPromptStyle pcinput_ResolvedPromptStyle();
+// The style for one port's prompts: the keyboard port follows ResolvedPromptStyle(); the others are
+// pad-only ports, so they get the chosen pad style (Xbox unless PlayStation was chosen).
+PcPromptStyle pcinput_PromptStyleForPort(u32 port);
 bool pcinput_UseKeyboardPrompts();
 bool pcinput_UsePlayStationPrompts();
 
-// Native text fields call SetTextInput while active. Printable WM_CHAR input is queued separately
-// from the controller sample so typed characters never fire gameplay bindings.
+// Native text fields call SetTextInput while active. Printable WM_CHAR input, Backspace ('\b') and
+// Enter ('\r') are queued separately from the controller sample so typed characters never fire
+// gameplay bindings (Enter is not START while a field is active).
 void pcinput_SetTextInput(bool active);
 bool pcinput_TakeTextInput(wchar_t *character);
 bool pcinput_IsTextInput();
+
+// A key held down while the game window has focus (screens that read extra keys directly, such as the
+// pause menu's page keys). Never true while another window is in front.
+bool pcinput_KeyHeld(int key);

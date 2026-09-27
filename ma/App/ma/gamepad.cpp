@@ -400,7 +400,10 @@ void gamepad_Sample( void )
 
 	Gamepad_nPortOnlineMask = fpad_UpdateSamples();
 #if defined(MA_PC_INPUT)
-	pcinput_BeginFrame( _anCurrentMap[pcinput_KeyboardPort()] == GAMEPAD_MAP_MAIN1 );
+	// A paused game is a menu for the keyboard and mouse even while the gameplay map is set: the pause
+	// menu switches to the menu map only for the moment it reads its buttons. So the mouse is free for
+	// the pointer and Escape is Back there.
+	pcinput_BeginFrame( _anCurrentMap[pcinput_KeyboardPort()] == GAMEPAD_MAP_MAIN1 && !FLoop_bGamePaused );
 	game_PcPromptWork();
 #endif
 

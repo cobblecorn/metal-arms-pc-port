@@ -1074,13 +1074,14 @@ void CMenuMgr::GetControls()
 #if defined(MA_PC_INPUT)
 	if( nControllerPort == pcinput_KeyboardPort() && !pcinput_IsTextInput() )
 	{
-		if( (GetAsyncKeyState('Q') & 0x8000) != 0 )
+		// the pause menu's pages: Q / E, or Tab / Shift+Tab
+		if( pcinput_KeyHeld( 'Q' ) )
 			m_uButtons |= MMINPUT_LEFTSHOULDER;
-		if( (GetAsyncKeyState('E') & 0x8000) != 0 )
+		if( pcinput_KeyHeld( 'E' ) )
 			m_uButtons |= MMINPUT_RIGHTSHOULDER;
-		if( (GetAsyncKeyState(VK_TAB) & 0x8000) != 0 )
+		if( pcinput_KeyHeld( VK_TAB ) )
 		{
-			if( (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 )
+			if( pcinput_KeyHeld( VK_SHIFT ) )
 				m_uButtons |= MMINPUT_LEFTSHOULDER;
 			else
 				m_uButtons |= MMINPUT_RIGHTSHOULDER;

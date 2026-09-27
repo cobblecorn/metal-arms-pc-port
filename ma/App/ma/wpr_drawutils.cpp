@@ -206,37 +206,47 @@ void wpr_drawutils_DrawTextureToScreen( BOOL bColor,
 // Enter accepts, Escape goes back, E and R are the pad's top and side face buttons.
 static cwchar *_apwszKeyCapLabels[] = { L"Enter", L"Esc", L"E", L"R" };
 
-// Draws a keyboard key cap for prompt i in place of the pad icon: the key's name on a raised key,
-// starting where the icon started. Returns the unit x where the prompt's instruction text begins.
-static f32 _DrawKeyCap( u32 i, const Wpr_DataTypes_ButtonLayout_t *pButton, f32 fUnitHeight, f32 fTextUnitY, f32 fMinLeft,
-						f32 fHalfXRes, f32 fHalfYRes, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom ) {
-	const f32 fIconHalfX = 0.5f * (fUnitHeight * fHalfYRes / fHalfXRes);
-	const f32 fCapLeft = FMATH_MAX( (pButton->fBiPolarUnitX - fIconHalfX + 1.0f) * 0.5f, fMinLeft );
+// The prompt font's (~f1) line metrics per unit of font scale, in screen fractions of height: the line's
+// height, and how far its top sits below the print position. Measured from every prompt printed; the
+// first frame uses these estimates.
+static f32 _fPromptLineHeightPerScale = 0.035f, _fPromptLineTopPerScale = 0.0f;
+
+// A keyboard key cap: the key's name on a raised key (see wpr_drawutils.h).
+BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
+							   f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom ) {
 	const f32 fPadX = 0.006f, fPadY = 0.003f;
 
-	ftext_Printf( fCapLeft + fPadX, fTextUnitY, L"~f1~C%ls~w0~aL~s%.2f%ls", WprDataTypes_pwszSolidWhiteTextColor,
-				  pButton->fFontScale * 0.72f, _apwszKeyCapLabels[i] );
+	ftext_Printf( cAlign == L'C' ? fTextX : ( cAlign == L'R' ? fTextX - fPadX : fTextX + fPadX ), fTextY, L"~f1~C%ls~w0~a%lc~s%.2f%ls",
+				  WprDataTypes_pwszSolidWhiteTextColor, cAlign, fFontScale, pwszLabel );
 	f32 fLeft, fTop, fRight, fBottom;
 	if( !ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
-		return fCapLeft + fUnitHeight * 0.5f;
+		return FALSE;
 	}
-	fLeft = fCapLeft;
+	fLeft -= fPadX;
 	fRight += fPadX;
 	fTop -= fPadY;
 	fBottom += fPadY;
-	if( fRight - fLeft < fIconHalfX ) {
-		fRight = fLeft + fIconHalfX;	// at least as wide as the icon was
+	if( fRight - fLeft < fMinWidth ) {
+		const f32 fGrow = fMinWidth - (fRight - fLeft);
+		if( cAlign == L'C' ) {
+			fLeft -= 0.5f * fGrow;
+			fRight += 0.5f * fGrow;
+		} else if( cAlign == L'R' ) {
+			fLeft -= fGrow;
+		} else {
+			fRight += fGrow;
+		}
 	}
 
-	// screen fractions -> ortho pixels (y up, origin at the center)
-	#define _CAP_X( f )		( ( (f) * 2.0f - 1.0f ) * fHalfXRes )
-	#define _CAP_Y( f )		( ( 1.0f - (f) * 2.0f ) * fHalfYRes )
+	// screen fractions -> the caller's space (y up, origin at the center)
+	#define _CAP_X( f )		( ( (f) * 2.0f - 1.0f ) * fXScale )
+	#define _CAP_Y( f )		( ( 1.0f - (f) * 2.0f ) * fYScale )
 	fdraw_Depth_EnableWriting( FALSE );
 	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
 	fdraw_SetTexture( NULL );
 	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
 	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
-	const f32 fDepth = 2.0f / fHalfYRes;	// the key's lower lip, in screen fractions of height
+	const f32 fDepth = 0.005f;	// the key's lower lip, in screen fractions of height
 	CFVec3 a( _CAP_X( fLeft ), _CAP_Y( fTop ), 1.0f ), b( _CAP_X( fRight ), _CAP_Y( fTop ), 1.0f );
 	CFVec3 c( _CAP_X( fRight ), _CAP_Y( fBottom + fDepth ), 1.0f ), d( _CAP_X( fLeft ), _CAP_Y( fBottom + fDepth ), 1.0f );
 	CFColorRGBA Lip( 0.02f, 0.04f, 0.10f, 0.90f );
@@ -250,66 +260,207 @@ static f32 _DrawKeyCap( u32 i, const Wpr_DataTypes_ButtonLayout_t *pButton, f32 
 	#undef _CAP_X
 	#undef _CAP_Y
 
-	*pfLeft = fLeft; *pfTop = fTop; *pfRight = fRight; *pfBottom = fBottom + fDepth;
-	return fRight + 0.008f;
+	if( pfLeft ) *pfLeft = fLeft;
+	if( pfTop ) *pfTop = fTop;
+	if( pfRight ) *pfRight = fRight;
+	if( pfBottom ) *pfBottom = fBottom + fDepth;
+	return TRUE;
 }
 
-// The retail data only contains Xbox button art. These outline glyphs keep the PlayStation
+BOOL wpr_drawutils_DrawKeyCapCentered( cwchar *pwszLabel, f32 fTextX, f32 fCenterY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
+									   f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom ) {
+	const f32 fTextY = (fCenterY - (0.5f * _fPromptLineHeightPerScale + _fPromptLineTopPerScale) * fFontScale) * 0.75f;
+	return wpr_drawutils_DrawKeyCap( pwszLabel, fTextX, fTextY, cAlign, fFontScale, fMinWidth, fXScale, fYScale,
+									 pfLeft, pfTop, pfRight, pfBottom );
+}
+
+// A thick stroke from a to b, fWidth across.
+static void _GlyphStroke( const CFVec3 &a, const CFVec3 &b, f32 fWidth, CFColorRGBA *pColor ) {
+	f32 fDX = b.x - a.x, fDY = b.y - a.y;
+	const f32 fLength = fmath_Sqrt( fDX * fDX + fDY * fDY );
+	if( fLength <= 0.0f ) {
+		return;
+	}
+	const f32 fNX = -fDY / fLength * 0.5f * fWidth, fNY = fDX / fLength * 0.5f * fWidth;
+	// run past the ends by half the width so the corners of outlines close
+	fDX *= 0.5f * fWidth / fLength; fDY *= 0.5f * fWidth / fLength;
+	CFVec3 p( a.x - fDX + fNX, a.y - fDY + fNY, a.z ), q( b.x + fDX + fNX, b.y + fDY + fNY, b.z );
+	CFVec3 r( b.x + fDX - fNX, b.y + fDY - fNY, b.z ), s( a.x - fDX - fNX, a.y - fDY - fNY, a.z );
+	fdraw_SolidQuad( &p, &q, &r, &s, pColor );
+}
+
+// A closed polygon of nCorners corners on a circle of fRadius (the first corner at fStartAngle), drawn
+// filled (fWidth <= 0) or as a thick outline.
+static void _GlyphPolygon( f32 fX, f32 fY, f32 fRadius, u32 nCorners, f32 fStartAngle, f32 fWidth, CFColorRGBA *pColor ) {
+	CFVec3 Center( fX, fY, 1.0f ), Prev, Next;
+	for( u32 n=0; n <= nCorners; n++ ) {
+		const f32 fAngle = fStartAngle + FMATH_2PI * (f32)n / (f32)nCorners;
+		Next.Set( fX + fmath_Cos( fAngle ) * fRadius, fY + fmath_Sin( fAngle ) * fRadius, 1.0f );
+		if( n ) {
+			if( fWidth > 0.0f ) {
+				_GlyphStroke( Prev, Next, fWidth, pColor );
+			} else {
+				fdraw_SolidQuad( &Center, &Prev, &Next, &Center, pColor );
+			}
+		}
+		Prev = Next;
+	}
+}
+
+// The retail data only contains Xbox button art. These generated glyphs keep the PlayStation
 // presentation self-contained: A/B/Y/X map to Cross/Circle/Triangle/Square respectively.
 void wpr_drawutils_DrawPlayStationGlyph( u32 i, f32 fX, f32 fY, f32 fRadius ) {
 	CFColorRGBA Color;
-	if( i == 0 ) Color.Set( 0.25f, 0.55f, 1.00f, 1.0f );		// Cross
-	else if( i == 1 ) Color.Set( 1.00f, 0.25f, 0.22f, 1.0f );	// Circle
-	else if( i == 2 ) Color.Set( 0.18f, 0.90f, 0.38f, 1.0f );	// Triangle
-	else if( i == 3 ) Color.Set( 0.95f, 0.35f, 0.72f, 1.0f );	// Square
-	else Color.Set( 0.85f, 0.85f, 0.95f, 1.0f );						// Options
+	if( i == 0 ) Color.Set( 0.45f, 0.68f, 1.00f, 1.0f );		// Cross
+	else if( i == 1 ) Color.Set( 1.00f, 0.38f, 0.38f, 1.0f );	// Circle
+	else if( i == 2 ) Color.Set( 0.25f, 0.90f, 0.70f, 1.0f );	// Triangle
+	else if( i == 3 ) Color.Set( 1.00f, 0.52f, 0.80f, 1.0f );	// Square
+	else Color.Set( 0.88f, 0.88f, 0.95f, 1.0f );				// Options
 
 	fdraw_Depth_EnableWriting( FALSE );
 	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
 	fdraw_SetTexture( NULL );
 	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
 	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
-	CFVec3 a( fX - fRadius, fY - fRadius, 1.0f ), b( fX + fRadius, fY + fRadius, 1.0f );
-	if( i == 0 ) {
-		fdraw_SolidLine( &a, &b, &Color );
-		a.Set( fX - fRadius, fY + fRadius, 1.0f ); b.Set( fX + fRadius, fY - fRadius, 1.0f );
-		fdraw_SolidLine( &a, &b, &Color );
-	} else if( i == 1 ) {
-		static const f32 aFacets[][2] = { { 1.0f, 0.0f }, { 0.7071f, 0.7071f }, { 0.0f, 1.0f }, { -0.7071f, 0.7071f },
-			{ -1.0f, 0.0f }, { -0.7071f, -0.7071f }, { 0.0f, -1.0f }, { 0.7071f, -0.7071f }, { 1.0f, 0.0f } };
-		for( u32 n=0; n < sizeof(aFacets)/sizeof(aFacets[0])-1; n++ ) {
-			a.Set( fX + aFacets[n][0] * fRadius, fY + aFacets[n][1] * fRadius, 1.0f );
-			b.Set( fX + aFacets[n+1][0] * fRadius, fY + aFacets[n+1][1] * fRadius, 1.0f );
-			fdraw_SolidLine( &a, &b, &Color );
-		}
-	} else if( i == 2 ) {
-		a.Set( fX, fY + fRadius, 1.0f ); b.Set( fX - fRadius, fY - fRadius, 1.0f );
-		CFVec3 c( fX + fRadius, fY - fRadius, 1.0f );
-		fdraw_SolidLine( &a, &b, &Color ); fdraw_SolidLine( &b, &c, &Color ); fdraw_SolidLine( &c, &a, &Color );
-	} else if( i == 3 ) {
-		a.Set( fX - fRadius, fY + fRadius, 1.0f ); b.Set( fX + fRadius, fY + fRadius, 1.0f );
-		CFVec3 c( fX + fRadius, fY - fRadius, 1.0f ), d( fX - fRadius, fY - fRadius, 1.0f );
-		fdraw_SolidLine( &a, &b, &Color ); fdraw_SolidLine( &b, &c, &Color );
-		fdraw_SolidLine( &c, &d, &Color ); fdraw_SolidLine( &d, &a, &Color );
-	} else {
-		const f32 fHalfWidth = fRadius * 1.45f, fHalfHeight = fRadius * 0.45f;
-		a.Set( fX - fHalfWidth, fY + fHalfHeight, 1.0f ); b.Set( fX + fHalfWidth, fY + fHalfHeight, 1.0f );
+
+	const FDrawCullDir_e nOldCull = fdraw_GetCullDir();
+	fdraw_SetCullDir( FDRAW_CULLDIR_NONE );	// the strokes and fans below wind both ways
+	const f32 fWidth = fRadius * 0.16f;	// symbol stroke
+	const f32 fSymbol = fRadius * 0.50f;	// symbol half size
+	CFColorRGBA Body( 0.04f, 0.05f, 0.09f, 0.92f ), Rim( 0.55f, 0.58f, 0.66f, 1.0f );
+	if( i > 3 ) {
+		// Options: a small pill-shaped button with three lines on it
+		const f32 fHalfWidth = fRadius * 0.95f, fHalfHeight = fRadius * 0.55f;
+		CFVec3 a( fX - fHalfWidth, fY + fHalfHeight, 1.0f ), b( fX + fHalfWidth, fY + fHalfHeight, 1.0f );
 		CFVec3 c( fX + fHalfWidth, fY - fHalfHeight, 1.0f ), d( fX - fHalfWidth, fY - fHalfHeight, 1.0f );
-		fdraw_SolidLine( &a, &b, &Color ); fdraw_SolidLine( &b, &c, &Color );
-		fdraw_SolidLine( &c, &d, &Color ); fdraw_SolidLine( &d, &a, &Color );
+		fdraw_SolidQuad( &a, &b, &c, &d, &Body );
+		const f32 fRim = fRadius * 0.08f;
+		_GlyphStroke( a, b, fRim, &Rim ); _GlyphStroke( b, c, fRim, &Rim );
+		_GlyphStroke( c, d, fRim, &Rim ); _GlyphStroke( d, a, fRim, &Rim );
+		for( s32 n=-1; n <= 1; n++ ) {
+			a.Set( fX - fHalfWidth * 0.5f, fY + n * fHalfHeight * 0.45f, 1.0f );
+			b.Set( fX + fHalfWidth * 0.5f, fY + n * fHalfHeight * 0.45f, 1.0f );
+			_GlyphStroke( a, b, fRadius * 0.10f, &Color );
+		}
+		fdraw_SetCullDir( nOldCull );
+		return;
 	}
+
+	// the round button, then its symbol
+	_GlyphPolygon( fX, fY, fRadius, 24, 0.0f, 0.0f, &Body );
+	_GlyphPolygon( fX, fY, fRadius, 24, 0.0f, fRadius * 0.08f, &Rim );
+	if( i == 0 ) {
+		CFVec3 a( fX - fSymbol, fY - fSymbol, 1.0f ), b( fX + fSymbol, fY + fSymbol, 1.0f );
+		_GlyphStroke( a, b, fWidth, &Color );
+		a.Set( fX - fSymbol, fY + fSymbol, 1.0f ); b.Set( fX + fSymbol, fY - fSymbol, 1.0f );
+		_GlyphStroke( a, b, fWidth, &Color );
+	} else if( i == 1 ) {
+		_GlyphPolygon( fX, fY, fSymbol, 20, 0.0f, fWidth, &Color );
+	} else if( i == 2 ) {
+		// the triangle's centroid a little below the center, so it looks centered
+		_GlyphPolygon( fX, fY - fSymbol * 0.12f, fSymbol * 1.1f, 3, FMATH_HALF_PI, fWidth, &Color );
+	} else {
+		_GlyphPolygon( fX, fY, fSymbol * 1.1f, 4, FMATH_PI * 0.25f, fWidth, &Color );
+	}
+	fdraw_SetCullDir( nOldCull );
 }
 #endif
 
+#if defined(MA_PC_INPUT)
+#define _PROMPT_ICON_SIZE		0.80f	// the visible button's height, in prompt lines
+#define _PROMPT_ICON_CENTER		0.50f	// the icon's center, in prompt lines below the line's top
+#define _PROMPT_ART_FILL		0.70f	// how much of the pad art's height its button fills (the art has a margin)
+#define _PROMPT_ICON_GAP		0.008f	// between the icon and its instruction, in screen fractions across
+
+// PC prompts: each button's icon (the pad art, a generated PlayStation glyph, or a key cap) sits flush
+// left of its instruction and is centered on the instruction's line, instead of the retail layout's
+// icon floating above and to the left of the text. The retail positions still decide each prompt's row
+// and where it starts; prompts sharing a row flow left to right without overlapping.
+void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
+									  u32 nDrawButtonMask,
+									 f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
+	const u32 nKeyCaps = sizeof( _apwszKeyCapLabels ) / sizeof( _apwszKeyCapLabels[0] );
+	const f32 fAspect = fHalfYRes / fHalfXRes;	// fractions across per fraction down, for square shapes
+	f32 fRowTextY = -1.0f, fRowNextLeft = 0.0f;	// where the next prompt on the current row may start
+
+	for( u32 i=0; i < pScreen->nNumButtons; i++ ) {
+		Wpr_DataTypes_ButtonLayout_t *pButton = &pScreen->paButtons[i];
+		if( !(nDrawButtonMask & (1<<i)) ) {
+			continue;
+		}
+
+		const f32 fUnitHeight = pButton->fPixelSize / (2.0f * fHalfYRes);
+		const f32 fTextY = (((pButton->fBiPolarUnitY - 1.0f) * -0.5f) * 0.75f) - (fUnitHeight * 0.10f);	// ftext units (0..0.75 down)
+		const f32 fScale = pButton->fFontScale;
+		const f32 fLineHeight = _fPromptLineHeightPerScale * fScale;
+		const f32 fLineTop = fTextY / 0.75f + _fPromptLineTopPerScale * fScale;
+		const f32 fCenterY = fLineTop + _PROMPT_ICON_CENTER * fLineHeight;
+		const f32 fIconSize = _PROMPT_ICON_SIZE * fLineHeight;
+
+		// start where the retail icon started, or after the previous prompt on this row
+		f32 fLeft = (pButton->fBiPolarUnitX - 0.5f * fUnitHeight * fAspect + 1.0f) * 0.5f;
+		if( fRowTextY >= 0.0f && FMATH_FABS( fRowTextY - fTextY ) < 0.02f ) {
+			fLeft = FMATH_MAX( fLeft, fRowNextLeft );
+		}
+
+		f32 fIconL = fLeft, fIconR = fLeft + fIconSize * fAspect;
+		f32 fIconT = fCenterY - 0.5f * fIconSize, fIconB = fCenterY + 0.5f * fIconSize;
+		if( i < nKeyCaps && pcinput_UseKeyboardPrompts() ) {
+			// a key cap naming the key; its label is centered on the line like the icons
+			f32 fL, fT, fR, fB;
+			if( wpr_drawutils_DrawKeyCapCentered( _apwszKeyCapLabels[i], fLeft, fCenterY, L'L', fScale * 0.72f, fIconSize * fAspect,
+												  fHalfXRes, fHalfYRes, &fL, &fT, &fR, &fB ) ) {
+				fIconL = fL; fIconT = fT; fIconR = fR; fIconB = fB;
+			}
+		} else if( i < nKeyCaps && pcinput_UsePlayStationPrompts() ) {
+			wpr_drawutils_DrawPlayStationGlyph( i, (fIconL + fIconR - 1.0f) * fHalfXRes, (1.0f - 2.0f * fCenterY) * fHalfYRes,
+												0.5f * fIconSize * 2.0f * fHalfYRes );
+		} else {
+			wpr_drawutils_DrawTextureToScreen( TRUE,
+				pButton->pTexture,
+				fIconL + fIconR - 1.0f,
+				1.0f - 2.0f * fCenterY,
+				2.0f * fIconSize / _PROMPT_ART_FILL,
+				fScaleMultiplier, fHalfXRes, fHalfYRes );
+		}
+
+		// the instruction
+		const f32 fTextX = fIconR + _PROMPT_ICON_GAP;
+		ftext_Printf( fTextX,
+			fTextY,
+			L"~f1~C%ls~w0~a%lc~s%.2f%ls",
+			WprDataTypes_pwszButtonTextColor,
+			L'L',
+			fScale,
+			pButton->pwszInstructions );
+		f32 fTextL = fTextX, fTextT = fLineTop, fTextR = fTextX, fTextB = fLineTop + fLineHeight;
+		if( ftext_GetLastPrintBounds( &fTextL, &fTextT, &fTextR, &fTextB ) ) {
+			if( fScale > 0.0f && fTextB > fTextT ) {
+				_fPromptLineHeightPerScale = (fTextB - fTextT) / fScale;
+				_fPromptLineTopPerScale = (fTextT - fTextY / 0.75f) / fScale;
+			}
+			fRowTextY = fTextY;
+			fRowNextLeft = fTextR + 0.02f;
+		}
+
+		if( i < WPR_DRAWUTILS_BUTTON_HITS ) {
+			// clicking the icon or its instruction acts as that button
+			Wpr_DrawUtils_ButtonHit_t *pHit = &Wpr_DrawUtils_aButtonHits[i];
+			pHit->fLeft = FMATH_MIN( fIconL, fTextL );
+			pHit->fTop = FMATH_MIN( fIconT, fTextT );
+			pHit->fRight = FMATH_MAX( fIconR, fTextR );
+			pHit->fBottom = FMATH_MAX( fIconB, fTextB );
+			pHit->bDrawn = TRUE;
+		}
+	}
+}
+#else
 void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 									  u32 nDrawButtonMask,
 									 f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
 	u32 i;
 	Wpr_DataTypes_ButtonLayout_t *pButton;
 	f32 fUnitHeight;
-#if defined(MA_PC_INPUT)
-	f32 fRowUnitY = -1.0f, fRowNextLeft = 0.0f;	// where the next key cap on the current row may start
-#endif
 
 	for( i=0; i < pScreen->nNumButtons; i++ ) {
 		pButton = &pScreen->paButtons[i];
@@ -318,19 +469,6 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 			fUnitHeight = pButton->fPixelSize / (2.0f * fHalfYRes);
 			f32 fTextUnitX = ((pButton->fBiPolarUnitX + 1.0f) * 0.5f) + (fUnitHeight * 0.25f);
 			const f32 fTextUnitY = (((pButton->fBiPolarUnitY - 1.0f) * -0.5f) * 0.75f) - (fUnitHeight * 0.10f);
-#if defined(MA_PC_INPUT)
-			// keyboard and mouse: a key cap naming the key, instead of the pad's button icon
-			f32 fCapLeft = 0.0f, fCapTop = 0.0f, fCapRight = 0.0f, fCapBottom = 0.0f;
-			const BOOL bKeyCap = i < sizeof( _apwszKeyCapLabels ) / sizeof( _apwszKeyCapLabels[0] ) && pcinput_UseKeyboardPrompts();
-			const BOOL bPlayStationGlyph = i < sizeof( _apwszKeyCapLabels ) / sizeof( _apwszKeyCapLabels[0] ) && pcinput_UsePlayStationPrompts();
-			if( bKeyCap ) {
-				const f32 fMinLeft = ( fRowUnitY >= 0.0f && FMATH_FABS( fRowUnitY - fTextUnitY ) < 0.02f ) ? fRowNextLeft : 0.0f;
-				fTextUnitX = _DrawKeyCap( i, pButton, fUnitHeight, fTextUnitY, fMinLeft, fHalfXRes, fHalfYRes, &fCapLeft, &fCapTop, &fCapRight, &fCapBottom );
-			} else if( bPlayStationGlyph ) {
-				wpr_drawutils_DrawPlayStationGlyph( i, pButton->fBiPolarUnitX * fHalfXRes,
-					pButton->fBiPolarUnitY * fHalfYRes, fUnitHeight * fHalfYRes * 0.32f );
-			} else
-#endif
 			wpr_drawutils_DrawTextureToScreen( TRUE,
 				pButton->pTexture,
 				pButton->fBiPolarUnitX,
@@ -341,49 +479,15 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 			// draw the button instructions
 			ftext_Printf( fTextUnitX,
 				fTextUnitY,
-				L"~f1~C%ls~w0~a%lc~s%.2f%ls", 
+				L"~f1~C%ls~w0~a%lc~s%.2f%ls",
 				WprDataTypes_pwszButtonTextColor,
 				L'L',
 				pButton->fFontScale,
 				pButton->pwszInstructions );
-#if defined(MA_PC_INPUT)
-			{
-				f32 fL, fT, fR, fB;
-				if( ftext_GetLastPrintBounds( &fL, &fT, &fR, &fB ) ) {
-					fRowUnitY = fTextUnitY;
-					fRowNextLeft = fR + 0.02f;
-				}
-			}
-#endif
-
-#if defined(MA_PC_INPUT)
-			if( i < WPR_DRAWUTILS_BUTTON_HITS ) {
-				// the icon (as wpr_drawutils_DrawTextureToScreen() sizes it) plus the instruction text
-				Wpr_DrawUtils_ButtonHit_t *pHit = &Wpr_DrawUtils_aButtonHits[i];
-				f32 fHalfX = 0.5f * (fUnitHeight * fHalfYRes/fHalfXRes), fHalfY = 0.5f * fUnitHeight;
-				pHit->fLeft = (pButton->fBiPolarUnitX - fHalfX + 1.0f) * 0.5f;
-				pHit->fRight = (pButton->fBiPolarUnitX + fHalfX + 1.0f) * 0.5f;
-				pHit->fTop = (1.0f - (pButton->fBiPolarUnitY + fHalfY)) * 0.5f;
-				pHit->fBottom = (1.0f - (pButton->fBiPolarUnitY - fHalfY)) * 0.5f;
-				f32 fLeft, fTop, fRight, fBottom;
-				if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
-					pHit->fLeft = FMATH_MIN( pHit->fLeft, fLeft );
-					pHit->fTop = FMATH_MIN( pHit->fTop, fTop );
-					pHit->fRight = FMATH_MAX( pHit->fRight, fRight );
-					pHit->fBottom = FMATH_MAX( pHit->fBottom, fBottom );
-				}
-				if( bKeyCap ) {
-					pHit->fLeft = FMATH_MIN( pHit->fLeft, fCapLeft );
-					pHit->fTop = FMATH_MIN( pHit->fTop, fCapTop );
-					pHit->fRight = FMATH_MAX( pHit->fRight, fCapRight );
-					pHit->fBottom = FMATH_MAX( pHit->fBottom, fCapBottom );
-				}
-				pHit->bDrawn = TRUE;
-			}
-#endif
 		}
 	}
 }
+#endif
 
 void wpr_drawutils_DrawPhrase( f32 fX, f32 fY,
 							  cwchar *pwszColor,

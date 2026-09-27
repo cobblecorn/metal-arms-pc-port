@@ -82,6 +82,17 @@ int main() {
 	state.keys[VK_ESCAPE] = false; state.keys[VK_RETURN] = true;
 	pcinput_MapSample(state,true,gc,&out);
 	Check(Value(out,FPADIO_INPUT_START)==1, "Enter is START in menus");
+	state.keys[VK_RETURN] = false; state.keys['Q'] = true;
+	pcinput_MapSample(state,true,gc,&out);
+	Check(Value(out,FPADIO_INPUT_CROSS_LEFT)==0, "Q is not Back in menus (the pause menu turns pages with it)");
+	state.keys['Q'] = false; state.menus = false; state.textInput = true;
+	state.keys['E']=state.keys['R']=state.keys['W']=state.keys[VK_SPACE]=state.keys['F']=true;
+	pcinput_MapSample(state,true,gc,&out);
+	Check(Value(out,FPADIO_INPUT_CROSS_TOP)==0 && Value(out,FPADIO_INPUT_CROSS_RIGHT)==0 && Value(out,FPADIO_INPUT_STICK_LEFT_Y)==0 &&
+		Value(out,FPADIO_INPUT_CROSS_BOTTOM)==0 && Value(out,FPADIO_INPUT_GC_DBUTTON_TRIGGER_Z)==0, "typing a name fires no game bindings");
+	state.keys[VK_RETURN] = true;
+	pcinput_MapSample(state,true,gc,&out);
+	Check(Value(out,FPADIO_INPUT_START)==0, "Enter is the text field's Done, not START, while typing");
 	state = PcInputState(); state.focused = true;
 	state.keys[VK_RIGHT]=state.keys[VK_DOWN]=true; state.keys['R'] = false;
 	pcinput_MapSample(state,true,gc,&out);

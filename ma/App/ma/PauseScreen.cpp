@@ -1581,11 +1581,6 @@ void CPauseScreen::GetControls()
 	if( Gamepad_aapSample[ Player_aPlayer[CPlayer::m_nCurrent].m_nControllerIndex ][GAMEPAD_MAIN_PAUSE]->uLatches & FPAD_LATCH_ON ) {
 		m_uButtons |= PSINPUT_START;
 	}
-#if defined(MA_PC_INPUT)
-	if( (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0 ) {
-		m_uButtons |= PSINPUT_START;
-	}
-#endif
 
 	m_uButtonsLatched = m_uButtons & (~uLastButtons);
 }
@@ -1661,6 +1656,19 @@ void CPauseScreen::SetupFrame()
 }
 
 // =============================================================================================================
+
+#if defined(MA_PC_INPUT)
+// A key cap where the button art of one m_avtxButton slot (6 vertices) is drawn, centered on it
+// vertically; cAlign L'R' ends it at the art's right edge (flush left of the prompt's text, however
+// long the key's name), L'C' centers it. The pause screen draws in x -1..1, y -0.75..0.75 (y up).
+static void _DrawSlotKeyCap( cwchar *pwszLabel, const FDrawVtx_t *pSlot, wchar cAlign, f32 fFontScale ) {
+	const f32 fLeftX = FMATH_MIN( pSlot[0].Pos_MS.x, pSlot[5].Pos_MS.x ), fRightX = FMATH_MAX( pSlot[0].Pos_MS.x, pSlot[5].Pos_MS.x );
+	const f32 fX = cAlign == L'R' ? fRightX : 0.5f * (fLeftX + fRightX);
+	const f32 fCenterY = 0.5f * (pSlot[0].Pos_MS.y + pSlot[5].Pos_MS.y);
+	wpr_drawutils_DrawKeyCapCentered( pwszLabel, (fX + 1.0f) * 0.5f, (0.75f - fCenterY) / 1.5f, cAlign,
+									  fFontScale, 0.5f * (fRightX - fLeftX) * 0.7f, 1.0f, 0.75f, NULL, NULL, NULL, NULL );
+}
+#endif
 
 void CPauseScreen::DrawFrame()
 {
@@ -1758,12 +1766,15 @@ void CPauseScreen::DrawFrame()
 				}
 
 				#if defined(MA_PC_INPUT)
-				if( pcinput_UsePlayStationPrompts() ) {
+				if( pcinput_UseKeyboardPrompts() ) {
+					// Space selects (Enter is START, which resumes); Escape resumes or backs out
+					_DrawSlotKeyCap( nButtonIndex == 0 ? L"Space" : L"Esc", &(m_avtxButton[6 * nButtonIndex]), L'R', 0.62f );
+				} else if( pcinput_UsePlayStationPrompts() ) {
 					const FDrawVtx_t *pButton = &(m_avtxButton[6 * nButtonIndex]);
 					const f32 fCenterX = 0.5f * (pButton[0].Pos_MS.x + pButton[5].Pos_MS.x);
 					const f32 fCenterY = 0.5f * (pButton[0].Pos_MS.y + pButton[5].Pos_MS.y);
 					const f32 fRadius = FMATH_MIN( FMATH_FABS( pButton[1].Pos_MS.x - pButton[0].Pos_MS.x ),
-						FMATH_FABS( pButton[0].Pos_MS.y - pButton[2].Pos_MS.y ) ) * 0.34f;
+						FMATH_FABS( pButton[0].Pos_MS.y - pButton[2].Pos_MS.y ) ) * 0.40f;
 					wpr_drawutils_DrawPlayStationGlyph( nButtonIndex == 0 ? 0 : (nButtonIndex == 1 ? 1 : 4), fCenterX, fCenterY, fRadius );
 				} else {
 					fdraw_PrimList( FDRAW_PRIMTYPE_TRILIST, &(m_avtxButton[6 * nButtonIndex]), 6 );
@@ -1774,7 +1785,22 @@ void CPauseScreen::DrawFrame()
 			}
 		}
 
+#if defined(MA_PC_INPUT)
+		// the key caps and glyphs above draw untextured
+		fdraw_SetTexture( &m_texControls );
+		fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
+#endif
+
 		if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
+#if defined(MA_PC_INPUT)
+			if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL && pcinput_UseKeyboardPrompts() ) {
+				// the page tabs: Q and E (or Tab / Shift+Tab) instead of the shoulder buttons
+				_DrawSlotKeyCap( L"Q", &(m_avtxButton[6 * 2]), L'C', 0.80f );
+				_DrawSlotKeyCap( L"E", &(m_avtxButton[6 * 3]), L'C', 0.80f );
+				fdraw_SetTexture( &m_texControls );
+				fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
+			} else
+#endif
 			if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL ) {
 				fdraw_SetTexture(&m_texControls);
 				u32 i;

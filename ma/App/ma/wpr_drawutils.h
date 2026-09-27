@@ -37,8 +37,18 @@ typedef struct {
 extern Wpr_DrawUtils_ButtonHit_t Wpr_DrawUtils_aButtonHits[WPR_DRAWUTILS_BUTTON_HITS];
 extern void wpr_drawutils_ClearButtonHits( void );
 // Draw a generated Cross/Circle/Triangle/Square glyph (0..3) or the Options button (4) in the
-// caller's current fdraw coordinate system.
+// caller's current fdraw coordinate system: a dark round button of fRadius with the symbol on it.
 extern void wpr_drawutils_DrawPlayStationGlyph( u32 nGlyph, f32 fCenterX, f32 fCenterY, f32 fRadius );
+// Draw a keyboard key cap: pwszLabel printed at (fTextX, fTextY) (screen fractions, the text's top;
+// cAlign L'L' puts the key's left there, L'C' its center, L'R' its right) on a raised key sized to the text and at
+// least fMinWidth wide. The key is drawn in the caller's current fdraw space, where screen fraction f
+// maps to ((f*2-1)*fXScale, (1-f*2)*fYScale). Returns the key's bounds in screen fractions.
+extern BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
+									  f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom );
+// The same, with the label's line centered on fCenterY (a screen fraction down) using the prompt font's
+// measured line metrics.
+extern BOOL wpr_drawutils_DrawKeyCapCentered( cwchar *pwszLabel, f32 fTextX, f32 fCenterY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
+											  f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom );
 #endif
 
 
