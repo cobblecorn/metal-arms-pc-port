@@ -1165,6 +1165,9 @@ BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData
 	if (!pGameCubeData || !ppDxData || !pnDxBytes)
 		return FALSE;
 
+	if (!FMesh_avCNormalSphere)
+		fmesh_InitNormalSphere();
+
 	std::vector<u32> anTextures;
 	std::vector<u32> anMotifs;
 	FMesh_t *pMesh = NULL;

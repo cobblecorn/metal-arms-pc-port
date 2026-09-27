@@ -130,6 +130,8 @@ BOOL fdx8mesh_ModuleStartup( void )
 
 	fdx8vid_RegisterWindowCallbackFunction( _WindowCreatedCallback );
 
+	fmesh_InitNormalSphere();
+
 	fres_CopyType( _ResLoadRegistration.sResType, FMESH_RESTYPE );
 	_ResLoadRegistration.pszFileExtension = "ape";
 	_ResLoadRegistration.nMemType = FRESLOAD_MEMTYPE_TEMP;
