@@ -111,6 +111,21 @@ Target assistance (reticle snapping, aim biasing, shot focusing) is tuned for st
 default (`-aim-assist auto`) it is suspended while you aim with captured mouse look and returns
 when the right stick aims; `-aim-assist on|off` (or `MA_PORT_AIM_ASSIST`) forces it.
 
+### Front-end menus with the mouse
+
+The front end (title menu through level select, multiplayer setup and settings) draws its own pointer,
+the HUD's triangular reticle (`tfh_cross01`) used apex-up as an arrow, and hides the Windows cursor over
+the window. Moving the pointer over an item selects it; a left click on an item picks it (A); a right
+click is Back (B); clicking a button prompt ("Accept", "Back", ...) presses that button; the wheel steps
+through lists (and pages sideways lists); over a selected setting (sound volumes, advanced controller
+options, multiplayer rules) the wheel changes its value. The keyboard and pads keep working; using them
+hides the pointer until the mouse moves again. Clicks are queued with their own positions, so fast clicks
+on the name keyboard all land. While a menu draws its own pointer the mouse buttons are not also fed to
+the triggers (a held right trigger starts the launch screen's level-unlock code and blocks input).
+`MA_PORT_POINTER_DEBUG=1` outlines every hit box and logs each click's target.
+
+The in-game pause menu does not take the mouse yet (it uses the system cursor).
+
 XInput controllers can connect after launch. `-input-layout shared` (default) puts the keyboard/mouse
 and controller 1 on port 1 and controllers 2-4 on ports 2-4. `-input-layout separate` keeps the
 keyboard/mouse alone on port 1 and puts controllers 1-3 on ports 2-4, so a keyboard player and pad

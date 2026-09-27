@@ -136,6 +136,11 @@ static _FTextArea_t _oAreaDefault;
 
 // FText Printf Letter structures
 static u32 _nLettersUsed;
+#if FANG_PLATFORM_WIN
+// The letters the most recent _ftext_PrintString() laid out: [first, end).
+static u32 _nLastPrintFirstLetter, _nLastPrintEndLetter;
+static f32 _fLastPrintLineTop, _fLastPrintLineBottom;	// pixels: the first line's top, the last line's bottom
+#endif
 static u32 _nLettersInCurrentLine;
 static u32 _nLettersInCurrentWord;
 
@@ -1471,6 +1476,10 @@ static void _ftext_PrintString(  const _FTextPrintf_e oType,
 	return;
 #endif
 
+#if FANG_PLATFORM_WIN
+	_nLastPrintFirstLetter = _nLastPrintEndLetter = _nLettersUsed;
+#endif
+
 	if( ! pszWString[ 0 ] )
 	{
 		return;
@@ -1611,6 +1620,12 @@ static void _ftext_PrintString(  const _FTextPrintf_e oType,
 	}
 	//
 	//// Horizontal alignment (align on EOS).
+
+#if FANG_PLATFORM_WIN
+	_nLastPrintEndLetter = _nLettersUsed;
+	_fLastPrintLineTop = _fTempCursorOriginY + _fTempVertOffset;
+	_fLastPrintLineBottom = _fTempY + _fTempVertOffset + ( _poTempFont->fHeight * _fTempFontScale );
+#endif
 
 	if( _FTEXT_PRINTF_AREA_ONLY == oType )
 	{
@@ -3190,6 +3205,40 @@ _FText_Draw_Exit:
 } // ftext_Draw
 
 
+
+#if FANG_PLATFORM_WIN
+BOOL ftext_GetLastPrintBounds( f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom ) {
+	if( !_bModuleInstalled || _nLastPrintEndLetter <= _nLastPrintFirstLetter || _nLastPrintEndLetter > _nLettersUsed ) {
+		return FALSE;
+	}
+
+	f32 fLeft = 0.0f, fTop = 0.0f, fRight = 0.0f, fBottom = 0.0f;
+	for( u32 i = _nLastPrintFirstLetter; i < _nLastPrintEndLetter; i++ ) {
+		f32 fUpperLeftX, fUpperRightX, fLowerLeftX, fLowerRightX, fUpperY, fLowerY;
+		ftext_CalculateLetterCoordinates( &FText_paoPrintfLetters[i], &fUpperLeftX, &fUpperRightX, &fLowerLeftX, &fLowerRightX, &fUpperY, &fLowerY );
+		f32 fL = FMATH_MIN( fUpperLeftX, fLowerLeftX ), fR = FMATH_MAX( fUpperRightX, fLowerRightX );
+		if( i == _nLastPrintFirstLetter ) {
+			fLeft = fL; fRight = fR; fTop = fUpperY; fBottom = fLowerY;
+		} else {
+			fLeft = FMATH_MIN( fLeft, fL ); fRight = FMATH_MAX( fRight, fR );
+			fTop = FMATH_MIN( fTop, fUpperY ); fBottom = FMATH_MAX( fBottom, fLowerY );
+		}
+	}
+
+	// Cover whole lines (the letters' quads only cover their ink).
+	fTop = FMATH_MIN( fTop, _fLastPrintLineTop );
+	fBottom = FMATH_MAX( fBottom, _fLastPrintLineBottom );
+
+	// Letters are placed in pixels of the full-screen viewport ftext_Draw() renders them with.
+	const f32 fOOResX = 1.0f / ( _poViewportDefault->Res.x * _FRAMEBUFFER_X_SCALEFACTOR );
+	const f32 fOOResY = 1.0f / _poViewportDefault->Res.y;
+	*pfLeft = fLeft * fOOResX;
+	*pfRight = fRight * fOOResX;
+	*pfTop = fTop * fOOResY;
+	*pfBottom = fBottom * fOOResY;
+	return TRUE;
+}
+#endif
 
 void ftext_CalculateLetterCoordinates( FText_FTextPrintfLetter_t *pLetterStruct, 
 								  f32 *pfUpperLeftX, f32 *pfUpperRightX, f32 *pfLowerLeftX, f32 *pfLowerRightX,

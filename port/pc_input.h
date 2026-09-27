@@ -39,6 +39,20 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam);
 void pcinput_BeginFrame(bool allowLook);
 float pcinput_TakeMouseAxis(u32 controller, bool pitch);
 
+// Menus: an absolute pointer over the client area while mouse look is not captured. Positions are
+// fractions of the client area (0..1 across and down), which the back buffer is stretched over.
+// The pointer shows when the mouse moves or clicks over the client area and hides when it leaves,
+// focus is lost, or pcinput_HideMenuPointer() reports keyboard/pad menu input.
+bool pcinput_MenuPointer(float *x, float *y);	// false while hidden
+bool pcinput_MenuPointerMoved();				// moved or clicked over the client area this frame
+// The oldest waiting button press and where it happened (x/y may be NULL); each press is returned once.
+bool pcinput_TakeMenuClick(bool right, float *x, float *y);
+int pcinput_TakeMenuWheel();					// wheel notches this frame, positive away from the user
+void pcinput_HideMenuPointer();
+// Called each frame by a menu that draws its own pointer: the system cursor is hidden over the
+// client area while that continues.
+void pcinput_DrawsMenuPointer();
+
 // The game's target assistance (reticle snapping, aim biasing, shot focusing) is tuned for
 // sticks. AUTO applies it unless the controller's most recent aiming came from the mouse;
 // ON and OFF force it. Set with -aim-assist or MA_PORT_AIM_ASSIST (auto, on, off).

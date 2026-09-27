@@ -54,6 +54,10 @@
 #include "ffile.h"
 #include "fdatastreaming.h"
 #include "msgbox.h"
+#if defined(MA_PC_INPUT)
+#include "fvid.h"
+#include "pc_input.h"
+#endif
 
 #define _DEBUG_NO_SPACE							0
 
@@ -137,6 +141,130 @@ static cchar *_pszCSVFilename = "wrappers$";
 static cchar *_pszIGCSVFilename = "IGwrappers$";
 static cchar *_pszMeshTableName = "meshes";
 static cchar *_pszPhrasesTableName = "common_phrases";
+#if FANG_WINGC
+// The retail wrappers$ phrase tables were reordered after this source snapshot: the "Press A to ..."
+// phrases moved into the platform table and retail-only phrases were added. When the tables have the
+// retail sizes, each phrase is read from the field listed here (the common table, the platform table, or
+// a literal for the two phrases retail dropped).
+#define _RETAIL_COMMON_PHRASE_COUNT		111
+#define _RETAIL_PLATFORM_PHRASE_COUNT	19
+#define _RETAIL_PHRASE_PLATFORM( n )	( 0x100 | (n) )
+#define _RETAIL_PHRASE_LITERAL			0xFFFF
+static const u16 _anRetailPhraseField[WPR_DATATYPES_PHRASES_COUNT] = {
+	0,	// WPR_DATATYPES_PHRASES_ACCEPT
+	1,	// WPR_DATATYPES_PHRASES_BACK
+	2,	// WPR_DATATYPES_PHRASES_ON
+	3,	// WPR_DATATYPES_PHRASES_OFF
+	4,	// WPR_DATATYPES_PHRASES_2WAY
+	5,	// WPR_DATATYPES_PHRASES_4WAY
+	6,	// WPR_DATATYPES_PHRASES_SPACE
+	7,	// WPR_DATATYPES_PHRASES_CAPS
+	8,	// WPR_DATATYPES_PHRASES_DONE
+	9,	// WPR_DATATYPES_PHRASES_LEVEL
+	10,	// WPR_DATATYPES_PHRASES_WASHERS
+	11,	// WPR_DATATYPES_PHRASES_SECRET_CHIPS
+	12,	// WPR_DATATYPES_PHRASES_ENEMIES
+	13,	// WPR_DATATYPES_PHRASES_STATUS
+	14,	// WPR_DATATYPES_PHRASES_COMPLETE
+	15,	// WPR_DATATYPES_PHRASES_CONFIGURATION
+	16,	// WPR_DATATYPES_PHRASES_CONTROLLER
+	17,	// WPR_DATATYPES_PHRASES_UPPER
+	18,	// WPR_DATATYPES_PHRASES_LOWER
+	19,	// WPR_DATATYPES_PHRASES_PORT
+	20,	// WPR_DATATYPES_PHRASES_LEFT
+	21,	// WPR_DATATYPES_PHRASES_RIGHT
+	22,	// WPR_DATATYPES_PHRASES_NONE
+	23,	// WPR_DATATYPES_PHRASES_HARD_DISK
+	24,	// WPR_DATATYPES_PHRASES_CREATE_NEW_PROFILE
+	25,	// WPR_DATATYPES_PHRASES_PRESS_START
+	_RETAIL_PHRASE_PLATFORM( 9 ),	// WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN
+	26,	// WPR_DATATYPES_PHRASES_DEFAULT
+	27,	// WPR_DATATYPES_PHRASES_INVERTED
+	_RETAIL_PHRASE_PLATFORM( 10 ),	// WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED
+	28,	// WPR_DATATYPES_PHRASES_LOCATION
+	_RETAIL_PHRASE_PLATFORM( 11 ),	// WPR_DATATYPES_PHRASES_PRESS_A_TO_ACCEPT
+	29,	// WPR_DATATYPES_PHRASES_CHOOSE_PROFILE
+	30,	// WPR_DATATYPES_PHRASES_WAITING_FOR_OTHER_PLAYERS
+	31,	// WPR_DATATYPES_PHRASES_PLAYER
+	32,	// WPR_DATATYPES_PHRASES_SELECTING
+	33,	// WPR_DATATYPES_PHRASES_STUPID
+	34,	// WPR_DATATYPES_PHRASES_EASY
+	35,	// WPR_DATATYPES_PHRASES_REGULAR
+	36,	// WPR_DATATYPES_PHRASES_HARD
+	37,	// WPR_DATATYPES_PHRASES_INSANE
+	38,	// WPR_DATATYPES_PHRASES_RANDOM
+	39,	// WPR_DATATYPES_PHRASES_MINUTE
+	40,	// WPR_DATATYPES_PHRASES_MINUTES
+	41,	// WPR_DATATYPES_PHRASES_NO_LIMIT
+	42,	// WPR_DATATYPES_PHRASES_AI_BOT
+	43,	// WPR_DATATYPES_PHRASES_YOU_NEED_TO_FREE_0
+	44,	// WPR_DATATYPES_PHRASES_YOU_NEED_TO_FREE_1
+	45,	// WPR_DATATYPES_PHRASES_YOU_NEED_TO_FREE_2
+	46,	// WPR_DATATYPES_PHRASES_STATS
+	47,	// WPR_DATATYPES_PHRASES_COLLECTED
+	48,	// WPR_DATATYPES_PHRASES_FINISHED_IN
+	49,	// WPR_DATATYPES_PHRASES_ENEMIES_DESTROYED
+	50,	// WPR_DATATYPES_PHRASES_SECRET_AREAS_FOUND
+	51,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT1
+	52,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT2
+	53,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT3
+	54,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT4
+	55,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT5
+	56,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT6
+	57,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT7
+	58,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT8
+	59,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT9
+	60,	// WPR_DATATYPES_PHRASES_PRIMARY_LIMIT10
+	61,	// WPR_DATATYPES_PHRASES_SECONDARY_LIMIT1
+	62,	// WPR_DATATYPES_PHRASES_SECONDARY_LIMIT2
+	63,	// WPR_DATATYPES_PHRASES_SECONDARY_LIMIT3
+	64,	// WPR_DATATYPES_PHRASES_SECONDARY_LIMIT4
+	65,	// WPR_DATATYPES_PHRASES_SECONDARY_LIMIT5
+	66,	// WPR_DATATYPES_PHRASES_SECONDARY_LIMIT6
+	67,	// WPR_DATATYPES_PHRASES_SECONDARY_LIMIT7
+	68,	// WPR_DATATYPES_PHRASES_SECONDARY_LIMIT8
+	69,	// WPR_DATATYPES_PHRASES_DEATHMATCH
+	70,	// WPR_DATATYPES_PHRASES_TIMED_DEATHMATCH
+	71,	// WPR_DATATYPES_PHRASES_POSSESSION_MELEE
+	72,	// WPR_DATATYPES_PHRASES_KING_OF_THE_HILL
+	73,	// WPR_DATATYPES_PHRASES_MOVING_HILL
+	74,	// WPR_DATATYPES_PHRASES_REVERSE_TAG
+	75,	// WPR_DATATYPES_PHRASES_TAG
+	76,	// WPR_DATATYPES_PHRASES_BASE_DEATHMATCH
+	77,	// WPR_DATATYPES_PHRASES_BASE_KING_OF_HILL
+	78,	// WPR_DATATYPES_PHRASES_BASE_TAG
+	79,	// WPR_DATATYPES_PHRASES_BASE_REVERSE_TAG
+	80,	// WPR_DATATYPES_PHRASES_INDIVIDUAL
+	81,	// WPR_DATATYPES_PHRASES_TEAM
+	82,	// WPR_DATATYPES_NO_HILL_SWAPS
+	83,	// WPR_DATATYPES_PHRASES_UNABLE_LOAD_PROFILE
+	_RETAIL_PHRASE_PLATFORM( 12 ),	// WPR_DATATYPES_PHRASES_PRESS_A_TO_CONTINUE
+	84,	// WPR_DATATYPES_PHRASES_VEHICLE_LIMIT1
+	85,	// WPR_DATATYPES_PHRASES_VEHICLE_LIMIT2
+	86,	// WPR_DATATYPES_PHRASES_VEHICLE_LIMIT3
+	87,	// WPR_DATATYPES_PHRASES_VEHICLE_LIMIT4
+	88,	// WPR_DATATYPES_PHRASES_VEHICLE_LIMIT5
+	89,	// WPR_DATATYPES_PHRASES_CREATE_NEW_GAMETYPE
+	90,	// WPR_DATATYPES_PHRASES_DEFAULT_GAMETYPE_NAME
+	91,	// WPR_DATATYPES_PHRASES_BUILT_IN_TYPE
+	_RETAIL_PHRASE_LITERAL,	// WPR_DATATYPES_PHRASES_TIME_TO_BEAT
+	92,	// WPR_DATATYPES_PHRASES_BONUS_SECRET_CHIP_EARNED
+	_RETAIL_PHRASE_LITERAL,	// WPR_DATATYPES_PHRASES_LOCKED
+	93,	// WPR_DATATYPES_PHRASES_DELETE
+	94,	// WPR_DATATYPES_PHRASES_FORMAT
+	95,	// WPR_DATATYPES_PHRASES_MA_NEEDS_0
+	96,	// WPR_DATATYPES_PHRASES_MA_NEEDS_1
+	97,	// WPR_DATATYPES_PHRASES_MA_NEEDS_2
+	98,	// WPR_DATATYPES_PHRASES_WRONG_DEVICE
+	_RETAIL_PHRASE_PLATFORM( 0 ),	// WPR_DATATYPES_PHRASES_MANAGEMEMORY
+	_RETAIL_PHRASE_PLATFORM( 1 ),	// WPR_DATATYPES_PHRASES_MEMORY_CARD_A
+	_RETAIL_PHRASE_PLATFORM( 2 ),	// WPR_DATATYPES_PHRASES_MEMORY_CARD_B
+	_RETAIL_PHRASE_PLATFORM( 3 ),	// WPR_DATATYPES_PHRASES_MU_UNUSABLE
+	_RETAIL_PHRASE_PLATFORM( 4 ),	// WPR_DATATYPES_PHRASES_NO_ROOM_FOR_NEW_PROFILE
+	_RETAIL_PHRASE_PLATFORM( 5 ),	// WPR_DATATYPES_PHRASES_INSERT_MEMORY_CARD
+	_RETAIL_PHRASE_PLATFORM( 6 ),	// WPR_DATATYPES_PHRASES_DAMAGED_MEMORY_CARD_WARNING
+};
+#endif
 static cchar *_pszControllerConfigs = "Controller_Configs";
 static cchar *_pszMusicTableName = "music";
 static cchar *_pszSoundTableName = "sound_fx_bank";
@@ -538,6 +666,424 @@ static CFCamAnimInst *_pCamAnimInst;
 // loaded profiles
 static CPlayerProfile *_paProfiles = NULL;// when non-NULL, will point to MAX_PLAYERS elements
 static GameInitInfo_t _GameInitInfo;// filled in when we go to actually start a game
+
+#if defined(MA_PC_INPUT)
+//===================================
+// mouse pointer (PC port)
+//
+// Draw functions record where the selectable list items were printed (ids in _MenuState.nCurItemIndex's
+// space) and wpr_drawutils records the button prompts; the next frame's Work hovers and clicks them. Only
+// the front end's keyboard/mouse port responds:
+//	- moving the pointer over an item selects it; hover never changes the selection while the pointer is
+//	  still, so it doesn't fight the keyboard or a pad
+//	- a click on the selected item is A (on screens where A picks the item), a right click is B, and a click
+//	  on a button prompt is that button
+//	- the wheel steps up/down through lists (left/right on screens that page sideways); over a selected
+//	  setting it changes the value, as left/right do
+//	- a click on the zones beside a sideways chooser is left/right
+// Keyboard or pad menu input hides the pointer until the mouse moves again.
+
+#define _MOUSE_MAX_ITEMS			128			// the name keyboard alone has 53 items
+#define _MOUSE_POINTER_TEXTURE		"tfh_cross01"	// the HUD's triangular reticle, used apex up as an arrow
+#define _MOUSE_POINTER_HEIGHT		0.10f			// bipolar units (2 = the screen height)
+#define _MOUSE_POINTER_APEX_V		0.07f			// the apex's row in the texture, as a fraction of its height
+#define _MOUSE_ITEM_SLACK_Y			0.006f			// screen fraction added above and below each item
+#define _MOUSE_ITEM_MIN_WIDTH		0.045f			// narrower items (single keys, "l", "-") are widened to this
+
+enum {
+	_MOUSE_ITEM_ACCEPT = 0x01,		// a click on the item while it is selected is A
+	_MOUSE_ITEM_ADJUST = 0x02,		// a setting: the wheel over it while it is selected is left/right
+};
+#define _MOUSE_ZONE_LEFT			(-2)	// item ids of click zones that act as left/right
+#define _MOUSE_ZONE_RIGHT			(-3)
+
+typedef struct {
+	f32 fLeft, fTop, fRight, fBottom;
+	s32 nItem;
+	u32 nFlags;
+} _MouseItem_t;
+
+typedef enum {
+	_MOUSE_BUTTON_A = 0,	// the prompt order of WPR_DATATYPES_DRAW_*_BUTTON_ONLY
+	_MOUSE_BUTTON_B,
+	_MOUSE_BUTTON_Y,
+	_MOUSE_BUTTON_X,
+} _MouseButton_e;
+
+static _MouseItem_t _aMouseItems[_MOUSE_MAX_ITEMS];
+static u32 _nMouseItems;
+static s32 _nMouseItemsScreen = -1;		// the screen the items and prompts were drawn for
+static s32 _nMouseHoverItem = -1;		// the item under the pointer this frame
+static u32 _nMouseHoverFlags;
+static s32 _nMouseHoverZone;			// _MOUSE_ZONE_* under the pointer, or 0
+static s32 _nMouseHoverButton = -1;		// the prompt under the pointer this frame
+static BOOL _bMouseMoved;				// the pointer moved or clicked this frame
+static u32 _nMouseClickFrames;			// frames a left click stays live: it may select an item, then accept it
+static BOOL _bMouseClickUsed;
+static s32 _nMouseClickItem = -1;		// what the live left click landed on (hit-tested where it happened)
+static u32 _nMouseClickFlags;
+static s32 _nMouseClickZone;
+static s32 _nMouseClickButton = -1;
+static s32 _nMouseClickScreen = -1;		// the screen the live click was hit-tested against
+static BOOL _bMouseRightClick;
+static s32 _nMouseWheelPending;			// notches not yet delivered, + = away from the user (up)
+static s32 _nMouseWheelStep;			// this frame's step, as _UpDown_e
+static CFTexInst _MousePointerTex;
+static FVidDrawOverlayFcn_t *_pMousePrevOverlayFcn;
+static BOOL _bMouseOverlayInstalled;
+static BOOL _bMouseDrawPointer;			// the menus drew this frame; draw the pointer over their text
+static BOOL _bMouseDebug;				// MA_PORT_POINTER_DEBUG: outline the hit boxes and log clicks
+
+static BOOL _MousePort( u32 nControllerID ) {
+	return !_bInGame && nControllerID == pcinput_KeyboardPort();
+}
+
+static void _MouseAddBox( s32 nItem, u32 nFlags, f32 fLeft, f32 fTop, f32 fRight, f32 fBottom ) {
+	if( _nMouseItems >= _MOUSE_MAX_ITEMS || fRight <= fLeft || fBottom <= fTop ) {
+		return;
+	}
+	if( nItem >= 0 && fRight - fLeft < _MOUSE_ITEM_MIN_WIDTH ) {
+		f32 fCenter = 0.5f * (fLeft + fRight);
+		fLeft = fCenter - 0.5f * _MOUSE_ITEM_MIN_WIDTH;
+		fRight = fCenter + 0.5f * _MOUSE_ITEM_MIN_WIDTH;
+	}
+	_MouseItem_t *pItem = &_aMouseItems[_nMouseItems++];
+	pItem->fLeft = fLeft;
+	pItem->fTop = fTop;
+	pItem->fRight = fRight;
+	pItem->fBottom = fBottom;
+	pItem->nItem = nItem;
+	pItem->nFlags = nFlags;
+}
+
+// Draw side: records the list item nItem, just printed by _DrawText() or ftext_Printf().
+static void _MouseAddItem( s32 nItem, u32 nFlags=_MOUSE_ITEM_ACCEPT ) {
+	f32 fLeft, fTop, fRight, fBottom;
+	if( nItem >= 0 && ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+		_MouseAddBox( nItem, nFlags, fLeft, fTop, fRight, fBottom );
+	}
+}
+
+// Draw side: records the list item nItem, drawn as a mesh by wpr_drawutils_DrawMesh_XlatOnly() (the
+// retail main menu's items are 3D text). Its model-space box is placed as that function places it.
+static void _MouseAddMesh( s32 nItem, const Wpr_DataTypes_MeshLayout_t *pMesh,
+						   f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes, u32 nFlags=_MOUSE_ITEM_ACCEPT ) {
+	if( !pMesh->pMeshInst || !pMesh->pMeshInst->m_pMesh ) {
+		return;
+	}
+	const FMesh_t *pFMesh = pMesh->pMeshInst->m_pMesh;
+	f32 fScale = pMesh->fScale * fScaleMultiplier;
+	// ortho pixels, y up, origin at the screen center -> fractions of the screen, y down
+	f32 fMinX = pMesh->fBiPolarUnitX * fHalfXRes + pFMesh->vBoundBoxMin_MS.x * fScale;
+	f32 fMaxX = pMesh->fBiPolarUnitX * fHalfXRes + pFMesh->vBoundBoxMax_MS.x * fScale;
+	f32 fMinY = pMesh->fBiPolarUnitY * fHalfYRes + pFMesh->vBoundBoxMin_MS.y * fScale;
+	f32 fMaxY = pMesh->fBiPolarUnitY * fHalfYRes + pFMesh->vBoundBoxMax_MS.y * fScale;
+	_MouseAddBox( nItem, nFlags,
+				  (fMinX / fHalfXRes + 1.0f) * 0.5f, (1.0f - fMaxY / fHalfYRes) * 0.5f,
+				  (fMaxX / fHalfXRes + 1.0f) * 0.5f, (1.0f - fMinY / fHalfYRes) * 0.5f );
+}
+
+// Draw side: left/right click zones fWidth wide on either side of what was just printed.
+static void _MouseAddArrowZones( f32 fWidth ) {
+	f32 fLeft, fTop, fRight, fBottom;
+	if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+		_MouseAddBox( _MOUSE_ZONE_LEFT, 0, fLeft - fWidth, fTop, fLeft, fBottom );
+		_MouseAddBox( _MOUSE_ZONE_RIGHT, 0, fRight, fTop, fRight + fWidth, fBottom );
+	}
+}
+
+// How the current screen's generic list rows (wpr_system_DrawBasicScreen) respond.
+static u32 _MouseBasicScreenItemFlags( void ) {
+	switch( _MenuState.nCurrentScreen ) {
+	case WPR_DATATYPES_SCREENS_SOUND_OPTIONS:
+		// A leaves the screen; the rows are volume sliders
+		return _MOUSE_ITEM_ADJUST;
+	default:
+		return _MOUSE_ITEM_ACCEPT;
+	}
+}
+
+// What is at (fX, fY): a prompt (*pnButton), an item (*pnItem, *pnFlags) or a left/right zone (*pnZone).
+static void _MouseHitTest( f32 fX, f32 fY, s32 *pnItem, u32 *pnFlags, s32 *pnZone, s32 *pnButton ) {
+	u32 i;
+	*pnItem = *pnButton = -1;
+	*pnFlags = 0;
+	*pnZone = 0;
+	if( _nMouseItemsScreen != _MenuState.nCurrentScreen ) {
+		return;
+	}
+	for( i=0; i < WPR_DRAWUTILS_BUTTON_HITS; i++ ) {
+		const Wpr_DrawUtils_ButtonHit_t *pHit = &Wpr_DrawUtils_aButtonHits[i];
+		if( pHit->bDrawn && fX >= pHit->fLeft && fX <= pHit->fRight && fY >= pHit->fTop && fY <= pHit->fBottom ) {
+			*pnButton = (s32)i;
+			return;
+		}
+	}
+	// where padded boxes overlap, the one whose center is nearest wins
+	const _MouseItem_t *pBest = NULL;
+	f32 fBestDistSq = 0.0f;
+	for( i=0; i < _nMouseItems; i++ ) {
+		const _MouseItem_t *pItem = &_aMouseItems[i];
+		if( fX >= pItem->fLeft && fX <= pItem->fRight &&
+			fY >= pItem->fTop - _MOUSE_ITEM_SLACK_Y && fY <= pItem->fBottom + _MOUSE_ITEM_SLACK_Y ) {
+			f32 fDX = fX - 0.5f * (pItem->fLeft + pItem->fRight), fDY = fY - 0.5f * (pItem->fTop + pItem->fBottom);
+			f32 fDistSq = fDX * fDX + fDY * fDY;
+			if( !pBest || fDistSq < fBestDistSq ) {
+				pBest = pItem;
+				fBestDistSq = fDistSq;
+			}
+		}
+	}
+	if( pBest ) {
+		if( pBest->nItem >= 0 ) {
+			*pnItem = pBest->nItem;
+			*pnFlags = pBest->nFlags;
+		} else {
+			*pnZone = pBest->nItem;
+		}
+	}
+}
+
+static void _MouseBeginDraw( void ) {
+	_nMouseItems = 0;
+	_nMouseItemsScreen = _MenuState.nCurrentScreen;
+	wpr_drawutils_ClearButtonHits();
+}
+
+// Work side: once per front-end frame, after gamepad_Sample().
+static void _MouseFrame( void ) {
+	f32 fX, fY;
+
+	// one left click at a time: it stays live for two frames (it may select an item, then accept it) and
+	// the next queued click waits until it is used or expires
+	if( _bMouseClickUsed || _nMouseClickScreen != _MenuState.nCurrentScreen ) {
+		// used, or the screen it was aimed at has gone
+		_nMouseClickFrames = 0;
+		_bMouseClickUsed = FALSE;
+	} else if( _nMouseClickFrames ) {
+		_nMouseClickFrames--;
+	}
+	if( !_nMouseClickFrames ) {
+		_nMouseClickItem = _nMouseClickButton = -1;
+		_nMouseClickFlags = 0;
+		_nMouseClickZone = 0;
+		if( pcinput_TakeMenuClick( FALSE, &fX, &fY ) ) {
+			_nMouseClickFrames = 2;
+			_nMouseClickScreen = _MenuState.nCurrentScreen;
+			_MouseHitTest( fX, fY, &_nMouseClickItem, &_nMouseClickFlags, &_nMouseClickZone, &_nMouseClickButton );
+			if( _bMouseDebug ) {
+				DEVPRINTF( "wpr mouse: click %.3f,%.3f screen %d -> item %d button %d zone %d (selected %d)\n", fX, fY,
+					_MenuState.nCurrentScreen, _nMouseClickItem, _nMouseClickButton, _nMouseClickZone, _MenuState.nCurItemIndex );
+			}
+		}
+	}
+	_bMouseRightClick = pcinput_TakeMenuClick( TRUE, NULL, NULL );
+
+	_nMouseWheelPending += pcinput_TakeMenuWheel();
+	FMATH_CLAMP( _nMouseWheelPending, -3, 3 );
+	_nMouseWheelStep = (_nMouseWheelPending > 0) ? _UP : ( (_nMouseWheelPending < 0) ? _DOWN : _NOT_UP_OR_DOWN );
+	_nMouseWheelPending += _nMouseWheelStep;
+
+	_bMouseMoved = pcinput_MenuPointerMoved();
+	if( pcinput_MenuPointer( &fX, &fY ) ) {
+		_MouseHitTest( fX, fY, &_nMouseHoverItem, &_nMouseHoverFlags, &_nMouseHoverZone, &_nMouseHoverButton );
+	} else {
+		_nMouseHoverItem = _nMouseHoverButton = -1;
+		_nMouseHoverFlags = 0;
+		_nMouseHoverZone = 0;
+	}
+}
+
+// A left click on the selected item (where that means A) or on the A prompt.
+static BOOL _MouseAccept( u32 nControllerID ) {
+	if( !_MousePort( nControllerID ) || !_nMouseClickFrames ) {
+		return FALSE;
+	}
+	if( _nMouseClickButton == _MOUSE_BUTTON_A ||
+		( (_nMouseClickFlags & _MOUSE_ITEM_ACCEPT) && _nMouseClickItem >= 0 && _nMouseClickItem == _MenuState.nCurItemIndex ) ) {
+		_bMouseClickUsed = TRUE;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+// A left click on the prompt for nButton.
+static BOOL _MousePrompt( u32 nControllerID, _MouseButton_e nButton ) {
+	if( !_MousePort( nControllerID ) || !_nMouseClickFrames || _nMouseClickButton != (s32)nButton ) {
+		return FALSE;
+	}
+	_bMouseClickUsed = TRUE;
+	return TRUE;
+}
+
+static BOOL _MouseBack( u32 nControllerID ) {
+	return ( _MousePort( nControllerID ) && _bMouseRightClick ) || _MousePrompt( nControllerID, _MOUSE_BUTTON_B );
+}
+
+// The wheel as up/down, unless it is adjusting the setting under the pointer.
+static _UpDown_e _MouseUpDown( u32 nControllerID ) {
+	if( !_MousePort( nControllerID ) || (_nMouseHoverFlags & _MOUSE_ITEM_ADJUST) ) {
+		return _NOT_UP_OR_DOWN;
+	}
+	return (_UpDown_e)_nMouseWheelStep;
+}
+
+// A click on a left/right zone, or the wheel over the selected setting (up = right).
+static _LeftRight_e _MouseLeftRight( u32 nControllerID ) {
+	if( !_MousePort( nControllerID ) ) {
+		return _NOT_LEFT_OR_RIGHT;
+	}
+	if( _nMouseClickFrames && _nMouseClickZone ) {
+		_bMouseClickUsed = TRUE;
+		return (_nMouseClickZone == _MOUSE_ZONE_LEFT) ? _LEFT : _RIGHT;
+	}
+	if( _nMouseWheelStep && (_nMouseHoverFlags & _MOUSE_ITEM_ADJUST) && _nMouseHoverItem == _MenuState.nCurItemIndex ) {
+		return (_nMouseWheelStep == _UP) ? _RIGHT : _LEFT;
+	}
+	return _NOT_LEFT_OR_RIGHT;
+}
+
+// The item that should become the selection (0..nMaxValidIndex and not already selected): the one a live
+// click landed on, else the one under a moving pointer. -1 for none.
+static s32 _MouseHoverSelect( u32 nControllerID, s32 nMaxValidIndex ) {
+	if( !_MousePort( nControllerID ) ) {
+		return -1;
+	}
+	s32 nItem = -1;
+	if( _nMouseClickFrames && _nMouseClickItem >= 0 ) {
+		nItem = _nMouseClickItem;
+	} else if( _bMouseMoved ) {
+		nItem = _nMouseHoverItem;
+	}
+	if( nItem < 0 || nItem > nMaxValidIndex || nItem == _MenuState.nCurItemIndex ) {
+		return -1;
+	}
+	return nItem;
+}
+
+// Keyboard or pad input on the mouse's port hides the pointer until the mouse moves again.
+static void _MouseOtherInput( u32 nControllerID ) {
+	if( _MousePort( nControllerID ) ) {
+		pcinput_HideMenuPointer();
+	}
+}
+
+static void _MouseDrawPointerQuad( f32 fApexX, f32 fApexY, f32 fHalfXRes, f32 fHalfYRes, const CFColorRGBA &rColor ) {
+	// the apex is the hotspot; the texture's center sits below it
+	f32 fHalfY = 0.5f * _MOUSE_POINTER_HEIGHT;
+	f32 fHalfX = fHalfY * fHalfYRes / fHalfXRes;
+	f32 fCenterY = fApexY - (0.5f - _MOUSE_POINTER_APEX_V) * _MOUSE_POINTER_HEIGHT;
+	f32 fLowerX = (fApexX - fHalfX) * fHalfXRes, fUpperX = (fApexX + fHalfX) * fHalfXRes;
+	f32 fLowerY = (fCenterY - fHalfY) * fHalfYRes, fUpperY = (fCenterY + fHalfY) * fHalfYRes;
+
+	Wpr_DrawUtils_aVtx[0].ST.Set( 0.0f, 1.0f );
+	Wpr_DrawUtils_aVtx[1].ST.Set( 0.0f, 0.0f );
+	Wpr_DrawUtils_aVtx[2].ST.Set( 1.0f, 1.0f );
+	Wpr_DrawUtils_aVtx[3].ST.Set( 1.0f, 0.0f );
+	Wpr_DrawUtils_aVtx[0].Pos_MS.Set( fLowerX, fLowerY, 1.0f );
+	Wpr_DrawUtils_aVtx[1].Pos_MS.Set( fLowerX, fUpperY, 1.0f );
+	Wpr_DrawUtils_aVtx[2].Pos_MS.Set( fUpperX, fLowerY, 1.0f );
+	Wpr_DrawUtils_aVtx[3].Pos_MS.Set( fUpperX, fUpperY, 1.0f );
+	for( u32 i=0; i < 4; i++ ) {
+		Wpr_DrawUtils_aVtx[i].ColorRGBA = rColor;
+	}
+	fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, Wpr_DrawUtils_aVtx, 4 );
+}
+
+// Runs after ftext_Draw() so the pointer sits above the menu text.
+static void _MouseDrawOverlay( void ) {
+	if( _pMousePrevOverlayFcn ) {
+		_pMousePrevOverlayFcn();
+	}
+	if( !_bMouseDrawPointer ) {
+		return;
+	}
+	_bMouseDrawPointer = FALSE;
+
+	f32 fX, fY;
+	if( !_pViewportOrtho3D || !_MousePointerTex.GetTexDef() || !pcinput_MenuPointer( &fX, &fY ) ) {
+		return;
+	}
+	FViewport_t *pPrevViewport = fviewport_SetActive( _pViewportOrtho3D );
+	CFXfm::InitStack();
+	frenderer_Push( FRENDERER_DRAW, NULL );
+
+	fdraw_Depth_EnableWriting( FALSE );
+	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
+	fdraw_SetTexture( &_MousePointerTex );
+	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
+	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+
+	f32 fHalfXRes = _pViewportOrtho3D->HalfRes.x, fHalfYRes = _pViewportOrtho3D->HalfRes.y;
+	f32 fApexX = fX * 2.0f - 1.0f, fApexY = 1.0f - fY * 2.0f;
+	// a dark outline keeps the white reticle readable over bright scenery
+	CFColorRGBA Color;
+	Color.Set( 0.0f, 0.0f, 0.05f, 0.85f );
+	f32 fPixelX = 1.5f / fHalfXRes, fPixelY = 1.5f / fHalfYRes;
+	_MouseDrawPointerQuad( fApexX - fPixelX, fApexY, fHalfXRes, fHalfYRes, Color );
+	_MouseDrawPointerQuad( fApexX + fPixelX, fApexY, fHalfXRes, fHalfYRes, Color );
+	_MouseDrawPointerQuad( fApexX, fApexY - fPixelY, fHalfXRes, fHalfYRes, Color );
+	_MouseDrawPointerQuad( fApexX, fApexY + fPixelY, fHalfXRes, fHalfYRes, Color );
+	Color.Set( 1.0f, 1.0f, 1.0f, 1.0f );
+	_MouseDrawPointerQuad( fApexX, fApexY, fHalfXRes, fHalfYRes, Color );
+
+	if( _bMouseDebug ) {
+		fdraw_SetTexture( NULL );
+		fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
+		CFColorRGBA BoxColor( 0.0f, 1.0f, 0.2f, 1.0f );
+		for( u32 i=0; i <= _nMouseItems + WPR_DRAWUTILS_BUTTON_HITS; i++ ) {
+			f32 fL, fT, fR, fB;
+			if( i < _nMouseItems ) {
+				fL = _aMouseItems[i].fLeft; fT = _aMouseItems[i].fTop - _MOUSE_ITEM_SLACK_Y;
+				fR = _aMouseItems[i].fRight; fB = _aMouseItems[i].fBottom + _MOUSE_ITEM_SLACK_Y;
+			} else if( i < _nMouseItems + WPR_DRAWUTILS_BUTTON_HITS && Wpr_DrawUtils_aButtonHits[i - _nMouseItems].bDrawn ) {
+				const Wpr_DrawUtils_ButtonHit_t *pHit = &Wpr_DrawUtils_aButtonHits[i - _nMouseItems];
+				fL = pHit->fLeft; fT = pHit->fTop; fR = pHit->fRight; fB = pHit->fBottom;
+			} else {
+				continue;
+			}
+			CFVec3 a( (fL*2.0f-1.0f)*fHalfXRes, (1.0f-fT*2.0f)*fHalfYRes, 1.0f ), b( (fR*2.0f-1.0f)*fHalfXRes, (1.0f-fT*2.0f)*fHalfYRes, 1.0f );
+			CFVec3 c( (fR*2.0f-1.0f)*fHalfXRes, (1.0f-fB*2.0f)*fHalfYRes, 1.0f ), d( (fL*2.0f-1.0f)*fHalfXRes, (1.0f-fB*2.0f)*fHalfYRes, 1.0f );
+			fdraw_SolidLine( &a, &b, &BoxColor ); fdraw_SolidLine( &b, &c, &BoxColor );
+			fdraw_SolidLine( &c, &d, &BoxColor ); fdraw_SolidLine( &d, &a, &BoxColor );
+		}
+	}
+
+	frenderer_Pop();
+	fviewport_SetActive( pPrevViewport );
+}
+
+static void _MouseInstall( void ) {
+	char szDebug[8];
+	_bMouseDebug = GetEnvironmentVariableA( "MA_PORT_POINTER_DEBUG", szDebug, sizeof( szDebug ) ) > 0 && szDebug[0] == '1';
+	_MousePointerTex.SetTexDef( (FTexDef_t *)fresload_Load( FTEX_RESNAME, _MOUSE_POINTER_TEXTURE ) );
+	if( !_bMouseOverlayInstalled ) {
+		_pMousePrevOverlayFcn = fvid_GetDrawOverlayFcn();
+		fvid_SetDrawOverlayFcn( _MouseDrawOverlay );
+		_bMouseOverlayInstalled = TRUE;
+	}
+	_nMouseItems = 0;
+	_nMouseItemsScreen = -1;
+	_nMouseClickFrames = 0;
+	_nMouseClickItem = _nMouseClickButton = -1;
+	_nMouseClickZone = 0;
+	_bMouseClickUsed = _bMouseRightClick = _bMouseDrawPointer = FALSE;
+	_nMouseWheelPending = _nMouseWheelStep = 0;
+}
+
+static void _MouseUninstall( void ) {
+	if( _bMouseOverlayInstalled ) {
+		fvid_SetDrawOverlayFcn( _pMousePrevOverlayFcn );
+		_pMousePrevOverlayFcn = NULL;
+		_bMouseOverlayInstalled = FALSE;
+	}
+	_MousePointerTex.SetTexDef( NULL );
+	_nMouseItems = 0;
+	_nMouseItemsScreen = -1;
+	_bMouseDrawPointer = FALSE;
+}
+#endif
+
 
 
 //===================
@@ -1294,6 +1840,13 @@ void wpr_system_ResetToStartupScreen( BOOL bBootup ) {
 // returns WPR_SYSTEM_CONTROLLER_PORT_UNKNOWN if none could be found
 s32 wpr_system_FindActiveControllerPort( BOOL bTestAcceptButton, BOOL bTestUDStick, BOOL bTestLRStick ) {
 	u32 i;
+#if defined(MA_PC_INPUT)
+	i = pcinput_KeyboardPort();
+	if( i < GAMEPAD_MAX_PORT_COUNT && _MousePort( i ) &&
+		( (bTestAcceptButton && _nMouseClickFrames) || ((bTestUDStick || bTestLRStick) && _bMouseMoved && _nMouseHoverItem >= 0) ) ) {
+		return i;
+	}
+#endif
 	
 	if( bTestAcceptButton ) {
 		for( i=0; i < GAMEPAD_MAX_PORT_COUNT; i++ ) {
@@ -1342,6 +1895,12 @@ void wpr_system_DrawBasicScreen( Wpr_DataTypes_ScreenData_t *pScreen, s32 nSelec
 		}
 
 		_DrawText( &pScreen->pText[i], bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes );
+#if defined(MA_PC_INPUT)
+		if( nSelectedIndex >= 0 && Wpr_DataTypes_paScreenData && pScreen == &Wpr_DataTypes_paScreenData[_MenuState.nCurrentScreen] &&
+			(pScreen->pText[i].nType == WPR_DATATYPES_REGULAR || pScreen->pText[i].nType == WPR_DATATYPES_KEYBOARD) ) {
+			_MouseAddItem( (s32)i - nSelectedIndex + _MenuState.nCurItemIndex, _MouseBasicScreenItemFlags() );
+		}
+#endif
 	}
 }
 
@@ -1767,6 +2326,10 @@ static BOOL _Init( void ) {
 	u32 i, nCount, nNameTableIndex, nNumElements, nPlatformOffset;
 	FGameDataFileHandle_t hFile;
 	FGameDataTableHandle_t hTable, hTableNames;
+#if FANG_WINGC
+	FGameDataTableHandle_t hCommonPhrases = FGAMEDATA_INVALID_TABLE_HANDLE;
+	u32 nNumCommonPhrases = 0;
+#endif
 	cchar *pszText, *pszTableName;
 	cwchar *pwszText;
 	FGameData_VarType_e nDataType;
@@ -1894,6 +2457,11 @@ static BOOL _Init( void ) {
 	if( !_paTexInsts ) {
 		goto _EXIT_WITH_ERROR;
 	}
+#if defined(MA_PC_INPUT)
+	if( bWrappers ) {
+		_MouseInstall();
+	}
+#endif
 
 	/////////////////////////
 	// find the phrases table
@@ -1905,6 +2473,8 @@ static BOOL _Init( void ) {
 	// get the number of fields in the table
 	i = fgamedata_GetNumFields( hTable );
 	#if FANG_WINGC
+	hCommonPhrases = hTable;
+	nNumCommonPhrases = i;
 	if( i < WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT ) {
 	#else
 	if( i != WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT ) {
@@ -1955,7 +2525,22 @@ static BOOL _Init( void ) {
 		} else {
 			_apwszPhrases[WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT + i] = _pStringTable->AddString( pwszText );
 		}
-	}		
+	}
+	#if FANG_WINGC
+	if( nNumCommonPhrases == _RETAIL_COMMON_PHRASE_COUNT && fgamedata_GetNumFields( hTable ) == _RETAIL_PLATFORM_PHRASE_COUNT ) {
+		for( i=0; i < WPR_DATATYPES_PHRASES_COUNT; i++ ) {
+			u32 nField = _anRetailPhraseField[i];
+			if( nField == _RETAIL_PHRASE_LITERAL ) {
+				pwszText = (i == WPR_DATATYPES_PHRASES_LOCKED) ? L"Locked" : L"Time to Beat";
+			} else if( nField & 0x100 ) {
+				pwszText = (cwchar *)fgamedata_GetPtrToFieldData( hTable, nField & 0xFF, nDataType );
+			} else {
+				pwszText = (cwchar *)fgamedata_GetPtrToFieldData( hCommonPhrases, nField, nDataType );
+			}
+			_apwszPhrases[i] = _pStringTable->AddString( fclib_wcscmp( pwszText, L"NULL_" ) ? pwszText : L"" );
+		}
+	}
+	#endif
 
 	/////////////////////////////////////////////
 	// allocate enough room for the needed meshes
@@ -2311,6 +2896,9 @@ static BOOL _Work( void ) {
 	BOOL bNewControllerPluggedIn = FALSE;
 	u32 nOldPortMask = Gamepad_nPortOnlineMask;
 	gamepad_Sample();
+#if defined(MA_PC_INPUT)
+	_MouseFrame();
+#endif
 	if( Gamepad_nPortOnlineMask != nOldPortMask ) {
 		bNewControllerPluggedIn = TRUE;
 	}
@@ -2663,6 +3251,10 @@ static BOOL _Draw( void ) {
 		wpr_system_IG_Draw();
 
 		CMsgBox::DrawAll();
+#if defined(MA_PC_INPUT)
+		_bMouseDrawPointer = TRUE;
+		pcinput_DrawsMenuPointer();
+#endif
 			
 		// restore the viewport
 		fviewport_SetActive( pPrevViewport );
@@ -2788,6 +3380,9 @@ void wpr_system_IG_Draw( void ) {
 	if( !_bSystemOK ) {
 		return;
 	}
+#if defined(MA_PC_INPUT)
+	_MouseBeginDraw();
+#endif
 	if( CMsgBox::IsActive() ) {
 		// don't draw anything while the message box is up
 		return;
@@ -2975,7 +3570,7 @@ BOOL wpr_system_CreateLoadHeading( u8 nLevelNum,
 ///////////////////////
 // CONTROLLER ROUTINES
 ///////////////////////
-static _UpDown_e _CheckUpDownAxis( u32 nControllerID ) {
+static _UpDown_e _CheckUpDownAxis_Pad( u32 nControllerID ) {
 
 	if( Gamepad_aapSample[nControllerID][GAMEPAD_MENU_LEFT_ANALOG_Y]->uLatches & FPAD_LATCH_TURNED_ON_WITH_REPEAT_AND_WITH_INITIAL_DELAY ) {
 
@@ -3003,7 +3598,7 @@ static _UpDown_e _CheckUpDownAxis( u32 nControllerID ) {
 	return _NOT_UP_OR_DOWN;
 }
 
-static _LeftRight_e _CheckLeftRightAxis( u32 nControllerID ) {
+static _LeftRight_e _CheckLeftRightAxis_Pad( u32 nControllerID ) {
 
 	if( Gamepad_aapSample[nControllerID][GAMEPAD_MENU_LEFT_ANALOG_X]->uLatches & FPAD_LATCH_TURNED_ON_WITH_REPEAT_AND_WITH_INITIAL_DELAY ) {
 
@@ -3032,7 +3627,7 @@ static _LeftRight_e _CheckLeftRightAxis( u32 nControllerID ) {
 }
 
 // returns TRUE if "A" button is pressed
-static BOOL _CheckAcceptButtons( u32 nControllerID ) {
+static BOOL _CheckAcceptButtons_Pad( u32 nControllerID ) {
 
 	if( Gamepad_aapSample[nControllerID][GAMEPAD_MENU_ACCEPT]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ||
 		Gamepad_aapSample[nControllerID][GAMEPAD_MENU_START]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
@@ -3042,7 +3637,7 @@ static BOOL _CheckAcceptButtons( u32 nControllerID ) {
 }
 
 // returns TRUE if "B" button is pressed
-static BOOL _CheckBackButtons( u32 nControllerID ) {
+static BOOL _CheckBackButtons_Pad( u32 nControllerID ) {
 	if( Gamepad_aapSample[nControllerID][GAMEPAD_MENU_BACK]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ||
 		Gamepad_aapSample[nControllerID][GAMEPAD_MENU_BACK2]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
 		return TRUE;
@@ -3051,7 +3646,7 @@ static BOOL _CheckBackButtons( u32 nControllerID ) {
 }
 
 // returns TRUE if "Y" button is pressed
-static BOOL _CheckYButton( u32 nControllerID ) {
+static BOOL _CheckYButton_Pad( u32 nControllerID ) {
 	if( Gamepad_aapSample[nControllerID][GAMEPAD_MENU_BUTTON_TOP]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
 		return TRUE;
 	}
@@ -3059,11 +3654,95 @@ static BOOL _CheckYButton( u32 nControllerID ) {
 }
 
 // returns TRUE if "X" button is pressed
-static BOOL _CheckXButton( u32 nControllerID ) {
+static BOOL _CheckXButton_Pad( u32 nControllerID ) {
 	if( Gamepad_aapSample[nControllerID][GAMEPAD_MENU_BUTTON_SIDE]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
 		return TRUE;
 	}
 	return FALSE;	
+}
+
+static _UpDown_e _CheckUpDownAxis( u32 nControllerID ) {
+	_UpDown_e nUpDown = _CheckUpDownAxis_Pad( nControllerID );
+#if defined(MA_PC_INPUT)
+	if( nUpDown != _NOT_UP_OR_DOWN ) {
+		_MouseOtherInput( nControllerID );
+	} else {
+		nUpDown = _MouseUpDown( nControllerID );
+	}
+#endif
+	return nUpDown;
+}
+
+static _LeftRight_e _CheckLeftRightAxis( u32 nControllerID ) {
+	_LeftRight_e nLeftRight = _CheckLeftRightAxis_Pad( nControllerID );
+#if defined(MA_PC_INPUT)
+	if( nLeftRight != _NOT_LEFT_OR_RIGHT ) {
+		_MouseOtherInput( nControllerID );
+	} else {
+		nLeftRight = _MouseLeftRight( nControllerID );
+	}
+#endif
+	return nLeftRight;
+}
+
+// returns TRUE if "A" button is pressed
+static BOOL _CheckAcceptButtons( u32 nControllerID ) {
+	if( _CheckAcceptButtons_Pad( nControllerID ) ) {
+#if defined(MA_PC_INPUT)
+		_MouseOtherInput( nControllerID );
+#endif
+		return TRUE;
+	}
+#if defined(MA_PC_INPUT)
+	return _MouseAccept( nControllerID );
+#else
+	return FALSE;
+#endif
+}
+
+// returns TRUE if "B" button is pressed
+static BOOL _CheckBackButtons( u32 nControllerID ) {
+	if( _CheckBackButtons_Pad( nControllerID ) ) {
+#if defined(MA_PC_INPUT)
+		_MouseOtherInput( nControllerID );
+#endif
+		return TRUE;
+	}
+#if defined(MA_PC_INPUT)
+	return _MouseBack( nControllerID );
+#else
+	return FALSE;
+#endif
+}
+
+// returns TRUE if "Y" button is pressed
+static BOOL _CheckYButton( u32 nControllerID ) {
+	if( _CheckYButton_Pad( nControllerID ) ) {
+#if defined(MA_PC_INPUT)
+		_MouseOtherInput( nControllerID );
+#endif
+		return TRUE;
+	}
+#if defined(MA_PC_INPUT)
+	return _MousePrompt( nControllerID, _MOUSE_BUTTON_Y );
+#else
+	return FALSE;
+#endif
+}
+
+// returns TRUE if "X" button is pressed
+static BOOL _CheckXButton( u32 nControllerID ) {
+	if( _CheckXButton_Pad( nControllerID ) ) {
+#if defined(MA_PC_INPUT)
+		_MouseOtherInput( nControllerID );
+#endif
+		return TRUE;
+	}
+#if defined(MA_PC_INPUT)
+	return _MousePrompt( nControllerID, _MOUSE_BUTTON_X );
+#else
+	return FALSE;
+#endif
 }
 
 // returns TRUE if passed in controller is plugged, FALSE if it is not
@@ -3431,6 +4110,9 @@ static void _ResetSystem( void ) {
 	u32 i;
 
 	_bSystemOK = FALSE;
+#if defined(MA_PC_INPUT)
+	_MouseUninstall();
+#endif
 
 	_pAudioStream = NULL;
 	_pViewportOrtho3D = NULL;
@@ -3570,6 +4252,14 @@ static BOOL _HandleRuleAxisSelections( BOOL bLeftRight, u32 nControllerIndex, s8
 		nBump = (s32)_CheckUpDownAxis( nControllerIndex );
 		rnCurrent += nBump;
 	}
+#if defined(MA_PC_INPUT)
+	if( !nBump && &rnCurrent == &_MenuState.nCurItemIndex ) {
+		s32 nHover = _MouseHoverSelect( nControllerIndex, (s32)nMaxValidIndex );
+		if( nHover >= 0 && !_RuleDisabled( (s16)nHover ) ) {
+			rnCurrent = (s8)nHover;
+		}
+	}
+#endif
 
 	// Skip disabled options
 	if (nBump != 0) {
@@ -3614,10 +4304,24 @@ static BOOL _HandleAxisSelections( BOOL bLeftRight, u32 nControllerIndex, s8 &rn
 	if( bLeftRight ) {
 		_LeftRight_e nLeftRight = _CheckLeftRightAxis( nControllerIndex );
 		rnCurrent += nLeftRight;
+#if defined(MA_PC_INPUT)
+		// the wheel pages sideways lists: up = previous
+		if( nLeftRight == _NOT_LEFT_OR_RIGHT && &rnCurrent == &_MenuState.nCurItemIndex ) {
+			rnCurrent += _MouseUpDown( nControllerIndex );
+		}
+#endif
 	} else {
 		_UpDown_e nUpDown = _CheckUpDownAxis( nControllerIndex );
 		rnCurrent += nUpDown;
 	}
+#if defined(MA_PC_INPUT)
+	if( nCache == rnCurrent && &rnCurrent == &_MenuState.nCurItemIndex ) {
+		s32 nHover = _MouseHoverSelect( nControllerIndex, (s32)nMaxValidIndex );
+		if( nHover >= 0 ) {
+			rnCurrent = (s8)nHover;
+		}
+	}
+#endif
 	if( rnCurrent < 0 ) {
 		rnCurrent = (bWrapAround) ? nMaxValidIndex : 0;
 	} else if( rnCurrent > (s32)nMaxValidIndex ) {
@@ -3680,6 +4384,12 @@ static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 				_MenuState.nCurItemIndex = (_MENU_ITEMS_MM_COUNT-1);
 			}
 		}
+#if defined(MA_PC_INPUT)
+		s32 nHover = _MouseHoverSelect( nControllerIndex, _MENU_ITEMS_MM_COUNT-1 );
+		if( nHover >= 0 ) {
+			_MenuState.nCurItemIndex = (s8)nHover;
+		}
+#endif
 	}
 
 	if( nCache != _MenuState.nCurItemIndex ) {
@@ -3717,10 +4427,18 @@ static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 	}
 
 	// draw the rest of the screen
-	wpr_system_DrawBasicScreen( pScreen, 
+	wpr_system_DrawBasicScreen( pScreen,
 		_MENU_ITEMS_MM_START_OFFSET + _MenuState.nCurItemIndex,
 		FALSE,
         fScaleMultiplier, fHalfXRes, fHalfYRes );
+#if defined(MA_PC_INPUT)
+	// the items are 3D text meshes
+	for( s32 nItem=0; nItem < _MENU_ITEMS_MM_COUNT; nItem++ ) {
+		if( _MENU_ITEMS_MM_START_OFFSET + nItem < (s32)pScreen->nNumMeshElements ) {
+			_MouseAddMesh( nItem, &pScreen->pMesh[_MENU_ITEMS_MM_START_OFFSET + nItem], fScaleMultiplier, fHalfXRes, fHalfYRes );
+		}
+	}
+#endif
         
 	if( _MenuState.bFadeScreen ) {
 		f32 fUnitPercent = _MenuState.fModeTimer * (1.0f/_TOTAL_FADE_IN_TIME);
@@ -4240,6 +4958,12 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 	}
 	s32 nCache = _MenuState.nCurItemIndex;
 
+#if defined(MA_PC_INPUT)
+	s32 nHover = _MouseHoverSelect( _MenuState.nControllerIndex, _MENU_ITEMS_AS_COUNT-1 );
+	if( nHover >= 0 ) {
+		_MenuState.nCurItemIndex = (s8)nHover;
+	}
+#endif
 	// check for up/down changes
     _UpDown_e nUpDown = _CheckUpDownAxis( _MenuState.nControllerIndex );
 	if( nUpDown == _UP ) {
@@ -4401,6 +5125,11 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 			bSelected = FALSE;
 		}
 		_DrawText( &pScreen->pText[i], bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes );
+#if defined(MA_PC_INPUT)
+		if( i >= _MENU_ITEMS_AS_START_OFFSET ) {
+			_MouseAddItem( (s32)i - _MENU_ITEMS_AS_START_OFFSET, _MOUSE_ITEM_ADJUST );
+		}
+#endif
 
 		if( i >= _MENU_ITEMS_AS_START_OFFSET ) {
 			nItem = i - _MENU_ITEMS_AS_START_OFFSET;
@@ -4688,6 +5417,29 @@ static Wpr_DataTypes_NavCode_e _ProfileName_Work( void ) {
 		return WPR_DATATYPES_NAV_CODE_BACK;
 	}
 
+#if defined(MA_PC_INPUT)
+	{
+		// the key under a moving pointer or a click becomes the selection; a click then types it below in
+		// the same frame, so quick clicks on different keys all land
+		s32 nNumCells = 0, nRow;
+		for( nRow=0; nRow < (s32)_MenuState.nPNNumRows; nRow++ ) {
+			nNumCells += _MenuState.anPNColumnsPerRow[nRow];
+		}
+		s32 nHover = _MouseHoverSelect( _MenuState.nControllerIndex, nNumCells-1 );
+		if( nNumCells && nHover >= 0 ) {
+			_MenuState.nCurItemIndex = (s8)nHover;
+			nRow = 0;
+			while( nRow < (s32)_MenuState.nPNNumRows-1 && nHover >= (s32)_MenuState.anPNColumnsPerRow[nRow] ) {
+				nHover -= _MenuState.anPNColumnsPerRow[nRow];
+				nRow++;
+			}
+			_MenuState.nPNCurRow = nRow;
+			_MenuState.nPNCurCol = nHover;
+			ftext_ResetBlinkTimers();
+			fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CURSOR_MOVED] );
+		}
+	}
+#endif
 	// check for the A button
 	if( _CheckAcceptButtons( _MenuState.nControllerIndex ) ) {
 		// get the length of the string
@@ -4756,7 +5508,7 @@ static Wpr_DataTypes_NavCode_e _ProfileName_Work( void ) {
 			}
 		}
 	} else {
-	
+
 		// check for up/down changes
 		_UpDown_e nUpDown = _CheckUpDownAxis( _MenuState.nControllerIndex );
 		BOOL bComputeActiveIndex = FALSE;
@@ -4870,6 +5622,9 @@ static void _ProfileName_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 					 _apwszPhrases[WPR_DATATYPES_PHRASES_CAPS],
 					 NULL );
 	}
+#if defined(MA_PC_INPUT)
+	_MouseAddItem( (s32)i - _MENU_ITEMS_PN_START_OFFSET );
+#endif
 	i++;
 
 	wpr_drawutils_DrawPhrase( 0.50f, 0.53f,
@@ -4878,6 +5633,9 @@ static void _ProfileName_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 				 1.4f, 
 				 _apwszPhrases[WPR_DATATYPES_PHRASES_SPACE],
 				 ( i == (_MenuState.nCurItemIndex + _MENU_ITEMS_PN_START_OFFSET) ) ? WprDataTypes_pwszHiLightedBlink : NULL );
+#if defined(MA_PC_INPUT)
+	_MouseAddItem( (s32)i - _MENU_ITEMS_PN_START_OFFSET );
+#endif
 	i++;
 
 	wpr_drawutils_DrawPhrase( 0.80f, 0.53f,
@@ -4886,6 +5644,9 @@ static void _ProfileName_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 				 1.4f, 
 				 _apwszPhrases[WPR_DATATYPES_PHRASES_DELETE],
 				 ( i == (_MenuState.nCurItemIndex + _MENU_ITEMS_PN_START_OFFSET) ) ? WprDataTypes_pwszHiLightedBlink : NULL );
+#if defined(MA_PC_INPUT)
+	_MouseAddItem( (s32)i - _MENU_ITEMS_PN_START_OFFSET );
+#endif
 	i++;
 
 	wpr_drawutils_DrawPhrase( 0.50f, 0.59f,
@@ -4894,6 +5655,9 @@ static void _ProfileName_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 				 1.4f, 
 				 _apwszPhrases[WPR_DATATYPES_PHRASES_DONE],
 				 ( i == (_MenuState.nCurItemIndex + _MENU_ITEMS_PN_START_OFFSET) ) ? WprDataTypes_pwszHiLightedBlink : NULL );
+#if defined(MA_PC_INPUT)
+	_MouseAddItem( (s32)i - _MENU_ITEMS_PN_START_OFFSET );
+#endif
 	i++;
 
 	// fill in a temp text layout struct
@@ -5156,6 +5920,12 @@ static Wpr_DataTypes_NavCode_e _LaunchMenu_Work( void ) {
 			_MenuState.nCurItemIndex = _MENU_ITEMS_LM_EDIT_SETTINGS;
 		}
 	}
+#if defined(MA_PC_INPUT)
+	s32 nHover = _MouseHoverSelect( _MenuState.nControllerIndex, _MENU_ITEMS_LM_COUNT-1 );
+	if( nHover >= 0 ) {
+		_MenuState.nCurItemIndex = (s8)nHover;
+	}
+#endif
 	if( pProfile->nFlags & GAMESAVE_PROFILE_FLAGS_FINISHED_SINGLE_PLAYER &&
 		_MenuState.nCurItemIndex == _MENU_ITEMS_LM_CONTINUE ) {
 		// continue is disabled
@@ -5211,6 +5981,11 @@ static void _LaunchMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHal
 		}
 
 		_DrawText( &pScreen->pText[i], bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes, bDisabled );
+#if defined(MA_PC_INPUT)
+		if( i >= _MENU_ITEMS_LM_START_OFFSET && !bDisabled ) {
+			_MouseAddItem( (s32)i - _MENU_ITEMS_LM_START_OFFSET );
+		}
+#endif
 	}
 }
 
@@ -5934,8 +6709,12 @@ static void _SelectMU_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 			L"~f1~C%ls~w0~a%lc~s%.2f%ls", 
 			pEntry->bDeviceUnusable ? WprDataTypes_pwszGrayTextColor2 : WprDataTypes_pwszWhiteTextColor,
 			L'C',
-			_MU_SELECT_DISPLAY_NAME_SCALE, 
+			_MU_SELECT_DISPLAY_NAME_SCALE,
 			pEntry->pwszDisplayName );
+#if defined(MA_PC_INPUT)
+	_MouseAddItem( _MenuState.nCurItemIndex );
+	_MouseAddArrowZones( 0.08f );
+#endif
 	
 	if( pEntry->pDeviceInfo ) {		
 #if WPR_DATATYPES_XBOX_GRAPHICS_ON
@@ -6318,6 +7097,12 @@ static Wpr_DataTypes_NavCode_e _SelectProfile_Work( void ) {
 	_UpDown_e nUpDown = _CheckUpDownAxis( _MenuState.nControllerIndex );
 	_MenuState.nCurItemIndex += nUpDown;
 	FMATH_CLAMP( _MenuState.nCurItemIndex, 0, _MenuState.nPPNumSelections-1 );
+#if defined(MA_PC_INPUT)
+	s32 nHover = _MouseHoverSelect( _MenuState.nControllerIndex, _MenuState.nPPNumSelections-1 );
+	if( nHover >= 0 ) {
+		_MenuState.nCurItemIndex = (s8)nHover;
+	}
+#endif
 
 	// figure out the scroll vars
 	if( _MenuState.nCurItemIndex < _MenuState.nPPTopSelectionIndex ) {
@@ -6421,6 +7206,9 @@ static void _SelectProfile_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 f
 
 			bSelected = (_MenuState.nCurItemIndex == 0);
 			_DrawText( &TempTextLayout, bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes );
+#if defined(MA_PC_INPUT)
+			_MouseAddItem( 0 );
+#endif
 
 			if( bSelected ) {
 				wpr_drawutils_DrawSelectionArrows( &TempTextLayout,
@@ -6465,6 +7253,9 @@ static void _SelectProfile_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 f
 		_DrawText( &TempTextLayout, 
 			bSelected,
 			fScaleMultiplier, fHalfXRes, fHalfYRes );
+#if defined(MA_PC_INPUT)
+		_MouseAddItem( _MenuState.bPPRoomForNewProfiles ? (s32)i+1 : (s32)i );
+#endif
 
 		if( bSelected ) {
 			nLen = fclib_wcslen( Wpr_DataTypes_wszTempString );
@@ -7323,6 +8114,11 @@ static void _MultiType_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 	for( i=0; i < _MENU_ITEMS_MT_DESCRIPTION_START_OFFSET; i++ ) {
 		bSelected = (i == (_MenuState.nCurItemIndex + _MENU_ITEMS_MT_START_OFFSET));
 		_DrawText( &pScreen->pText[i], bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes, FALSE, TRUE );
+#if defined(MA_PC_INPUT)
+		if( i >= _MENU_ITEMS_MT_START_OFFSET ) {
+			_MouseAddItem( (s32)i - _MENU_ITEMS_MT_START_OFFSET, _MOUSE_ITEM_ACCEPT | _MOUSE_ITEM_ADJUST );
+		}
+#endif
 
 		if( i >= _MENU_ITEMS_MT_START_OFFSET && i < (_MENU_ITEMS_MT_DESCRIPTION_START_OFFSET-1) ) {
 			nItem = i - _MENU_ITEMS_MT_START_OFFSET;
@@ -7804,6 +8600,11 @@ static void _MultiEditType_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 f
 	for( i=0; i < pScreen->nNumTextElements; i++ ) {
 		bSelected = (i == (_MenuState.nCurItemIndex + _MENU_ITEMS_ME_START_OFFSET));
 		_DrawText( &pScreen->pText[i], bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes, FALSE, TRUE );
+#if defined(MA_PC_INPUT)
+		if( i >= _MENU_ITEMS_ME_START_OFFSET ) {
+			_MouseAddItem( (s32)i - _MENU_ITEMS_ME_START_OFFSET, _MOUSE_ITEM_ACCEPT | _MOUSE_ITEM_ADJUST );
+		}
+#endif
 
 		if( i >= _MENU_ITEMS_ME_START_OFFSET ) {
 			nItem = i - _MENU_ITEMS_ME_START_OFFSET;
@@ -8400,6 +9201,12 @@ static void _MultiRules_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHal
 			bDisabled = _RuleDisabled( i - _MENU_ITEMS_MR_START_OFFSET );
 
 		_DrawText( &pScreen->pText[i], bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes, bDisabled, TRUE );
+#if defined(MA_PC_INPUT)
+		// A saves the rules and leaves; the rows are settings
+		if( i >= _MENU_ITEMS_MR_START_OFFSET && !bDisabled ) {
+			_MouseAddItem( (s32)i - _MENU_ITEMS_MR_START_OFFSET, _MOUSE_ITEM_ADJUST );
+		}
+#endif
 
 		// draw the options
 		if( i >= _MENU_ITEMS_MR_START_OFFSET ) {

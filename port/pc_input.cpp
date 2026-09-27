@@ -20,6 +20,25 @@ static float s_mouseDegrees = 0.1f;
 static float s_frameYaw, s_framePitch;
 static PcAimAssistMode s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
 static volatile LONG s_mouseAiming;	// the keyboard port's most recent aiming came from the mouse
+// Menu pointer: the window thread counts presses and wheel motion; the game thread samples the
+// position and takes the counts once per frame.
+// The position comes from the window's mouse messages (client pixels, packed y << 16 | x), so it also
+// follows messages posted by test tools; the real cursor is only polled to notice it leaving.
+static volatile LONG s_menuWheel, s_menuPos, s_menuMoves;
+static volatile LONG s_menuPointerDrawnTick;	// GetTickCount() when a menu last drew its own pointer
+static bool s_menuShown, s_menuMoved;
+// Presses keep their own positions, in order, so quick clicks on different items all land: the window
+// thread queues them under the lock and the game thread moves them to its own queue each frame.
+#define MENU_CLICK_QUEUE 8
+struct MenuClickQueue { LONG pos[MENU_CLICK_QUEUE]; int count; };
+static CRITICAL_SECTION s_menuLock;
+static bool s_menuLockReady;
+static MenuClickQueue s_menuPosted[2], s_menuClicks[2];	// [0] left, [1] right
+static RECT s_menuClient;
+static LONG s_menuLastMoves;
+static POINT s_menuLastCursor;
+static float s_menuX, s_menuY;
+static int s_menuFrameWheel, s_menuWheelRemainder;
 
 static float Clamp(float value, float low, float high) {
 	return value < low ? low : value > high ? high : value;
@@ -109,6 +128,11 @@ void pcinput_MapSample(const PcInputState &state, bool primary,
 
 static bool MouseLook() { return InterlockedCompareExchange(&s_mouseLook, 0, 0) != 0; }
 
+// A menu is drawing its own pointer (it reports this every frame it draws).
+static bool MenuDrawsPointer() {
+	return GetTickCount() - (DWORD)InterlockedCompareExchange(&s_menuPointerDrawnTick, 0, 0) < 250;
+}
+
 static void ClipToGame() {
 	RECT r;
 	if (GetClientRect(s_window, &r) && r.right > r.left && r.bottom > r.top) {
@@ -156,6 +180,17 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 	s_lookAllowed = s_lookSwitchedOff = 0;
 	s_frameYaw = s_framePitch = 0;
 	s_mouseDegrees = 0.1f;
+	s_menuWheel = s_menuPos = s_menuMoves = s_menuPointerDrawnTick = 0;
+	s_menuShown = s_menuMoved = false;
+	s_menuLastMoves = 0;
+	s_menuLastCursor.x = s_menuLastCursor.y = -1;
+	memset(s_menuPosted, 0, sizeof(s_menuPosted));
+	memset(s_menuClicks, 0, sizeof(s_menuClicks));
+	s_menuFrameWheel = s_menuWheelRemainder = 0;
+	if (!s_menuLockReady) {
+		InitializeCriticalSection(&s_menuLock);
+		s_menuLockReady = true;
+	}
 	char sensitivity[32];
 	DWORD length = GetEnvironmentVariableA("MA_PORT_MOUSE_SENSITIVITY", sensitivity, sizeof(sensitivity));
 	if (length && length < sizeof(sensitivity)) {
@@ -255,6 +290,9 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 			const int keys[] = { 'W','A','S','D','E','Q','R','F','1','2','3','4', VK_SPACE,
 				VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,VK_RETURN,VK_ESCAPE,VK_LBUTTON,VK_RBUTTON };
 			for (u32 i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) state.keys[keys[i]] = (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
+			// A menu with its own pointer takes the buttons as clicks, not as the triggers (on the launch
+			// screen a held right trigger starts the level-unlock code and blocks other input).
+			if (MenuDrawsPointer()) state.keys[VK_LBUTTON] = state.keys[VK_RBUTTON] = false;
 		}
 	}
 	pcinput_MapSample(state, keyboard, s_platform, sample);
@@ -276,8 +314,25 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 			}
 		}
 	}
-	if (message == WM_SETCURSOR && MouseLook() && LOWORD(lParam) == HTCLIENT) {
+	if (message == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT && (MouseLook() || MenuDrawsPointer())) {
 		SetCursor(NULL); return true;
+	}
+	if (!MouseLook()) {
+		if (message == WM_MOUSEMOVE || message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK ||
+			message == WM_RBUTTONDOWN || message == WM_RBUTTONDBLCLK) {
+			// Windows also sends WM_MOUSEMOVE without motion (window changes); only a new position counts.
+			const LONG pos = (LONG)(((DWORD)(WORD)HIWORD(lParam) << 16) | (WORD)LOWORD(lParam));
+			if (InterlockedExchange(&s_menuPos, pos) != pos) InterlockedIncrement(&s_menuMoves);
+		}
+		const int button = (message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK) ? 0 :
+			(message == WM_RBUTTONDOWN || message == WM_RBUTTONDBLCLK) ? 1 : -1;
+		if (button >= 0 && s_menuLockReady) {
+			EnterCriticalSection(&s_menuLock);
+			MenuClickQueue &queue = s_menuPosted[button];
+			if (queue.count < MENU_CLICK_QUEUE) queue.pos[queue.count++] = (LONG)lParam;
+			LeaveCriticalSection(&s_menuLock);
+		}
+		if (message == WM_MOUSEWHEEL) InterlockedExchangeAdd(&s_menuWheel, (short)HIWORD(wParam));
 	}
 	if ((message == WM_MOVE || message == WM_SIZE) && MouseLook()) ClipToGame();
 	if (message == WM_INPUT && GetForegroundWindow() == s_window) {
@@ -301,6 +356,84 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 	return false;
 }
 
+static void MenuPointerFrame(bool allowLook) {
+	MenuClickQueue posted[2] = {};
+	if (s_menuLockReady) {
+		EnterCriticalSection(&s_menuLock);
+		memcpy(posted, s_menuPosted, sizeof(posted));
+		memset(s_menuPosted, 0, sizeof(s_menuPosted));
+		LeaveCriticalSection(&s_menuLock);
+	}
+	const LONG wheel = InterlockedExchange(&s_menuWheel, 0);
+	const LONG moves = InterlockedCompareExchange(&s_menuMoves, 0, 0);
+	const LONG pos = InterlockedCompareExchange(&s_menuPos, 0, 0);
+	const bool movedSinceLast = moves != s_menuLastMoves;
+	s_menuLastMoves = moves;
+	s_menuMoved = false;
+	s_menuFrameWheel = 0;
+	RECT client;
+	if (allowLook || MouseLook() || !s_window || IsIconic(s_window) || !GetClientRect(s_window, &client) ||
+		client.right <= 0 || client.bottom <= 0) {
+		s_menuShown = false;
+		s_menuWheelRemainder = 0;
+		memset(s_menuClicks, 0, sizeof(s_menuClicks));
+		return;
+	}
+	s_menuClient = client;
+	// Presses wait in order until the menu takes them (one per frame).
+	for (int b = 0; b < 2; b++)
+		for (int i = 0; i < posted[b].count && s_menuClicks[b].count < MENU_CLICK_QUEUE; i++)
+			s_menuClicks[b].pos[s_menuClicks[b].count++] = posted[b].pos[i];
+	// The real cursor moving outside the client area hides the pointer.
+	POINT cursor;
+	if (GetCursorPos(&cursor) && (cursor.x != s_menuLastCursor.x || cursor.y != s_menuLastCursor.y)) {
+		s_menuLastCursor = cursor;
+		if (ScreenToClient(s_window, &cursor) && !PtInRect(&client, cursor)) s_menuShown = false;
+	}
+	const POINT at = { (short)LOWORD(pos), (short)HIWORD(pos) };
+	if (!PtInRect(&client, at)) {
+		s_menuShown = false;
+		s_menuWheelRemainder = 0;
+		return;
+	}
+	s_menuX = (at.x + 0.5f) / client.right;
+	s_menuY = (at.y + 0.5f) / client.bottom;
+	s_menuMoved = movedSinceLast || posted[0].count || posted[1].count;
+	if (s_menuMoved) s_menuShown = true;
+	s_menuWheelRemainder += wheel;
+	s_menuFrameWheel = s_menuWheelRemainder / WHEEL_DELTA;
+	s_menuWheelRemainder -= s_menuFrameWheel * WHEEL_DELTA;
+}
+
+bool pcinput_MenuPointer(float *x, float *y) {
+	if (!s_menuShown) return false;
+	*x = s_menuX; *y = s_menuY;
+	return true;
+}
+
+bool pcinput_MenuPointerMoved() { return s_menuMoved; }
+
+bool pcinput_TakeMenuClick(bool right, float *x, float *y) {
+	MenuClickQueue &queue = s_menuClicks[right ? 1 : 0];
+	if (!queue.count) return false;
+	const LONG pos = queue.pos[0];
+	queue.count--;
+	memmove(queue.pos, queue.pos + 1, queue.count * sizeof(queue.pos[0]));
+	if (x) *x = ((short)LOWORD(pos) + 0.5f) / s_menuClient.right;
+	if (y) *y = ((short)HIWORD(pos) + 0.5f) / s_menuClient.bottom;
+	return true;
+}
+
+int pcinput_TakeMenuWheel() {
+	const int notches = s_menuFrameWheel;
+	s_menuFrameWheel = 0;
+	return notches;
+}
+
+void pcinput_HideMenuPointer() { s_menuShown = false; }
+
+void pcinput_DrawsMenuPointer() { InterlockedExchange(&s_menuPointerDrawnTick, (LONG)GetTickCount()); }
+
 void pcinput_BeginFrame(bool allowLook) {
 	const LONG dx = InterlockedExchange(&s_mouseDX, 0), dy = InterlockedExchange(&s_mouseDY, 0);
 	s_frameYaw = s_framePitch = 0;
@@ -314,6 +447,7 @@ void pcinput_BeginFrame(bool allowLook) {
 		s_framePitch = dy * radiansPerCount;
 		if (dx || dy) InterlockedExchange(&s_mouseAiming, 1);
 	}
+	MenuPointerFrame(allowLook);
 }
 
 bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode) {

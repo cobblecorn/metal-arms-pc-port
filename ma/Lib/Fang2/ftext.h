@@ -171,6 +171,13 @@ extern void ftext_PrintString( const FTextAreaHandle_t ohArea, cwchar *pszWStrin
 extern void ftext_PrintString( const f32 fX, const f32 fY, cwchar *pszWString );
 extern void ftext_PrintString( const FTextAreaHandle_t ohArea, const f32 fX, const f32 fY, cwchar *pszWString );
 
+#if FANG_PLATFORM_WIN
+// The box of the most recent print (its letters, across the full height of its lines), as fractions of
+// the screen (0..1 across and down), for pointer hit tests. FALSE when that print placed no letters or
+// ftext_Draw() has since flushed them.
+extern BOOL ftext_GetLastPrintBounds( f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom );
+#endif
+
 // STARICH - THIS DOESN'T WORK YET BECAUSE OF THE WAY THE FONTS ARE RENDERED, BUT
 //			 THE GROUNDWORK IS LAID FOR USER SPECIFIED Z VALUES, SO I DIDN'T WANT TO RIP THIS OUT.
 //			 THESE FUNCTIONS WILL RENDER THE SAME AS THE REGULAR VERSION FOR NOW. :-(

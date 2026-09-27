@@ -23,6 +23,14 @@
 
 FDrawVtx_t Wpr_DrawUtils_aVtx[4];// used by all fdraw functions
 
+#if defined(MA_PC_INPUT)
+Wpr_DrawUtils_ButtonHit_t Wpr_DrawUtils_aButtonHits[WPR_DRAWUTILS_BUTTON_HITS];
+
+void wpr_drawutils_ClearButtonHits( void ) {
+	fang_MemZero( Wpr_DrawUtils_aButtonHits, sizeof( Wpr_DrawUtils_aButtonHits ) );
+}
+#endif
+
 
 
 // assumes all draw modes are setup and either no texture or the desired texture has been set.
@@ -218,6 +226,26 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 				L'L',
 				pButton->fFontScale,
 				pButton->pwszInstructions );		
+
+#if defined(MA_PC_INPUT)
+			if( i < WPR_DRAWUTILS_BUTTON_HITS ) {
+				// the icon (as wpr_drawutils_DrawTextureToScreen() sizes it) plus the instruction text
+				Wpr_DrawUtils_ButtonHit_t *pHit = &Wpr_DrawUtils_aButtonHits[i];
+				f32 fHalfX = 0.5f * (fUnitHeight * fHalfYRes/fHalfXRes), fHalfY = 0.5f * fUnitHeight;
+				pHit->fLeft = (pButton->fBiPolarUnitX - fHalfX + 1.0f) * 0.5f;
+				pHit->fRight = (pButton->fBiPolarUnitX + fHalfX + 1.0f) * 0.5f;
+				pHit->fTop = (1.0f - (pButton->fBiPolarUnitY + fHalfY)) * 0.5f;
+				pHit->fBottom = (1.0f - (pButton->fBiPolarUnitY - fHalfY)) * 0.5f;
+				f32 fLeft, fTop, fRight, fBottom;
+				if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+					pHit->fLeft = FMATH_MIN( pHit->fLeft, fLeft );
+					pHit->fTop = FMATH_MIN( pHit->fTop, fTop );
+					pHit->fRight = FMATH_MAX( pHit->fRight, fRight );
+					pHit->fBottom = FMATH_MAX( pHit->fBottom, fBottom );
+				}
+				pHit->bDrawn = TRUE;
+			}
+#endif
 		}
 	}
 }

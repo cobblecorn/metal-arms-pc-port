@@ -26,6 +26,18 @@
 
 extern FDrawVtx_t Wpr_DrawUtils_aVtx[4];// used by all fdraw functions
 
+#if defined(MA_PC_INPUT)
+// Where wpr_drawutils_DrawButtonOverlay() last drew each prompt (A, B, Y, X), as fractions of the
+// screen (0..1 across and down), so a mouse click on a prompt can act as that button.
+#define WPR_DRAWUTILS_BUTTON_HITS	4
+typedef struct {
+	BOOL bDrawn;
+	f32 fLeft, fTop, fRight, fBottom;
+} Wpr_DrawUtils_ButtonHit_t;
+extern Wpr_DrawUtils_ButtonHit_t Wpr_DrawUtils_aButtonHits[WPR_DRAWUTILS_BUTTON_HITS];
+extern void wpr_drawutils_ClearButtonHits( void );
+#endif
+
 
 extern void wpr_drawutils_DrawThickLine( f32 fX1, f32 fY1,
 										f32 fX2, f32 fY2,

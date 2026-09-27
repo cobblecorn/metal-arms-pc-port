@@ -1,8 +1,23 @@
 # Design: mouse-driven front-end menus (`wpr_system.cpp`)
 
-Status: design only, written from source (no runs). Goal from the user: navigate the front end with
-the mouse, with a pointer drawn in the game's own art style. Keyboard and pads must keep working
-unchanged.
+Status: implemented for the front end (see PORTING.md, "Front-end menus with the mouse"). Differences
+from this design, found while building it:
+
+- Hit boxes come from `ftext_GetLastPrintBounds()` right after each print (layout happens at print
+  time), not from tagged prints resolved in `ftext_Draw()`. Boxes cover whole text lines and small
+  items are widened to 0.045 of the screen; where boxes overlap the nearest center wins.
+- The retail main menu has no text rows: "Campaign" and "MultiPlayer" are 3D text meshes, hit-tested
+  from their model-space bounding boxes (`_MouseAddMesh`).
+- The pointer position comes from the window's mouse messages; clicks are queued with their own
+  positions and taken one per frame. A click on an item selects it and, on the next frame, accepts it;
+  the name keyboard selects and types in the same frame.
+- The pointer is drawn from the video overlay hook, after `ftext_Draw()`, so it sits above the text.
+- Retail `wrappers$` phrase tables are ordered differently from this source's list (fixed by
+  `_anRetailPhraseField` in `wpr_system.cpp`); before that fix "Delete" showed "You will not be able to
+  save your progress."
+
+Goal from the user: navigate the front end with the mouse, with a pointer drawn in the game's own art
+style. Keyboard and pads must keep working unchanged.
 
 ## How the menus work today
 
