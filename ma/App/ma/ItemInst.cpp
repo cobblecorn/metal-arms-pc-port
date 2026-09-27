@@ -1181,9 +1181,19 @@ BOOL CInventory::InitFromCSVTable( FGameDataTableHandle_t hTable, BOOL bLoadPrim
 	
 	// setup the items
 	nCount = (u32)fNumItems;
+#if FANG_WINGC
+	// The retail inventory tables still list items this game retired (their INVPOS_ slots are commented
+	// out in ItemInst.h, in retail too): skip those quietly, and only warn when the items this game does
+	// know about exceed the slots.
+	static cchar *_apszRetiredItems[] = { "Mil Translator", "Antenna", "EUK", "Mission Briefing" };
+	#define _IS_RETIRED_ITEM( psz ) ( !fclib_stricmp( (psz), _apszRetiredItems[0] ) || !fclib_stricmp( (psz), _apszRetiredItems[1] ) || \
+									  !fclib_stricmp( (psz), _apszRetiredItems[2] ) || !fclib_stricmp( (psz), _apszRetiredItems[3] ) )
+	u32 nRetired = 0;
+#else
 	if( nCount > INVPOS_COUNT ) {
 		DEVPRINTF( "CInventory::InitFromCSVTable() - there are too many items (%d) listed, the max is %d.\n", nCount, INVPOS_COUNT );
 	}
+#endif
 	
 	// start with the default items and over write
 	SetupDefaultItems();
@@ -1209,11 +1219,23 @@ BOOL CInventory::InitFromCSVTable( FGameDataTableHandle_t hTable, BOOL bLoadPrim
 		}
 		if( j == INVPOS_COUNT ) {
 			// didn't find a match
+#if FANG_WINGC
+			if( _IS_RETIRED_ITEM( pszString ) ) {
+				nRetired++;
+				continue;
+			}
+#endif
 			DEVPRINTF( "CInventory::InitFromCSVTable() - could not find an item named %s, check the spelling.\n", pszString );
 		}
 	}
-	
-	return TRUE;	
+#if FANG_WINGC
+	if( nCount - nRetired > INVPOS_COUNT ) {
+		DEVPRINTF( "CInventory::InitFromCSVTable() - there are too many items (%d) listed, the max is %d.\n", nCount - nRetired, INVPOS_COUNT );
+	}
+	#undef _IS_RETIRED_ITEM
+#endif
+
+	return TRUE;
 }
 
 

@@ -13,6 +13,7 @@
 //   -res WxH        window/screen resolution (default: 1280x960)
 //   -fullscreen     run fullscreen instead of in a window
 //   -no-audio       skip game sound setup and mute Bink movie audio
+//   -mute           load and run all audio (so its errors are logged) but play it silently; for tests
 //   -dev-menu       boot into the development launcher (level picker) instead of the retail front end
 //   -console        open a console window showing the log (the game is a windowed app without one)
 //   -port-diag      log the port's periodic PORT-* diagnostics (also MA_PORT_DIAG=1)
@@ -84,6 +85,8 @@ static char _szInstanceLabel[64];
 static int _nReqWidth = 1280, _nReqHeight = 960;
 static bool _bFullscreen = false;
 static bool _bNoAudio = false;
+static bool _bMute = false;
+extern BOOL FAudio_bPortMuteOutput;	// Fang2/dx/fdx8audio.cpp
 static int _nCampaignCoopPlayers = 1;
 static bool _bInputLayoutSpecified = false;
 static PcInputLayout _nRequestedInputLayout = PCINPUT_LAYOUT_SHARED;
@@ -592,6 +595,7 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-instance-label" ) && bHasValue ) strncpy( _szInstanceLabel, argv[++i], sizeof(_szInstanceLabel) - 1 );
 		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
 		else if( !_stricmp( pszArg, "-no-audio" ) )				_bNoAudio = true;
+		else if( !_stricmp( pszArg, "-mute" ) )					_bMute = true;
 		else if( !_stricmp( pszArg, "-debug-info" ) )				_bDebugInfo = true;
 		else if( !_stricmp( pszArg, "-console" ) )					_bConsole = true;
 		else if( !_stricmp( pszArg, "-port-diag" ) )				_bPortDiag = true;
@@ -766,7 +770,8 @@ int main( int argc, char **argv )
 	{
 		return 2;
 	}
-	fmovie2_SetAudioEnabled( !_bNoAudio );
+	fmovie2_SetAudioEnabled( !_bNoAudio && !_bMute );
+	FAudio_bPortMuteOutput = _bMute ? TRUE : FALSE;
 
 	// The exe is a windowed (GUI) app, so players get no console full of engine and script output.
 	// -console opens one; output redirected by the parent (as the test tools do) still arrives.
@@ -911,13 +916,14 @@ int main( int argc, char **argv )
 	// user's game session, and label whether each test has audio enabled.
 	if( _szInstanceLabel[0] )
 	{
-		if( _bNoAudio )
-			snprintf( Win.szWindowTitle, sizeof( Win.szWindowTitle ), "Metal Arms: %.29s [TEST RUN - NO AUDIO]", _szInstanceLabel );
+		if( _bNoAudio || _bMute )
+			snprintf( Win.szWindowTitle, sizeof( Win.szWindowTitle ), "Metal Arms: %.29s [TEST RUN - %s]", _szInstanceLabel, _bMute ? "MUTED" : "NO AUDIO" );
 		else
 			snprintf( Win.szWindowTitle, sizeof( Win.szWindowTitle ), "Metal Arms: %.29s [TEST RUN - AUDIO]", _szInstanceLabel );
 	}
 	else
-		strcpy( Win.szWindowTitle, _bNoAudio ? "Metal Arms: Glitch in the System  [TEST RUN - NO AUDIO]" : "Metal Arms: Glitch in the System" );
+		strcpy( Win.szWindowTitle, _bNoAudio ? "Metal Arms: Glitch in the System  [TEST RUN - NO AUDIO]" :
+			( _bMute ? "Metal Arms: Glitch in the System  [TEST RUN - MUTED]" : "Metal Arms: Glitch in the System" ) );
 
 	//////////////////////////////////////////////////////////////////////
 	// Go. gameloop_Start() creates the window on this thread and runs the game on another.

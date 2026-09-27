@@ -127,8 +127,9 @@ void fang_Init( void ) {
 	// Coll:
 	#if FANG_WINGC
 		// PC campaign collision queries regularly exceed the console-era 250-impact limit.
-		// A later WEWRresrch3 query reached 1,046 impacts; double that observed peak for headroom.
-		Fang_ConfigDefs.nColl_MaxImpacts = 2048;
+		// A WEWRresrch3 query reached 1,046 impacts, and a WEWHchase01 one 2,077 (the chase's debris);
+		// about 0.4 MB of impact records.
+		Fang_ConfigDefs.nColl_MaxImpacts = 4096;
 	#else
 		Fang_ConfigDefs.nColl_MaxImpacts = 250;
 	#endif
@@ -226,8 +227,15 @@ void fang_Init( void ) {
 
 	Fang_ConfigDefs.nLightPool_nNumLights = 32;
 
+#if FANG_WINGC
+	// The consoles' budget ran out in busy fights (WEWHchase01: "No free vertices and couldn't reclaim
+	// any", so bullet marks stopped appearing). Twice as many: they are drawn through fdraw's dynamic buffer.
+	Fang_ConfigDefs.nMaxDecals = 400;
+	Fang_ConfigDefs.nMaxDecalVertices = 6000;
+#else
 	Fang_ConfigDefs.nMaxDecals = 200;
 	Fang_ConfigDefs.nMaxDecalVertices = 3000;
+#endif
 
 	_bValidationEnabled = FALSE;
 

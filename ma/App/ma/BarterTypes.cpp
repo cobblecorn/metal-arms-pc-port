@@ -1097,14 +1097,23 @@ BOOL CBarterLevel::InitLevel( cchar *pszCSVFile ) {
 				}
 
 				// allocate  sales chains
-				pSlot->m_paSaleChains = fnew CBarterSaleChains[CBarterItem::m_aNumItems[nSlot]];
-				if( !pSlot->m_paSaleChains ) 
+#if FANG_WINGC
+				// Room for every chain the level specifies plus every candidate item: sized to the candidates
+				// alone, a level listing more chains (or one item twice) wrote past the array, and when the
+				// fill below came up short the trailing chains kept no item, which the shop then read
+				// (a crash opening Shady's shop in WESSstatn01). m_nSaleChains becomes the count filled.
+				const u32 nChainCapacity = nNumChains + CBarterItem::m_aNumItems[nSlot];
+#else
+				const u32 nChainCapacity = CBarterItem::m_aNumItems[nSlot];
+#endif
+				pSlot->m_paSaleChains = fnew CBarterSaleChains[nChainCapacity];
+				if( !pSlot->m_paSaleChains )
 				{
 					DEVPRINTF( "CBarterLevel::InitLevel() : Could not allocate memory for barter droid level data.\n" );
 					goto _ExitWithError;
 				}
 				pSlot->SetChainIndex(0);
-				pSlot->m_nSaleChains = CBarterItem::m_aNumItems[nSlot];
+				pSlot->m_nSaleChains = nChainCapacity;
 				pSlot->m_nSpecSaleChains =  nNumChains;
 
 				u32 nSalesChain;
@@ -1198,7 +1207,11 @@ BOOL CBarterLevel::InitLevel( cchar *pszCSVFile ) {
 					}
 				}
 
+#if FANG_WINGC
+				if (bItemIsInListAlready == FALSE && nSalesChainInsertAt < pSlot->m_nSaleChains && pSlot->m_paSaleChains)
+#else
 				if (bItemIsInListAlready == FALSE)
+#endif
 				{
 					pSaleChain = &pSlot->m_paSaleChains[nSalesChainInsertAt];
 					pSaleChain->m_paItemInsts[0].Init(&CBarterItem::m_apaItems[nSlot][nItem],FALSE,BARTER_INFINITE,BARTER_DEFAULT_PRICE);
@@ -1221,6 +1234,12 @@ BOOL CBarterLevel::InitLevel( cchar *pszCSVFile ) {
 					}
 				}
 			}
+#if FANG_WINGC
+			// only the chains that hold an item
+			if( pSlot->m_paSaleChains && nSalesChainInsertAt < pSlot->m_nSaleChains ) {
+				pSlot->m_nSaleChains = nSalesChainInsertAt;
+			}
+#endif
 		}
 	}
 	// load all the generic bot talk responses

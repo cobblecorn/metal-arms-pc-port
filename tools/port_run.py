@@ -206,7 +206,7 @@ def main():
     if not args.vsync:
         command.append("-no-vsync")
     if not args.audio:
-        command.append("-no-audio")
+        command.append("-mute")
     if args.shots:
         shot_dir = os.path.join(ROOT, "build", "shots", name)
         shutil.rmtree(shot_dir, ignore_errors=True)

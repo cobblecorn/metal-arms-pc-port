@@ -732,10 +732,16 @@ BOOL CBot::InitSystem( void ) {
 	m_GlowTexInst.SetTexDef( pTexDef );
 	m_GlowTexInst.SetFlags( CFTexInst::FLAG_NONE );
 
+#if FANG_WINGC
+	// The event names come from each level's events table, loaded after this runs, so this lookup always
+	// failed (and logged twice); nothing uses m_nBotDieEvent: Die() looks the event up when it fires.
+	m_nBotDieEvent = -1;
+#else
 	m_nBotDieEvent = CFScriptSystem::GetEventNumFromName( "BotDie" );
 	if( m_nBotDieEvent == -1 ) {
 		DEVPRINTF( "CBot::InitSystem() : Could not find botdie event.\n");
 	}
+#endif
 
 	m_uBotSoundFlags = 0;
 	fang_MemZero(&m_BotInfo_SoundLight, sizeof(m_BotInfo_SoundLight));
@@ -1945,6 +1951,11 @@ BOOL CBot::ClassHierarchyBuilt( void ) {
 			m_eWeightClass = BOTWEIGHT_VEHICLE;
 
 		} else {
+#if FANG_WINGC
+			// Some retail bot tables say 'none', which retail's code (the same six classes as here) also
+			// treated as medium; only report names that aren't that.
+			if( fclib_stricmp( m_pBotInfo_Gen->pszWeightClass, "none" ) )
+#endif
 			DEVPRINTF( "CBot::ClassHierarchyBuilt() : Invalid weight class '%s'!  Using default of 'medium'\n", m_pBotInfo_Gen->pszWeightClass);
 			_LoadSoundResource( BOTSOUND_MEDIUM_WEIGHT );
 			m_eWeightClass = BOTWEIGHT_MEDIUM;

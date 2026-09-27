@@ -346,6 +346,13 @@ CFSoundGroup *CFSoundGroup::RegisterGroup( cchar *pszGroupName ) {
 		pSoundInfoArray[i].m_hSound = fsndfx_GetFxHandle( pSoundInfoArray[i].m_pszSoundTagName );
 
 		if( pSoundInfoArray[i].m_hSound == 0 ) {
+#if FANG_WINGC
+			// The retail sound-group tables use 'None' for an empty slot; that one is no sound, not a
+			// missing one.
+			if( !fclib_stricmp( pSoundInfoArray[i].m_pszSoundTagName, "None" ) ) {
+				continue;
+			}
+#endif
 			DEVPRINTF( "CFSoundGroup::RegisterGroup(): Warning! Sound '%s' not found. Bank may not be loaded.\n", pSoundInfoArray[i].m_pszSoundTagName );
 		}
 	}

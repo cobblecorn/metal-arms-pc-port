@@ -1937,6 +1937,10 @@ void level_Work( void ) {
 		//check to see if the level intro movie needs to be played.
 		if( _bPlayIntroMovie ) {
 			//play the level intro cutscene
+#if FANG_WINGC
+			// most levels have no intro movie; asking for one logged "invalid cutscene handle" each load
+			if( _hIntroMovie != CUTSCENE_INVALID_HANDLE )
+#endif
 			cutscene_Start( _hIntroMovie, 1.0f );
 
 			_bPlayIntroMovie = FALSE;

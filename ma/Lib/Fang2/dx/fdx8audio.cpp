@@ -366,9 +366,13 @@ static f32 _GCStreamGain( f32 fVolume, u32 uChannels )
 }
 
 // DirectSound volume (hundredths of a decibel) for an amplitude gain.
+// -mute (main_win.cpp): audio loads and runs as usual but every buffer is set to silence, so test runs
+// exercise (and log) the whole sound system without being heard.
+BOOL FAudio_bPortMuteOutput = FALSE;
+
 static s32 _GainToDSVolume( f32 fGain )
 {
-	if( fGain <= 0.0001f )
+	if( fGain <= 0.0001f || FAudio_bPortMuteOutput )
 	{
 		return DSBVOLUME_MIN;
 	}
@@ -2727,6 +2731,14 @@ CFAudioEmitter *CFAudioEmitter::Create3D( FAudio_WaveHandle_t oWaveHandle, u8 uP
 
 //	FASSERT_MSG( faudio_IsValidWaveHandle( oWaveHandle ), "[ FAUDIO ] Error: Invalid handle !!!" );
 	FASSERT_MSG( ( _uMaxPriorityLevels > uPriority ),     "[ FAUDIO ] Error: Invalid uPriority !!!" );
+#if FANG_WINGC
+	// Retail data gives some ambient sounds a radius below DirectSound's minimum distance (WEWJjourn01's
+	// spheres); the GameCube had no such floor. Play them at the smallest radius DirectSound takes.
+	if( fRadiusOuter < DS3D_DEFAULTMINDISTANCE )
+	{
+		fRadiusOuter = DS3D_DEFAULTMINDISTANCE;
+	}
+#endif
 	FASSERT_MSG( ( DS3D_DEFAULTMINDISTANCE <= fRadiusOuter ),   "[ FAUDIO ] Error: Invalid fRadiusOuter !!!" );
 
 	_VirtualEmitter_t *poVirtualEmitter = (_VirtualEmitter_t *)flinklist_RemoveHead( &_oVirtualEmittersListFree );
