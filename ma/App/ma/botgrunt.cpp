@@ -251,6 +251,7 @@ BOOL CBotGruntBuilder::InterpretTable( void ) {
 				CEntityParser::CompareBoolString( pszValue, &m_bAllowWeaponDrop );
 			}
 		}
+		return TRUE;
 	}
 
 	return CBotBuilder::InterpretTable();
@@ -2238,6 +2239,7 @@ void CBotGrunt::Die( BOOL bSpawnDeathEffects/*=TRUE*/, BOOL bSpawnGoodies ) {
 void CBotGrunt::DrawText( void )
 {
 	cwchar* wszFormat = (CPlayer::m_nPlayerCount > 1) ? L"~f9~C92929299~w0~al~o1%ls" : L"~f1~C92929299~w0~al~s1.00%ls";
+	const u32 nPromptPort = m_nPossessionPlayerIndex >= 0 ? Player_aPlayer[m_nPossessionPlayerIndex].m_nControllerIndex : 0;
 
 	CVehicle* pVehicleNearby = NULL;
 
@@ -2259,7 +2261,7 @@ void CBotGrunt::DrawText( void )
 			{
 				if( pVehicleNearby->IsUpsideDown() )
 				{
-					ftext_Printf( 0.22f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER ] );
+					ftext_Printf( 0.22f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER, nPromptPort ) );
 				}
 				else if( !pVehicleNearby->IsPlayerDriveable() )
 				{
@@ -2267,11 +2269,11 @@ void CBotGrunt::DrawText( void )
 				}
 				else if( pVehicleNearby->CanOccupyStation( this, CVehicle::STATION_DRIVER ) == CVehicle::STATION_STATUS_EMPTY )
 				{
-					ftext_Printf( 0.22f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE ] );
+					ftext_Printf( 0.22f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE, nPromptPort ) );
 				}
 				else if( pVehicleNearby->CanOccupyStation( this, CVehicle::STATION_GUNNER ) == CVehicle::STATION_STATUS_EMPTY )
 				{
-					ftext_Printf( 0.22f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN ] );
+					ftext_Printf( 0.22f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN, nPromptPort ) );
 				}
 			}
 		}
@@ -2285,7 +2287,7 @@ void CBotGrunt::DrawText( void )
 				if (((pSiteWeapon->IsStationObstructed()==NULL) || (pSiteWeapon->IsStationObstructed()==this)) && 
 					(pSiteWeapon->CanOccupyStation(this)) )
 				{
-						ftext_Printf( 0.22f, 0.58f, wszFormat, Game_apwszPhrases[ GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN ] );
+						ftext_Printf( 0.22f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN, nPromptPort ) );
 				}
 			}
 		}

@@ -14,7 +14,8 @@ Current state for the next session, local (Windows) or cloud (Linux). Other docu
 
 A working native Windows build of *Metal Arms: Glitch in the System* that runs the user's retail
 **GameCube** disc data (disc ID `GM5E7D`, rev 0). The user also wants mouse-driven menus and,
-later, local co-op.
+local co-op. A CLI-only campaign player-slot prototype exists; gameplay rules and bot selection are
+not implemented.
 
 ## Repository
 
@@ -63,6 +64,9 @@ All options are in `PORTING.md` and at the top of `port/main_win.cpp` (`-level`,
 - Engine captures: `-shots <dir> -shot-every <frames>`.
 - `tools/mission_sweep.sh <secs> <world>...` runs each mission and counts loads, crashes, asserts,
   script/data errors and audio problems (logs under `build/logs/sweep/`). Run it in the foreground.
+- `tools/port_run.py` runs a muted, Discord-off test build and summarizes its log; `--keep` and `--stop`
+  support menu-driving runs. `tools/menu_drive.py` posts mouse messages to a selected game PID and can
+  wait for a pause-menu screenshot. `tools/eol.py` checks or fixes line endings against Git.
 - `tools/audio_meter.ps1` reads a process's audio peak meter (is the game audible?).
 - Retail formats and schemas: `tools/mst_list.py` (list/extract the `.mst`), `tools/gamedata_dump.py`
   (binary `.csv` tables as JSON), `tools/dol_vocab.py` (retail table vocabularies from `main.dol`),
@@ -103,6 +107,100 @@ Working (verified by runs or by the user, see `PORTING.md` for detail):
 - Many retail schema changes mapped from `main.dol`.
 - Pause menu with the pointer (user confirmed 2026-09-27), Discord Rich Presence (connects under the
   port's own application by default), typed profile names, keyboard/Xbox/PlayStation prompts.
+
+## Session of 2026-09-27 (follow-up: mission error cleanup)
+
+1. **Tracer alpha clamp** (`ma/App/ma/tracer.cpp`): `_GroupWork` now clamps normalized distance and
+   computed alpha to `[0,1]`. The approximate reciprocal used for max distance could put a tracer a
+   little past full distance immediately before its kill check, producing negative vertex alpha and
+   reaching the float-to-color assertion in `tracer_Draw`. Four Debug mission runs (60 seconds each)
+   reached end-of-loading without crashes, asserts, allocation failures, script errors, or data
+   warnings. The earlier intermittent assert was not reproduced.
+2. **Grunt `dropweapon` property** (`ma/App/ma/botgrunt.cpp`): after parsing this recognized property,
+   `CBotGruntBuilder::InterpretTable` now returns success instead of letting the base builder report
+   it as unknown. Two focused runs and a four-mission follow-up had no `Unknown command 'dropweapon'`
+   messages.
+3. **Retail barter response** (`ma/App/ma/BarterTypes.cpp`): `NOSOUPFORYOU` now maps to the existing
+   `PURCHASE_ABORT` Shady state. The retail Generic_Bot_Talks table pairs it with the valid
+   `bd_nothing` response, so it had been an unsupported keyword causing barter initialization to
+   fail. In `WEMCcity_01` and `WEWRresrch4`, generic response initialization and `Barter_MoveToPoint`
+   failures no longer appear. `WERMmorbot1` has no barter data for that level; its no-barter message
+   is expected.
+4. The Debug `ma_port` build succeeded. All ten mission runs for these fixes were **muted**; no
+   audio behavior was checked. The runs covered `WEWJjourn01`, `WEWCcomm_01`, `WERMmorbot1`,
+   `WEMCcity_01`, and `WEWRresrch4`.
+5. **Open log/retail-data leads; no code changes made:** barter tables contain unrecognized `EUK`
+   weapon/scope names and `Battery 2`–`Battery 6`; resolve how barter purchases preserve EUK mesh and
+   battery-count semantics before adding aliases. `WEMCcity_01` also uses `megawasher` and
+   `disablevelocityimpulses`, which have no source implementation; it sets `Shield=on` on grunts even
+   though only Titans parse it, and two liquid `ColorRed` values are malformed three-string fields.
+   In `WEWRresrch3`, retail `AI_Race=Evil` actors target players as enemies; `MIL` is the compatible
+   port race, but retail exposes no explicit `EVIL` alias. These findings came from read-only retail
+   and log audits and were not implemented in this pass.
+6. No commits or pushes were made for this follow-up. Preserve the other dirty working-tree changes.
+
+## Session of 2026-09-27 (current uncommitted pass)
+
+1. **Quiet tests mute Bink without freezing its video.** `-no-audio` now sets Bink track volume to zero
+   instead of calling `BinkSetSoundOnOff(FALSE)`. That API stopped the silent movie clock: the mines
+   intro stayed on black frame 2. The Debug build now plays the muted intro through at least frame 900;
+   its screenshot shows the movie, and the per-process audio meter stayed at 0.000 for 115 samples.
+   Normal user launches keep movie and game audio enabled unless `-no-audio` is supplied.
+2. **Per-instance testing:** `-asset-log <file>` gives every process a separate asset log. The new
+   `tools/mission_parallel.py` can queue several missions with a `--jobs` cap, unique engine/asset/save
+   paths, and concise load/script/assert/performance summaries. `port_run.py` also reports script and
+   data-load errors; `audio_meter.ps1 -ProcessId PID` measures one process among multiple instances.
+   Two-player mission smoke runs reached end-of-loading in `WEDTtown_01` and `wedmmines01`; both ran
+   around 140 fps with no asserts or crashes. Tests were muted. The Mines script emitted one invalid
+   SFX-handle error under `-no-audio`; gameplay audio is intentionally unavailable in those runs.
+3. **Basic campaign co-op initialization prototype:** `-mission WEDTtown_01 -coop 2` (2–4) creates
+   multiple local campaign player slots, keeps `bSinglePlayer=TRUE` and uses the existing split-screen
+   setup. It defaults to separate keyboard/controller ports, has no profile pointers or persistent
+   saves, and is for initialization experiments only. It does not add a bot selector or solve campaign
+   combat, cutscenes, pause, death/checkpoint, or progression behavior. A run loaded two players at
+   distinct positions. A later capture showed the main view, but the lower split-screen view was
+   malformed. The user asked to keep this prototype basic and not pursue those gaps in this pass.
+4. **Button prompt preference** was added to PC Advanced Settings (Auto, Keyboard, Xbox, PlayStation),
+   saved under Local AppData. A valid command-line/environment override locks the choice for that run.
+   Prompt changes also cover start text, message buttons, and the vehicle-exit prompt. It compiles;
+   menu placement, persistence and visuals still need a user-visible check. XInput cannot identify a
+   PlayStation controller, so Auto uses Xbox glyphs for pad-only ports.
+5. **Checkpoint write hardening:** reserve flush alignment padding, retain backend write/flush errors,
+   and do not mark a failed checkpoint save as complete. The Debug build compiled these changes;
+   checkpoint failure behavior has not been runtime-tested.
+6. **Resolved handoff items:** the Hold Your Ground `Mini_Game` 104-field loader fix is already in
+   `d696cbc`; retail-only fields 62–103 are intentionally ignored. The `CFQuatTang3` fallback for a
+   degenerate/vertical cart tangent is already present; the town mission reached end-of-loading with
+   no assert/crash, but cart motion was not visually verified.
+7. Debug build command used:
+   `cmake --build build --config Debug --target ma_port -- /nologo /verbosity:minimal`.
+   It succeeded after changing enum stepping in the prompt option to an explicit cast. No changes from
+   this pass have been committed or pushed. Keep the pre-existing `windows icon/` files. Three other
+   active UI files (`PauseScreen.cpp`, `win/screenshot.cpp`, `wpr_drawutils.cpp`) still have mixed
+   line endings; check and normalize after that UI edit pass settles.
+
+## Session of 2026-09-27 (latest): test tools in the repository
+
+Code is committed and pushed as `59dd5bf` (`Test tooling in tools/; test windows say they are muted;
+gameplay-relative test keys`).
+
+1. `tools/port_run.py` starts Release by default (Debug is optional), adds `-port-diag`, disables
+   Discord and audio by default, and uses `-no-vsync` for timing. It can capture `-shots`, summarize
+   performance, hitches, stalls, asserts/crashes and audio errors, and stop only the PID it started.
+   `--keep` leaves the game running for menu interaction; `--stop PID` ends that test and summarizes it.
+2. `tools/menu_drive.py` posts mouse messages to the game window without moving the desktop cursor.
+   Pass `--pid PID` to select a test window. It supports pixel or fractional coordinates, clicks,
+   wheel input, and `waitpause` for detecting the pause screen in captured frames.
+3. `tools/eol.py` checks and fixes line endings to match the committed file (or the majority ending for
+   a new file). Use it after editing original CRLF sources with tools that may normalize line endings.
+4. Test windows launched with `-no-audio` show `[TEST RUN - NO AUDIO]` in their title, so they are
+   distinguishable from the user's audible session.
+5. Test keys can now be gameplay-relative: `-test-keys "g8:0x1B"` presses Escape eight seconds after
+   gameplay begins. This avoids timing the key from process launch, since muted runs load the level
+   faster and can otherwise press Escape during the intro. The pause test succeeded with this form.
+6. In the last menu recipe, mouse navigation selected Audio Levels when Controller Map was intended.
+   Treat fixed menu coordinates as layout-dependent; use captured frames to confirm the destination.
+   The scripted key path is the dependable way to time keyboard actions.
 
 ## Session of 2026-09-27 (later): settings clicks, controller chart, hitches, Release
 
@@ -234,21 +332,17 @@ All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newes
 - The user plays the game windows you launch, **while you work**, and reports by ear/eye; they cannot
   read logs. **Run your own test/benchmark instances with `-no-audio`** (they otherwise blast full-volume
   default-profile audio over the user's session) and `-discord-app-id off`.
-- To reach a screen without the user's keyboard: `-test-keys "62:0x1B"` pauses the first mission
-  (after its intro), the scratchpad scripts `waitpause.py <shots dir>` (waits for the pause menu in
-  `-shots` output) and `drive.py move/click X Y` (client pixels at 1280x960; Controller Map is at
-  570,438, Advanced Settings at 630,296 in the pause menu). Only one Esc: extra ones back out. For subjective issues launch a logged session in the background:
-  `./build/Debug/ma_port.exe -data gamedata/files -mission wedmmines01 -port-diag -log build/logs/<name>.log`
-  (or no `-mission` for the front end) and read its `PORT-*` lines afterwards.
-- A running game locks `build/Debug/ma_port.exe`. **Close it yourself** (taskkill by PID, from
-  `Get-CimInstance Win32_Process -Filter "Name='ma_port.exe'"`) whenever you need to relink, then
-  relaunch a session for them — the user asked for this explicitly; don't make them wait.
-- Driving the menus without touching the real mouse: the scratchpad script `drive.py` posted
-  WM_MOUSEMOVE/WM_LBUTTONDOWN to the game window (client pixels); pointer input comes from those
-  messages, so this works. Keys are read with `GetAsyncKeyState` and need focus, and Windows won't
-  hand focus to a background process — use `-test-keys` instead of synthesizing key presses.
-  Screenshots: `-shots <dir> -shot-every N` writes back-buffer BMPs (they cost frame time; don't leave
-  them on in sessions the user plays). The first mission's intro takes Escape as "skip" until ~50 s.
+- Run private test sessions with `python tools/port_run.py --mission wedmmines01 --seconds 60`;
+  they are muted and keep Discord off by default. Add `--shots N` for screenshots or
+  `--test-keys "g8:0x1B"` to pause eight seconds into gameplay. For scripted menu work, use
+  `--keep`, then `python tools/menu_drive.py --pid PID ...`, and finish with
+  `python tools/port_run.py --stop PID --name NAME`. Mouse messages do not move the desktop cursor.
+  Keys still require focus unless sent through `-test-keys`; verify mouse-selected screens in captures
+  because fixed coordinates can land on a neighboring menu item. Screenshots cost frame time; do not
+  leave them on in sessions the user plays.
+- A running game locks its executable (`build/Release/ma_port.exe` for the normal player build).
+  Stop the specific PID before relinking, then relaunch the user's session when needed — the user asked
+  for this explicitly; don't make them wait.
 - `sed -i` in this Git Bash strips CRs from CRLF files (most sources are CRLF); edit with a script that
   keeps line endings, or the Edit tool.
 - Commit trailer: `Co-Authored-By: parallel session Opus 5.5 <noreply@collaborator.com>`; push to `origin x86-port`.
@@ -262,8 +356,8 @@ All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newes
    lost to Back-cancels (fixed); the front end before a profile loads plays at default volume (retail).
 2. Pause menu hit boxes for its page tabs and bottom prompts are fixed fractions (`CPauseScreen::Work`);
    derive them from `m_avtxButton` and the text areas if the layout ever changes.
-3. PlayStation prompts are chosen with `-button-prompts playstation`; there is no in-game option and
-   no pad-type detection (XInput can't tell). An options entry would help.
+3. The PC Button Prompts setting is implemented but still needs menu, persistence and visual
+   confirmation. XInput does not identify PlayStation pads, so Auto resolves them as Xbox.
 4. D3D9Ex: default-pool resources survive device resets on Ex, but alt-tab / fullscreen switching and
    window resizing have not been retested since `4d13270`.
 5. Performance: done for now (see the later 2026-09-27 section). Remaining: the ~1 s pause between
@@ -271,10 +365,10 @@ All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newes
 6. Discord: optional Rich Presence image (needs an asset uploaded to the application).
 7. Pause-menu page flips with a pad's shoulders work as before; check they still do with the keyboard
    map change (Q no longer CROSS_LEFT in menus).
-8. Older items: verify the save flow from the menus; Hold Your Ground's retail features (Mini_Game
-   fields 62-103); `CFQuatTang3` NaN on scripted carts; laser charged burst and other weapons'
-   particle/sound fields; `Difficulty.csv` extra fields' meaning; barter EUK kits; failed-load
-   teardown beyond `CLOUD_SESSION_LOG.md` 5/10; co-op (`docs/coop-audit.md`); 64-bit, widescreen, rumble.
+8. Older items: verify the save flow from the menus; laser charged burst and other weapons' particle/
+   sound fields; `Difficulty.csv` extra fields' meaning; barter EUK kits; failed-load teardown beyond
+   `CLOUD_SESSION_LOG.md` 5/10; expand campaign co-op only when requested (`docs/coop-audit.md`);
+   64-bit, widescreen, rumble.
 
 ## Things that cost time before
 

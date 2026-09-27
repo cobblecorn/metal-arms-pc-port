@@ -46,6 +46,10 @@
 #include "weapon.h"
 #include "pausescreen.h"
 #include "meshentity.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#include "wpr_drawutils.h"
+#endif
 
 #if FANG_PLATFORM_GC
 #include <wchar.h> //for _vsnwprintf
@@ -4910,13 +4914,40 @@ void CHud2::Draw( CInventory *pInventory ) {
 		}
 	}
 
-	// Draw the "B" button for the self destruct message
+	// Draw the Xbox X button for the hold-to-exit possession message
 	if( DrawFlagsEnabled(DRAW_SELFDESTRUCT) ) {
 		if(m_eSDState == SDSTATE_MESSAGE)
 		{
-			fdraw_Color_SetFunc(FDRAW_COLORFUNC_DECALTEX_AT);
-			fdraw_SetTexture(&_texControls);
-			fdraw_PrimList(FDRAW_PRIMTYPE_TRISTRIP, m_avtxButton, 4);
+#if defined(MA_PC_INPUT)
+			const u32 nPromptPort = Player_aPlayer[m_nPlayerIdx].m_nControllerIndex;
+			if( pcinput_UseKeyboardPromptsForPort( nPromptPort ) || pcinput_UsePlayStationPromptsForPort( nPromptPort ) ) {
+				// The possession exit icon is laid out in the radar's local 640x480 space. Draw the
+				// replacement in viewport space so the keyboard cap and PS glyph match its position
+				// at every resolution and in split screen.
+				const f32 fLocalX = 0.5f * (m_avtxButton[0].Pos_MS.x + m_avtxButton[1].Pos_MS.x);
+				const f32 fLocalY = 0.5f * (m_avtxButton[0].Pos_MS.y + m_avtxButton[2].Pos_MS.y);
+				const f32 fScreenX = fTransX + fScale * fLocalX;
+				const f32 fScreenY = fTransY + fScale * fLocalY;
+				const f32 fIconW = fScale * FMATH_FABS( m_avtxButton[1].Pos_MS.x - m_avtxButton[0].Pos_MS.x );
+				const f32 fIconH = fScale * FMATH_FABS( m_avtxButton[0].Pos_MS.y - m_avtxButton[2].Pos_MS.y );
+				CFXfm::PopModel();
+				if( pcinput_UsePlayStationPromptsForPort( nPromptPort ) ) {
+					wpr_drawutils_DrawPlayStationGlyph( 3, fScreenX - pVP->HalfRes.x, pVP->HalfRes.y - fScreenY,
+						0.40f * FMATH_MIN( fIconW, fIconH ) );
+				} else {
+					wpr_drawutils_DrawKeyCapCentered( L"Q", fScreenX / pVP->Res.x, fScreenY / pVP->Res.y, L'C',
+						fIconH / ( pVP->Res.y * 0.041f ), 0.0f, pVP->HalfRes.x, pVP->HalfRes.y, NULL, NULL, NULL, NULL );
+				}
+				xfmTotal.PushModel();
+				fdraw_SetTexture( &_texControls );
+				fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECALTEX_AT );
+			} else
+#endif
+			{
+				fdraw_Color_SetFunc(FDRAW_COLORFUNC_DECALTEX_AT);
+				fdraw_SetTexture(&_texControls);
+				fdraw_PrimList(FDRAW_PRIMTYPE_TRISTRIP, m_avtxButton, 4);
+			}
 		}
 	}
 
@@ -4945,8 +4976,9 @@ void CHud2::Draw( CInventory *pInventory ) {
 		{
 		case SDSTATE_MESSAGE:
 			{
-				Hud2_PrintString(m_hSDTextShadow, Game_apwszPhrases[ GAMEPHRASE_HOLD_TO_EXIT_BOT ] );
-				Hud2_PrintString(m_hSDText, Game_apwszPhrases[ GAMEPHRASE_HOLD_TO_EXIT_BOT ] );
+				const u32 nPromptPort = Player_aPlayer[m_nPlayerIdx].m_nControllerIndex;
+				Hud2_PrintString(m_hSDTextShadow, game_GetPromptPhrase( GAMEPHRASE_HOLD_TO_EXIT_BOT, nPromptPort ) );
+				Hud2_PrintString(m_hSDText, game_GetPromptPhrase( GAMEPHRASE_HOLD_TO_EXIT_BOT, nPromptPort ) );
 				break;
 			}
 		case SDSTATE_COUNTINGDOWN:

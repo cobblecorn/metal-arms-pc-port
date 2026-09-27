@@ -62,6 +62,7 @@ extern void fmovie2_ModuleShutdown( void );
 extern FMovie2_Error_e fmovie2_Install( void ); 
 extern void fmovie2_Uninstall( void );
 extern BOOL fmovie2_IsInstalled( void );
+extern void fmovie2_SetAudioEnabled( BOOL bEnabled );
 
 //
 ////

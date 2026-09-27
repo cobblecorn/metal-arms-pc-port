@@ -6,13 +6,13 @@
 // runs the game on its own thread. This thread owns the render window, so it just
 // pumps messages until the game asks to exit.
 //
-// Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource>] [-world-only <world-resource>] [-log <file>]
+// Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource>] [-world-only <world-resource>] [-log <file>] [-asset-log <file>]
 //
 //   -data <dir>     directory holding the game's data (default: gamedata\files)
 //   -mst <file>     master file name inside the data dir (default: mettlearms_gc.mst)
 //   -res WxH        window/screen resolution (default: 1280x960)
 //   -fullscreen     run fullscreen instead of in a window
-//   -no-audio       skip sound effect and music setup
+//   -no-audio       skip game sound setup and mute Bink movie audio
 //   -dev-menu       boot into the development launcher (level picker) instead of the retail front end
 //   -console        open a console window showing the log (the game is a windowed app without one)
 //   -port-diag      log the port's periodic PORT-* diagnostics (also MA_PORT_DIAG=1)
@@ -24,9 +24,11 @@
 //   -debug-info     draw the game's debug overlays: on-screen script messages and errors (errors
 //                   pause the game), frame rate, checkpoint and AI debug drawing. Scripts always log.
 //   -mission <name> load a registered single-player world with its mission data
+//   -coop <2-4>     experimental local campaign co-op player slots; requires -mission and separate inputs
 //   -level <name>    launch a world directly as a generic debug level
 //   -world-only <name> load a world resource, then exit before game/audio setup
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
+//   -asset-log <file> write Fang's resource-loading output here (default: ma_port_asset_log.txt)
 //   -mouse-sensitivity <n> raw mouse sensitivity in degrees per count (default 0.1)
 //   -aim-assist <auto|on|off> target assistance: auto = controller aiming only (default)
 //   -input-layout <shared|separate> shared: keyboard/mouse and pad 1 drive port 0 (default);
@@ -37,6 +39,7 @@
 //                   counts from the first gameplay frame instead (pauses a mission 8 s into play)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 //   -save-dir <dir> where player profiles are saved (default: %APPDATA%\Metal Arms PC Port\Saves)
+//   -instance-label <name> add a short label to the window title (useful for parallel test windows)
 
 #include "res/resource.h"
 #include "discord_rpc.h"
@@ -45,6 +48,7 @@
 #include "fvid.h"
 #include "floop.h"
 #include "ffile.h"
+#include "fmovie2.h"
 #include "gameloop.h"
 #include "launcher.h"
 #include "pc_input.h"
@@ -62,6 +66,7 @@
 #define _DEFAULT_DATA_DIR		"gamedata\\files"
 #define _DEFAULT_MASTER_FILE	"mettlearms_gc.mst"
 #define _DEFAULT_LOG_FILE		"ma_port.log"
+#define _DEFAULT_ASSET_LOG_FILE	"ma_port_asset_log.txt"
 
 static const f32 _FANG_HEAP_MB = 128.0f;		// desktop has plenty; the original PC build used 64
 
@@ -71,12 +76,17 @@ static char _szMasterName[MAX_PATH];			// bare file name from -mst
 static char _szMasterFile[MAX_PATH * 2];		// full path
 static char _szMovieDir[MAX_PATH * 2];
 static char _szLogFile[MAX_PATH];
+static char _szAssetLogFile[MAX_PATH];
 static char _szStartLevel[64];
 static char _szMission[64];
 static char _szWorldOnly[64];
+static char _szInstanceLabel[64];
 static int _nReqWidth = 1280, _nReqHeight = 960;
 static bool _bFullscreen = false;
 static bool _bNoAudio = false;
+static int _nCampaignCoopPlayers = 1;
+static bool _bInputLayoutSpecified = false;
+static PcInputLayout _nRequestedInputLayout = PCINPUT_LAYOUT_SHARED;
 static bool _bDebugInfo = false;
 static bool _bConsole = false;
 static bool _bPortDiag = false;
@@ -544,7 +554,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id> [-discord-large-image <asset-key-or-url>] [-discord-large-text <tooltip>]] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-save-dir <dir>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id> [-discord-large-image <asset-key-or-url>] [-discord-large-text <tooltip>]] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> [-coop 2-4] | -world-only <world-resource>] [-log <file>] [-asset-log <file>] [-instance-label <name>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-save-dir <dir>]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -552,9 +562,11 @@ static bool _ParseArgs( int argc, char **argv )
 	strcpy( _szDataDir, _DEFAULT_DATA_DIR );
 	strcpy( _szMasterName, _DEFAULT_MASTER_FILE );
 	strcpy( _szLogFile, _DEFAULT_LOG_FILE );
+	strcpy( _szAssetLogFile, _DEFAULT_ASSET_LOG_FILE );
 	_szStartLevel[0] = 0;
 	_szMission[0] = 0;
 	_szWorldOnly[0] = 0;
+	_szInstanceLabel[0] = 0;
 
 	for( int i = 1; i < argc; i++ )
 	{
@@ -564,9 +576,20 @@ static bool _ParseArgs( int argc, char **argv )
 		if( !_stricmp( pszArg, "-data" ) && bHasValue )				strncpy( _szDataDir, argv[++i], MAX_PATH - 1 );
 		else if( !_stricmp( pszArg, "-mst" ) && bHasValue )			strncpy( _szMasterName, argv[++i], MAX_PATH - 1 );
 		else if( !_stricmp( pszArg, "-log" ) && bHasValue )			strncpy( _szLogFile, argv[++i], MAX_PATH - 1 );
+		else if( !_stricmp( pszArg, "-asset-log" ) && bHasValue )		strncpy( _szAssetLogFile, argv[++i], MAX_PATH - 1 );
 		else if( !_stricmp( pszArg, "-level" ) && bHasValue )		strncpy( _szStartLevel, argv[++i], sizeof(_szStartLevel) - 1 );
 		else if( !_stricmp( pszArg, "-mission" ) && bHasValue )		strncpy( _szMission, argv[++i], sizeof(_szMission) - 1 );
+		else if( !_stricmp( pszArg, "-coop" ) && bHasValue ) {
+			char *pEnd = NULL;
+			const long nPlayers = strtol( argv[++i], &pEnd, 10 );
+			if( !pEnd || *pEnd || nPlayers < 2 || nPlayers > 4 ) {
+				_Log( "-coop must be 2, 3, or 4.\n" );
+				return false;
+			}
+			_nCampaignCoopPlayers = (int)nPlayers;
+		}
 		else if( !_stricmp( pszArg, "-world-only" ) && bHasValue )	strncpy( _szWorldOnly, argv[++i], sizeof(_szWorldOnly) - 1 );
+		else if( !_stricmp( pszArg, "-instance-label" ) && bHasValue ) strncpy( _szInstanceLabel, argv[++i], sizeof(_szInstanceLabel) - 1 );
 		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
 		else if( !_stricmp( pszArg, "-no-audio" ) )				_bNoAudio = true;
 		else if( !_stricmp( pszArg, "-debug-info" ) )				_bDebugInfo = true;
@@ -601,6 +624,8 @@ static bool _ParseArgs( int argc, char **argv )
 				_Log( "-input-layout must be shared or separate.\n" );
 				return false;
 			}
+			_bInputLayoutSpecified = true;
+			_nRequestedInputLayout = nLayout;
 			SetEnvironmentVariableA( "MA_PORT_INPUT_LAYOUT", argv[++i] );
 		}
 		else if( !_stricmp( pszArg, "-button-prompts" ) && bHasValue ) {
@@ -635,6 +660,19 @@ static bool _ParseArgs( int argc, char **argv )
 		_Log( "Choose only one of -level, -mission, or -world-only.\n" );
 		_Usage();
 		return false;
+	}
+	if( _nCampaignCoopPlayers > 1 ) {
+		if( !_szMission[0] ) {
+			_Log( "-coop requires -mission <registered campaign world>.\n" );
+			return false;
+		}
+		if( _bInputLayoutSpecified && _nRequestedInputLayout != PCINPUT_LAYOUT_SEPARATE ) {
+			_Log( "-coop requires -input-layout separate when an input layout is specified.\n" );
+			return false;
+		}
+		if( !_bInputLayoutSpecified ) {
+			SetEnvironmentVariableA( "MA_PORT_INPUT_LAYOUT", "separate" );
+		}
 	}
 	_szDiscordAppId[sizeof(_szDiscordAppId) - 1] = 0;
 	_szDiscordLargeImage[sizeof(_szDiscordLargeImage) - 1] = 0;
@@ -728,6 +766,7 @@ int main( int argc, char **argv )
 	{
 		return 2;
 	}
+	fmovie2_SetAudioEnabled( !_bNoAudio );
 
 	// The exe is a windowed (GUI) app, so players get no console full of engine and script output.
 	// -console opens one; output redirected by the parent (as the test tools do) still arrives.
@@ -813,7 +852,7 @@ int main( int argc, char **argv )
 	Gameloop_bDrawDebugInfo = _bDebugInfo;
 	Launcher_bShowDevBootMenu = _bDevMenu;
 
-	if( !ffile_LogSetFilename( "ma_port_asset_log.txt" ) )
+	if( !ffile_LogSetFilename( _szAssetLogFile ) )
 	{
 		_Log( "Could not create the Fang resource log.\n" );
 		fang_Shutdown();
@@ -827,6 +866,7 @@ int main( int argc, char **argv )
 	_GameInitParms.fTargetFPS = GAMELOOP_DEFAULT_TARGET_FPS;
 	_GameInitParms.bSkipLevelSelect = _szStartLevel[0] != 0 || _szMission[0] != 0;
 	_GameInitParms.bLoadRegisteredMission = _szMission[0] != 0;
+	_GameInitParms.nQuickLaunchCampaignPlayers = (u8)_nCampaignCoopPlayers;
 	_GameInitParms.nAnimPlaybackRate = GAMELOOP_DEFAULT_ANIM_PLAYBACK;
 	_GameInitParms.bViewBounds = GAMELOOP_DEFAULT_VIEW_BOUNDS;
 	_GameInitParms.bShowFPS = FALSE;
@@ -867,8 +907,17 @@ int main( int argc, char **argv )
 	Win.nIconIDI = IDI_MA_PORT;	// port/res/ma_port.rc
 	Win.bAllowPowerSuspend = TRUE;
 	Win.pFcnSuspend = NULL;
-	// a muted run is a test run (tools/port_run.py): say so, so it isn't mistaken for missing audio
-	strcpy( Win.szWindowTitle, _bNoAudio ? "Metal Arms: Glitch in the System  [TEST RUN - NO AUDIO]" : "Metal Arms: Glitch in the System" );
+	// Identify test windows so concurrent instances can be monitored without confusing them with the
+	// user's game session, and label whether each test has audio enabled.
+	if( _szInstanceLabel[0] )
+	{
+		if( _bNoAudio )
+			snprintf( Win.szWindowTitle, sizeof( Win.szWindowTitle ), "Metal Arms: %.29s [TEST RUN - NO AUDIO]", _szInstanceLabel );
+		else
+			snprintf( Win.szWindowTitle, sizeof( Win.szWindowTitle ), "Metal Arms: %.29s [TEST RUN - AUDIO]", _szInstanceLabel );
+	}
+	else
+		strcpy( Win.szWindowTitle, _bNoAudio ? "Metal Arms: Glitch in the System  [TEST RUN - NO AUDIO]" : "Metal Arms: Glitch in the System" );
 
 	//////////////////////////////////////////////////////////////////////
 	// Go. gameloop_Start() creates the window on this thread and runs the game on another.

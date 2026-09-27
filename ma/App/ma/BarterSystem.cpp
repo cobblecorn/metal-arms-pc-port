@@ -47,6 +47,10 @@
 #include "fcheckpoint.h"
 #include "pausescreen.h"
 #include "ShadowedText.h"
+#if defined(MA_PC_INPUT)
+	#include "pc_input.h"
+	#include "wpr_drawutils.h"
+#endif
 //====================
 // private definitions
 
@@ -883,9 +887,31 @@ void _DrawUserInterface(void)
 	fdraw_Alpha_SetBlendOp(FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE);
 	fdraw_Color_SetFunc(FDRAW_COLORFUNC_DIFFUSETEX_AIAT);
 	
+#if defined(MA_PC_INPUT)
+	FViewport_t *pViewport = Player_aPlayer[CPlayer::m_nCurrent].m_pViewportSafeOrtho3D;
+	const u32 nPromptPort = CPlayer::m_pCurrent->m_nControllerIndex;
+	const FDrawVtx_t *apButtons[2] = { _avtxButtonPurchase, _avtxButtonLeave };
+	cwchar *apwszKeyLabels[2] = { L"Space", L"R" };
+	for( u32 nButton = 0; nButton < 2; nButton++ ) {
+		const f32 fCenterX = 0.5f * (apButtons[nButton][0].Pos_MS.x + apButtons[nButton][3].Pos_MS.x);
+		const f32 fCenterY = 0.5f * (apButtons[nButton][0].Pos_MS.y + apButtons[nButton][3].Pos_MS.y);
+		const f32 fCenterXFrac = 0.5f * (fCenterX / pViewport->HalfRes.x + 1.0f);
+		const f32 fCenterYFrac = 0.5f * (1.0f - fCenterY / pViewport->HalfRes.y);
+		const f32 fRadius = 0.5f * FMATH_FABS( apButtons[nButton][0].Pos_MS.y - apButtons[nButton][2].Pos_MS.y ) /
+			pViewport->Res.y;
+		if( pcinput_UseKeyboardPromptsForPort( nPromptPort ) ) {
+			wpr_drawutils_DrawKeyCapCentered( apwszKeyLabels[nButton], fCenterXFrac, fCenterYFrac,
+				L'C', 1.50f, 0.0f, pViewport->HalfRes.x, pViewport->HalfRes.y, NULL, NULL, NULL, NULL );
+		} else {
+			wpr_drawutils_DrawFaceButton( pcinput_UsePlayStationPromptsForPort( nPromptPort ), nButton, fCenterXFrac,
+				fCenterYFrac, fRadius, pViewport->HalfRes.x, pViewport->HalfRes.y );
+		}
+	}
+#else
 	fdraw_SetTexture(CHud2::GetTexControls());
 	fdraw_PrimList(FDRAW_PRIMTYPE_TRISTRIP, _avtxButtonPurchase, 4);
 	fdraw_PrimList(FDRAW_PRIMTYPE_TRISTRIP, _avtxButtonLeave, 4);
+#endif
 
 	fdraw_SetTexture(CHud2::GetTexHud());
 	// selecting turn off unneeded arrows

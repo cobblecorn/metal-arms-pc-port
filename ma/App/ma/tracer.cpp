@@ -643,11 +643,25 @@ static void _GroupWork( _Group_t *pGroup )
 
 		// Compute unit distance we've moved...
 		fUnitDistMoved = pTracer->fTotalDistMoved_WS * pTracer->fOOMaxDist_WS;
+		// fOOMaxDist_WS uses an approximate reciprocal. Near the end of a tracer's
+		// lifetime that can round the normalized distance slightly above 1.0 even
+		// though the max-distance check above has not fired yet. Keep the fade
+		// input in range so it cannot produce a negative vertex alpha.
+		if( fUnitDistMoved < 0.0f ) {
+			fUnitDistMoved = 0.0f;
+		} else if( fUnitDistMoved > 1.0f ) {
+			fUnitDistMoved = 1.0f;
+		}
 
 		// Compute overall opaqueness...
 		if ( fUnitDistMoved > pTracer->TracerDef.fBeginDeathUnitFade_WS ) 
 		{
 			fUnitOpaqueness = (1.0f - fUnitDistMoved) * pTracer->fDeathFadeoutK * pTracer->TracerDef.ColorRGBA.fAlpha;
+			if( fUnitOpaqueness < 0.0f ) {
+				fUnitOpaqueness = 0.0f;
+			} else if( fUnitOpaqueness > 1.0f ) {
+				fUnitOpaqueness = 1.0f;
+			}
 
 			pVtx[0].ColorRGBA.fAlpha = fUnitOpaqueness;
 			pVtx[1].ColorRGBA.fAlpha = fUnitOpaqueness;
@@ -665,7 +679,17 @@ static void _GroupWork( _Group_t *pGroup )
 				if (pTracer->fTimeOfBirth+pTracer->fAlphaFadeStartTime < fNowTime)
 				{	//alpha is fading out
 					fUnitDistMoved = (fNowTime - (pTracer->fTimeOfBirth+pTracer->fAlphaFadeStartTime))/pTracer->fAlphaFadeTime;
+					if( fUnitDistMoved < 0.0f ) {
+						fUnitDistMoved = 0.0f;
+					} else if( fUnitDistMoved > 1.0f ) {
+						fUnitDistMoved = 1.0f;
+					}
 					fUnitOpaqueness = (1.0f - fUnitDistMoved) * pTracer->TracerDef.ColorRGBA.fAlpha;
+					if( fUnitOpaqueness < 0.0f ) {
+						fUnitOpaqueness = 0.0f;
+					} else if( fUnitOpaqueness > 1.0f ) {
+						fUnitOpaqueness = 1.0f;
+					}
 					pVtx[0].ColorRGBA.fAlpha = fUnitOpaqueness;
 					pVtx[1].ColorRGBA.fAlpha = fUnitOpaqueness;
 					pVtx[2].ColorRGBA.fAlpha = fUnitOpaqueness;

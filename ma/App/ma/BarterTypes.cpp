@@ -88,16 +88,21 @@ BOOL CBarterResponse::Init( cchar *pszFilename, f32 fPercent, cchar *pszKeyword,
 		return FALSE;
 	}
 
-	// find the keyword
-	for( i=0; i < CShady::SHADYSTATE_COUNT; i++ ) {
-		if( fclib_stricmp( Shady_aBotTalkInfo[i].pszKeyword, pszKeyword ) == 0 ) {
-			// found a match
-			m_nShadyState = Shady_aBotTalkInfo[i].nStateValue;
-			break;
+	// Find the keyword. Retail data has a special no-money response tagged
+	// NOSOUPFORYOU; it belongs to the existing purchase-abort state.
+	if( fclib_stricmp( pszKeyword, "NOSOUPFORYOU" ) == 0 ) {
+		m_nShadyState = CShady::SHADYSTATE_PURCHASEABORT;
+	} else {
+		for( i=0; i < CShady::SHADYSTATE_COUNT; i++ ) {
+			if( fclib_stricmp( Shady_aBotTalkInfo[i].pszKeyword, pszKeyword ) == 0 ) {
+				// found a match
+				m_nShadyState = Shady_aBotTalkInfo[i].nStateValue;
+				break;
+			}
 		}
-	}
-	if( i == CShady::SHADYSTATE_COUNT ) {
-		goto _ExitWithError;
+		if( i == CShady::SHADYSTATE_COUNT ) {
+			goto _ExitWithError;
+		}
 	}
 
 	// set the probablity

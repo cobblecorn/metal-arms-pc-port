@@ -36,6 +36,9 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform);
 void pcinput_Uninstall();
 void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info);
 void pcinput_Sample(u32 index, FPadio_Sample_t *sample);
+// True when the XInput device assigned to this game port is currently connected. This describes
+// the XInput transport only; it does not identify Xbox versus PlayStation controller hardware.
+bool pcinput_XInputConnected(u32 port);
 // Window thread receives raw motion; game thread consumes it once per input frame.
 bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam);
 void pcinput_BeginFrame(bool allowLook);
@@ -63,12 +66,12 @@ bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode);
 bool pcinput_AimAssistAllowed(u32 controller);
 // True while the controller's port is aiming with captured mouse look (the mouse moved last).
 bool pcinput_IsMouseAiming(u32 controller);
-// True when the keyboard/mouse port's most recent input came from its XInput pad (shared layout), so
-// on-screen prompts should name pad buttons rather than keys.
+// True when the active prompt theme uses controller buttons rather than keyboard keys.
 bool pcinput_PromptsForPad();
 
 // Prompt presentation can follow the most recently used device (AUTO), or be held to a chosen
-// keyboard, Xbox, or PlayStation layout. Set it with -button-prompts or MA_PORT_BUTTON_PROMPTS.
+// keyboard, Xbox, or PlayStation layout. Set it in Advanced Settings or override it with
+// -button-prompts / MA_PORT_BUTTON_PROMPTS.
 enum PcPromptStyle {
 	PCINPUT_PROMPT_STYLE_AUTO,
 	PCINPUT_PROMPT_STYLE_KEYBOARD,
@@ -76,12 +79,21 @@ enum PcPromptStyle {
 	PCINPUT_PROMPT_STYLE_PLAYSTATION
 };
 bool pcinput_ParsePromptStyle(const char *text, PcPromptStyle *style);
+// The selected preference (AUTO, keyboard, Xbox, or PlayStation), before AUTO resolves against the
+// most recently used device. A valid -button-prompts / MA_PORT_BUTTON_PROMPTS value locks this run.
+PcPromptStyle pcinput_PromptStyleSetting();
+bool pcinput_PromptStyleIsCommandLineOverride();
+bool pcinput_SetPromptStyleSetting(PcPromptStyle style); // updates the current run; false when locked
+bool pcinput_SavePromptStyleSetting();                 // saves the selected preference for future runs
 PcPromptStyle pcinput_ResolvedPromptStyle();
-// The style for one port's prompts: the keyboard port follows ResolvedPromptStyle(); the others are
-// pad-only ports, so they get the chosen pad style (Xbox unless PlayStation was chosen).
+// A manual style applies to every port. AUTO follows the most recently active device on the
+// keyboard's shared port, keeps separate-layout keyboard prompts on keys, and uses Xbox glyphs for
+// pad-only ports because XInput cannot identify Sony hardware.
 PcPromptStyle pcinput_PromptStyleForPort(u32 port);
 bool pcinput_UseKeyboardPrompts();
 bool pcinput_UsePlayStationPrompts();
+bool pcinput_UseKeyboardPromptsForPort(u32 port);
+bool pcinput_UsePlayStationPromptsForPort(u32 port);
 
 // Native text fields call SetTextInput while active. Printable WM_CHAR input, Backspace ('\b') and
 // Enter ('\r') are queued separately from the controller sample so typed characters never fire
@@ -93,3 +105,50 @@ bool pcinput_IsTextInput();
 // A key held down while the game window has focus (screens that read extra keys directly, such as the
 // pause menu's page keys). Never true while another window is in front.
 bool pcinput_KeyHeld(int key);
+
+// Device-independent readings for new menus and port UI. Values are sampled from the same
+// focus-filtered, normalized input sample that feeds the original gamepad maps. Directional values
+// and triggers range from 0 to 1; digital buttons are 0 or 1. PRESSED/RELEASED are edges from the
+// previous game frame (active at 0.35 or above). CONFIRM and BACK follow the active menu context;
+// BACK is false during gameplay. NAV_* includes stick directions while a menu is active. LOOK_* is
+// the right stick; captured mouse look remains pcinput_TakeMouseAxis.
+enum PcInputAction {
+	PCINPUT_ACTION_CONFIRM,
+	PCINPUT_ACTION_BACK,
+	PCINPUT_ACTION_PAUSE,
+	PCINPUT_ACTION_NAV_UP,
+	PCINPUT_ACTION_NAV_DOWN,
+	PCINPUT_ACTION_NAV_LEFT,
+	PCINPUT_ACTION_NAV_RIGHT,
+	PCINPUT_ACTION_MOVE_FORWARD,
+	PCINPUT_ACTION_MOVE_BACK,
+	PCINPUT_ACTION_MOVE_LEFT,
+	PCINPUT_ACTION_MOVE_RIGHT,
+	PCINPUT_ACTION_LOOK_UP,
+	PCINPUT_ACTION_LOOK_DOWN,
+	PCINPUT_ACTION_LOOK_LEFT,
+	PCINPUT_ACTION_LOOK_RIGHT,
+	PCINPUT_ACTION_FIRE_PRIMARY,
+	PCINPUT_ACTION_FIRE_SECONDARY,
+	PCINPUT_ACTION_JUMP,
+	PCINPUT_ACTION_ACTION,
+	PCINPUT_ACTION_SELECT_PRIMARY,
+	PCINPUT_ACTION_SELECT_SECONDARY,
+	PCINPUT_ACTION_QUICK_SELECT_UP,
+	PCINPUT_ACTION_QUICK_SELECT_DOWN,
+	PCINPUT_ACTION_QUICK_SELECT_LEFT,
+	PCINPUT_ACTION_QUICK_SELECT_RIGHT,
+	PCINPUT_ACTION_MELEE,
+	PCINPUT_ACTION_MELEE_SECONDARY,
+	PCINPUT_ACTION_UP_EUK,
+	PCINPUT_ACTION_COUNT
+};
+
+enum PcInputActionPhase {
+	PCINPUT_ACTION_HELD,
+	PCINPUT_ACTION_PRESSED,
+	PCINPUT_ACTION_RELEASED
+};
+
+float pcinput_ActionValue(u32 port, PcInputAction action);
+bool pcinput_Action(u32 port, PcInputAction action, PcInputActionPhase phase);

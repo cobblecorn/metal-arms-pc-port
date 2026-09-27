@@ -114,6 +114,7 @@ typedef struct {
 	BOOL bGovernFrameRate;
 	BOOL bDemoLaunched;		// The game was launched by a demo shell app
 	u32 uTimeoutInterval;	// Timeout interval in milliseconds
+	u8 nQuickLaunchCampaignPlayers;	// PC prototype: player slots for a registered -mission launch (1 = normal)
 
 } GameloopInitParm_t;
 
@@ -193,6 +194,7 @@ extern void gameloop_EnableOverlayDrawElements( BOOL bEnableHUD, BOOL bEnableDeb
 // call to get the level name to skip to
 extern cchar *gameloop_GetSkipLevelName( void );
 extern BOOL gameloop_GetSkipLevelUseMissionData( void );
+extern u8 gameloop_GetQuickLaunchCampaignPlayers( void );
 
 extern void gameloop_ResetIdleTimer();
 extern void gameloop_EnableIdleTimer( BOOL bEnable );

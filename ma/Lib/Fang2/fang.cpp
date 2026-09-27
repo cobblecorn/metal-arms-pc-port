@@ -125,7 +125,13 @@ void fang_Init( void ) {
 	Fang_ConfigDefs.nMesh_MaxCollSpheres = 100;
 
 	// Coll:
-	Fang_ConfigDefs.nColl_MaxImpacts = 250;
+	#if FANG_WINGC
+		// PC campaign collision queries regularly exceed the console-era 250-impact limit.
+		// A later WEWRresrch3 query reached 1,046 impacts; double that observed peak for headroom.
+		Fang_ConfigDefs.nColl_MaxImpacts = 2048;
+	#else
+		Fang_ConfigDefs.nColl_MaxImpacts = 250;
+	#endif
 
 	// Xfm:
 	Fang_ConfigDefs.nXfm_MaxModelStackXfms = 10;

@@ -18,6 +18,9 @@
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
 #include "screenshot.h"
+#if defined(MA_PC_INPUT)
+	#include "pc_input.h"
+#endif
 #include "fvid.h"
 #include "screengrab.h"
 #if FANG_PLATFORM_WIN
@@ -75,9 +78,13 @@ void screenshot_Shutdown( void ) {
 void screenshot_Work( void ) {
 	
 	if( _bScreenShotsSystemOK ) {
-		// see if windows says that the space key is down
+		// see if windows says that the F12 key is down
 #if FANG_PLATFORM_WIN
-		BOOL bKeyDown = fdx8vid_HaveFocus() && ( GetAsyncKeyState( VK_SPACE ) < 0 );
+#if defined(MA_PC_INPUT)
+		BOOL bKeyDown = pcinput_KeyHeld( VK_F12 );
+#else
+		BOOL bKeyDown = fdx8vid_HaveFocus() && ( GetAsyncKeyState( VK_F12 ) < 0 );
+#endif
 #else
 		BOOL bKeyDown = FALSE;// ADD SOME WAY OF CLICKING A SCREENSHOT ON OTHER PLATFORMS	
 #endif

@@ -66,6 +66,8 @@ static _MovieTableEntry_t *_apMovieTable = NULL;
 static u32 _uNumMovieTableEntries = 0;
 static HBINK _hBink; //handle to the bink movie
 static BOOL _bMoviePaused; //is the movie paused?
+static BOOL _bMovieAudioEnabled = TRUE;
+static f32 _fMovieVolume = 1.0f;
 static BOOL _bNextFrameReady;
 static u32 _nSkippedFrames;
 static u32 _uPlayFlags = FMOVIE2_PLAYFLAGS_NONE;
@@ -239,6 +241,19 @@ BOOL fmovie2_IsInstalled( void ) {
 } // fmovie2_IsInstalled
 
 
+void fmovie2_SetAudioEnabled( BOOL bEnabled ) {
+	_bMovieAudioEnabled = bEnabled;
+	if( _hBink ) {
+		if( !_bMovieAudioEnabled ) {
+			for( U32 uTrack = 0; uTrack < _hBink->NumTracks; ++uTrack )
+				BinkSetVolume( _hBink, uTrack, 0 );
+		} else {
+			BinkSetVolume( _hBink, 0, (s32)( _fMovieVolume * 32768 ) );
+		}
+	}
+}
+
+
 void fmovie2_Play( cchar *pszFileName, f32 fVolume, cu32 uPlayFlags ) {
 
 	//This routine starts the process to play movies and currently spews 
@@ -326,6 +341,15 @@ void fmovie2_Play( cchar *pszFileName, f32 fVolume, cu32 uPlayFlags ) {
 
 		return;
 	}
+	// -no-audio skips Fang's audio system. Keep Bink's own playback clock active and mute its tracks
+	// by volume; turning Bink sound off can leave its video clock waiting forever on a silent soundtrack.
+	if( !_bMovieAudioEnabled ) {
+		for( U32 uTrack = 0; uTrack < _hBink->NumTracks; ++uTrack )
+			BinkSetVolume( _hBink, uTrack, 0 );
+	}
+	if( Fang_bPortDiag )
+		DEVPRINTF( "PORT-BINK open %s size=%ux%u frames=%u tracks=%u sound=%d\n", pszFileName,
+			_hBink->Width, _hBink->Height, _hBink->Frames, _hBink->NumTracks, _bMovieAudioEnabled );
 
 	//make sure the movie is no larger than the full screen buffer
 //	CFTexInst *pFullscreenTex = fsh_GetFullScrTexture();
@@ -359,7 +383,8 @@ void fmovie2_Play( cchar *pszFileName, f32 fVolume, cu32 uPlayFlags ) {
 	//last thing to do is set the volume (clamp it to valid ranges first)...
 	FMATH_CLAMPMIN( fVolume, 0.0f );
 	FMATH_CLAMPMAX( fVolume, 1.0f );
-	BinkSetVolume( _hBink, 0, (s32) ( fVolume * 32768 ) ); //Bink volume ranges from 0 to 32768
+	_fMovieVolume = fVolume;
+	BinkSetVolume( _hBink, 0, _bMovieAudioEnabled ? (s32) ( fVolume * 32768 ) : 0 ); //Bink volume ranges from 0 to 32768
 
 	//SUCCESS!
 	_bMoviePaused = FALSE;

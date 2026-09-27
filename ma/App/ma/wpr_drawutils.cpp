@@ -202,9 +202,9 @@ void wpr_drawutils_DrawTextureToScreen( BOOL bColor,
 }
 
 #if defined(MA_PC_INPUT)
-// The keyboard's menu keys for the prompts, in WPR_DATATYPES_DRAW_*_BUTTON_ONLY order (A, B, Y, X):
-// Enter accepts, Escape goes back, E and R are the pad's top and side face buttons.
-static cwchar *_apwszKeyCapLabels[] = { L"Enter", L"Esc", L"E", L"R" };
+// Keyboard labels for wrapper-menu prompts (A, B, Y, X) on the Xbox UI map. Q selects the secondary
+// gameplay list, so menus use Escape for Back and R for the left-face X button instead.
+static cwchar *_apwszKeyCapLabels[] = { L"Space", L"Esc", L"E", L"R" };
 
 // The prompt font's (~f1) line metrics per unit of font scale, in screen fractions of height: the line's
 // height, and how far its top sits below the print position (as ftext_GetLastPrintBounds() reports
@@ -493,7 +493,8 @@ void wpr_drawutils_DrawPlayStationGlyph( u32 i, f32 fX, f32 fY, f32 fRadius ) {
 // and where it starts; prompts sharing a row flow left to right without overlapping.
 void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 									  u32 nDrawButtonMask,
-									 f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
+									 f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes,
+									 u32 nControllerPort ) {
 	const u32 nKeyCaps = sizeof( _apwszKeyCapLabels ) / sizeof( _apwszKeyCapLabels[0] );
 	const f32 fAspect = fHalfYRes / fHalfXRes;	// fractions across per fraction down, for square shapes
 	f32 fRowTextY = -1.0f, fRowNextLeft = 0.0f;	// where the next prompt on the current row may start
@@ -520,14 +521,14 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 
 		f32 fIconL = fLeft, fIconR = fLeft + fIconSize * fAspect;
 		f32 fIconT = fCenterY - 0.5f * fIconSize, fIconB = fCenterY + 0.5f * fIconSize;
-		if( i < nKeyCaps && pcinput_UseKeyboardPrompts() ) {
+		if( i < nKeyCaps && pcinput_UseKeyboardPromptsForPort( nControllerPort ) ) {
 			// a key cap naming the key; its label is centered on the line like the icons
 			f32 fL, fT, fR, fB;
 			if( wpr_drawutils_DrawKeyCapCentered( _apwszKeyCapLabels[i], fLeft, fCenterY, L'L', fScale * 0.72f, fIconSize * fAspect,
 												  fHalfXRes, fHalfYRes, &fL, &fT, &fR, &fB ) ) {
 				fIconL = fL; fIconT = fT; fIconR = fR; fIconB = fB;
 			}
-		} else if( i < nKeyCaps && pcinput_UsePlayStationPrompts() ) {
+		} else if( i < nKeyCaps && pcinput_UsePlayStationPromptsForPort( nControllerPort ) ) {
 			wpr_drawutils_DrawPlayStationGlyph( i, (fIconL + fIconR - 1.0f) * fHalfXRes, (1.0f - 2.0f * fCenterY) * fHalfYRes,
 												0.5f * fIconSize * 2.0f * fHalfYRes );
 		} else {
@@ -569,7 +570,9 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 #else
 void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 									  u32 nDrawButtonMask,
-									 f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
+									 f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes,
+									 u32 nControllerPort ) {
+	(void)nControllerPort;
 	u32 i;
 	Wpr_DataTypes_ButtonLayout_t *pButton;
 	f32 fUnitHeight;

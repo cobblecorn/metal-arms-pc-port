@@ -18,6 +18,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
 #include "fparticle.h"
+#include "fpsprite.h"
 #include "floop.h"
 #include "fvis.h"
 #include "fresload.h"
@@ -2804,7 +2805,7 @@ static BOOL _Install( u32 nMaxEmitters, u32 nMaxParticles, u32 nMaxSpritesPerEmi
 	}
 	nUsedMemory += sizeof( _Particle_t ) * _nNumParticlesAllocated;
 
-	_paAllocatedSprites = (FPSprite_t *)fres_AllocAndZero( _nNumSpritesAllocated * sizeof( FPSprite_t ) );
+	_paAllocatedSprites = (FPSprite_t *)fres_AlignedAllocAndZero( _nNumSpritesAllocated * sizeof( FPSprite_t ), FPSPRITE_BYTE_ALIGNMENT );
 	if( !_paAllocatedSprites ) {
 		goto _ExitInstall;
 	}

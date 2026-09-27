@@ -8,6 +8,7 @@ build/logs/<name>.log, present without vsync (so frame times show the real cost)
 usage: python tools/port_run.py [options] [-- extra game arguments]
   --config Release|Debug   which build (default Release: the one to play; Debug has the engine asserts)
   --mission WORLD          start that campaign mission (e.g. wedmmines01); default: the front end
+  --coop N                 experimental 2-4 player campaign load (requires --mission)
   --seconds N              how long to run (default 60)
   --name NAME              log/shot name (default: the mission or "front")
   --shots FRAMES           save a back-buffer BMP every FRAMES frames to build/shots/NAME/ (cleared first)
@@ -16,6 +17,7 @@ usage: python tools/port_run.py [options] [-- extra game arguments]
   --stall-ms MS            log the game thread's stack for frames longer than MS (default 100)
   --vsync                  keep vsync on
   --audio                  play audio (only when the user asked to hear something)
+  --save-dir DIR           save directory for the test (default: build/test-saves/NAME)
   --keep                   start the game and return at once, printing its PID (drive it with
                            tools/menu_drive.py --pid PID ..., then run --stop PID --name NAME)
   --stop PID               close that ma_port.exe process, then summarize --name's log
@@ -96,10 +98,40 @@ def summarize(name):
     if not reports:
         print("  none")
 
+    loaded = [line for line in lines if "LOAD MARKER - END OF LOADING" in line]
+    print("\n-- load completion")
+    print("  " + (loaded[-1].split("LOAD MARKER - ", 1)[-1] if loaded else "no end-of-loading marker"))
+
+    memory_pattern = re.compile(r"not enough memory|out of memory|fres_Alloc.*fail|failed to allocate", re.I)
+    memory_errors = [line for line in lines if memory_pattern.search(line)]
+    print("\n-- allocation failures: %d" % len(memory_errors))
+    for line in memory_errors[:8]:
+        print("  " + line)
+
     audio_errors = [line for line in lines if "[ FAUDIO ] Error" in line]
     print("\n-- audio errors: %d" % len(audio_errors))
     for line in audio_errors[:10]:
         print("  " + line)
+
+    script_errors = [line for line in lines if "SCRIPT ERROR" in line.upper() or
+                     re.search(r"Error executing (?:init|end|OnEvent|Work).*script|Error notifying listener", line, re.I)]
+    script_messages = [line for line in lines if "SCRIPT MESSAGE" in line.upper()]
+    print("\n-- script activity: %d messages/events, %d errors" % (len(script_messages), len(script_errors)))
+    for line in script_errors[:20]:
+        print("  " + line)
+    if len(script_errors) > 20:
+        print("  ... %d more" % (len(script_errors) - 20))
+    elif not script_errors:
+        for line in script_messages[:5]:
+            print("  " + line)
+
+    data_errors = [line for line in lines if re.search(
+        r"could not read|trouble parsing|problem while|mismatch|error in definition|has only|not of the type", line, re.I)]
+    print("\n-- data/schema warnings: %d" % len(data_errors))
+    for line in data_errors[:12]:
+        print("  " + line)
+    if len(data_errors) > 12:
+        print("  ... %d more" % (len(data_errors) - 12))
 
     shots = sorted(glob.glob(os.path.join(ROOT, "build", "shots", name, "*.bmp")))
     if shots:
@@ -132,6 +164,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="Release", choices=["Release", "Debug"])
     parser.add_argument("--mission")
+    parser.add_argument("--coop", type=int, choices=[2, 3, 4])
     parser.add_argument("--seconds", type=float, default=60.0)
     parser.add_argument("--name")
     parser.add_argument("--shots", type=int)
@@ -139,6 +172,7 @@ def main():
     parser.add_argument("--stall-ms", type=int)
     parser.add_argument("--vsync", action="store_true")
     parser.add_argument("--audio", action="store_true")
+    parser.add_argument("--save-dir")
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--stop", type=int)
     parser.add_argument("--summary", action="store_true")
@@ -156,11 +190,19 @@ def main():
     if not os.path.exists(exe):
         print("build it first: cmake --build build --config %s --target ma_port" % args.config)
         return 1
+    if args.coop and not args.mission:
+        parser.error("--coop requires --mission")
     os.makedirs(os.path.join(ROOT, "build", "logs"), exist_ok=True)
+    save_dir = os.path.abspath(args.save_dir) if args.save_dir else os.path.join(ROOT, "build", "test-saves", name)
+    os.makedirs(save_dir, exist_ok=True)
     command = [exe, "-data", "gamedata/files", "-port-diag", "-discord-app-id", "off",
-               "-log", "build/logs/%s.log" % name]
+               "-log", "build/logs/%s.log" % name,
+               "-asset-log", "build/logs/%s-assets.log" % name,
+               "-save-dir", save_dir, "-instance-label", name]
     if args.mission:
         command += ["-mission", args.mission]
+    if args.coop:
+        command += ["-coop", str(args.coop)]
     if not args.vsync:
         command.append("-no-vsync")
     if not args.audio:

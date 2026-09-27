@@ -6,6 +6,7 @@
 # A peak of 0 for the whole run means the process made no sound (or has no session yet).
 param(
 	[string]$ProcessName = "ma_port",
+	[int]$ProcessId = 0,
 	[int]$Seconds = 30,
 	[int]$IntervalMs = 250
 )
@@ -94,7 +95,11 @@ public static class AudioMeter {
 $deadline = (Get-Date).AddSeconds($Seconds)
 $samples = 0; $audible = 0; $maxPeak = 0.0
 while ((Get-Date) -lt $deadline) {
-	$process = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+	if ($ProcessId -gt 0) {
+		$process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+	} else {
+		$process = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+	}
 	if ($process) {
 		$peak = [AudioMeter]::Peak([uint32]$process.Id)
 		$samples++

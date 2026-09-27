@@ -102,6 +102,7 @@ BOOL CFCheckPoint::ModuleStartup( void )
 		pPoint->m_nMemBufferOffset = 0;
 
 		pPoint->m_nState = FCHECKPOINT_NULL_STATE;
+		pPoint->m_bSaveFailed = FALSE;
 		pPoint->m_nStreamSize = _CHECKPOINT_STREAM_SIZE;
 		pPoint->m_nStreamOffset = 0;
 		pPoint->m_hCurObj = NULL_HANDLE;
@@ -194,6 +195,7 @@ BOOL CFCheckPoint::SetSaveState( void )
 	pPoint->m_nStreamOffset = 0;
 	pPoint->m_hCurObj = NULL_HANDLE;
 	pPoint->m_nMemBufferOffset = 0;
+	pPoint->m_bSaveFailed = FALSE;
 
 	// reset object data array
 	for( int nIndex = 0; nIndex < FCHECKPOINT_MAX_OBJECTS; nIndex++ )
@@ -217,18 +219,25 @@ BOOL CFCheckPoint::DoneSaving( void )
 {
 	FASSERT( m_bModuleInitialized );
 	FCheckPointData_t *pPoint = &m_aPoint[m_nCurCP];
+	BOOL bResult = !pPoint->m_bSaveFailed;
 
 	FASSERT( pPoint->m_nState == FCHECKPOINT_SAVE_STATE );
 
-	if( pPoint->m_hCurObj != NULL_HANDLE )
+	if( bResult && pPoint->m_hCurObj != NULL_HANDLE )
 	{
 		// there is a currently active data object.
 		// flush mem buffer to storage
-		_FlushMemBufferToStorage( pPoint );
+		bResult = _FlushMemBufferToStorage( pPoint );
+	}
+
+	if( !bResult )
+	{
+		pPoint->m_bSaveFailed = TRUE;
+		DEVPRINTF( "Checkpoint save failed; checkpoint was not completed.\n" );
 	}
 
 	DEVPRINTF( "Checkpoint save used %d bytes.\n", pPoint->m_nStreamOffset );
-	return TRUE;
+	return bResult;
 }
 
 //------------------------------------------------------------------------------
@@ -347,12 +356,39 @@ BOOL CFCheckPoint::SetObjectDataHandle( ObjectDataHandle_t hHandle )
 BOOL CFCheckPoint::_WillStreamOverflow( FCheckPointData_t *pPoint, u32 uSize )
 {
 	FASSERT( m_bModuleInitialized );
-	FASSERT( pPoint->m_nStreamOffset + pPoint->m_nMemBufferOffset + uSize < pPoint->m_nStreamSize );
-	if( pPoint->m_nStreamOffset + pPoint->m_nMemBufferOffset + uSize >= pPoint->m_nStreamSize )
+	FASSERT( pPoint->m_nStreamOffset % _STREAM_ALIGNMENT_BYTES == 0 );
+	FASSERT( pPoint->m_nMemBufferOffset <= _CHECKPOINT_MEM_BUFFER_SIZE );
+
+	if( pPoint->m_bSaveFailed )
 	{
 		return TRUE;
 	}
-	
+
+	// A flush rounds the current object end up to the storage alignment.
+	// Reserve that padding now so object switches and the final flush stay in bounds.
+	if( pPoint->m_nStreamOffset > pPoint->m_nStreamSize ||
+		pPoint->m_nMemBufferOffset > pPoint->m_nStreamSize - pPoint->m_nStreamOffset )
+	{
+		pPoint->m_bSaveFailed = TRUE;
+		return TRUE;
+	}
+
+	u32 uUsedSize = pPoint->m_nStreamOffset + pPoint->m_nMemBufferOffset;
+	u32 uAvailableSize = pPoint->m_nStreamSize - uUsedSize;
+	if( uSize > uAvailableSize )
+	{
+		pPoint->m_bSaveFailed = TRUE;
+		return TRUE;
+	}
+
+	u32 uEndSize = uUsedSize + uSize;
+	u32 uPaddingSize = ( _STREAM_ALIGNMENT_BYTES - (uEndSize % _STREAM_ALIGNMENT_BYTES) ) % _STREAM_ALIGNMENT_BYTES;
+	if( uPaddingSize > pPoint->m_nStreamSize - uEndSize )
+	{
+		pPoint->m_bSaveFailed = TRUE;
+		return TRUE;
+	}
+
 	return FALSE;
 }
 
@@ -375,6 +411,13 @@ BOOL CFCheckPoint::_FlushMemBufferToStorage( FCheckPointData_t *pPoint )
 
 	FASSERT( uWriteSize % _STREAM_ALIGNMENT_BYTES == 0 );
 
+	if( pPoint->m_bSaveFailed || pPoint->m_nStreamOffset > pPoint->m_nStreamSize ||
+		uWriteSize > pPoint->m_nStreamSize - pPoint->m_nStreamOffset )
+	{
+		pPoint->m_bSaveFailed = TRUE;
+		return FALSE;
+	}
+
 	for( s32 nRetry = 0; nRetry < _MAX_WRITE_RETRY; nRetry++ )
 	{
 		eError = pPoint->m_pMemAccessor->Write( pPoint->m_nStreamOffset, pPoint->m_pMemBuffer, uWriteSize );
@@ -386,17 +429,16 @@ BOOL CFCheckPoint::_FlushMemBufferToStorage( FCheckPointData_t *pPoint )
 		// should wait for a while here?
 	}
 
-	FASSERT( eError == FAMEM_ERROR_NONE );
-
-	if( eError == FAMEM_ERROR_NONE )
+	if( eError != FAMEM_ERROR_NONE )
 	{
-		// update offsets for stream and mem buffer
-		pPoint->m_nMemBufferOffset = 0;
-		pPoint->m_nStreamOffset += uWriteSize;
-		return TRUE;
+		pPoint->m_bSaveFailed = TRUE;
+		return FALSE;
 	}
 
-	return FALSE;
+	// update offsets for stream and mem buffer
+	pPoint->m_nMemBufferOffset = 0;
+	pPoint->m_nStreamOffset += uWriteSize;
+	return TRUE;
 }
 
 //------------------------------------------------------------------------------
@@ -469,9 +511,7 @@ BOOL CFCheckPoint::SaveData( void *pData, u32 uSize )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, pData, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, pData, uSize );
 }
 
 //------------------------------------------------------------------------------
@@ -496,18 +536,22 @@ BOOL CFCheckPoint::SaveString( cchar *pszString )
 	}
 
 	FASSERT( uSize != 0 );
-	if( _WillStreamOverflow( pPoint, uSize ) )
+	if( uSize > pPoint->m_nStreamSize || _WillStreamOverflow( pPoint, sizeof(uSize) + uSize ) )
 	{
+		pPoint->m_bSaveFailed = TRUE;
 		return FALSE;
 	}
 
 	// copy size first
-	_SaveDataToStream( pPoint, (void*) &uSize, sizeof(uSize) );
+	if( !_SaveDataToStream( pPoint, (void*) &uSize, sizeof(uSize) ) )
+	{
+		return FALSE;
+	}
 
 	// copy string
 	if( pszString != NULL && uSize > 1 )
 	{
-		_SaveDataToStream( pPoint, (void*) pszString, uSize );
+		return _SaveDataToStream( pPoint, (void*) pszString, uSize );
 	}
 
 	return TRUE;
@@ -565,9 +609,7 @@ BOOL CFCheckPoint::SaveData( const u32 &rData )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, (void*) &rData, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, (void*) &rData, uSize );
 }
 
 //------------------------------------------------------------------------------
@@ -585,9 +627,7 @@ BOOL CFCheckPoint::SaveData( const u64 &rData )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, (void*) &rData, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, (void*) &rData, uSize );
 }
 
 //------------------------------------------------------------------------------
@@ -629,9 +669,7 @@ BOOL CFCheckPoint::SaveData( const s32 &rData )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, (void*) &rData, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, (void*) &rData, uSize );
 }
 
 //------------------------------------------------------------------------------
@@ -649,9 +687,7 @@ BOOL CFCheckPoint::SaveData( const f32 &rData )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, (void*) &rData, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, (void*) &rData, uSize );
 }
 
 #if FANG_PLATFORM_GC
@@ -670,9 +706,7 @@ BOOL CFCheckPoint::SaveData( const BOOL &rData )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, (void*) &rData, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, (void*) &rData, uSize );
 }
 #endif
 
@@ -692,9 +726,7 @@ BOOL CFCheckPoint::SaveData( const CFVec3A &rData )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, (void*) &rData.a, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, (void*) &rData.a, uSize );
 }
 
 //------------------------------------------------------------------------------
@@ -712,9 +744,7 @@ BOOL CFCheckPoint::SaveData( const CFQuatA &rData )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, (void*) &rData.a, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, (void*) &rData.a, uSize );
 }
 
 //------------------------------------------------------------------------------
@@ -732,9 +762,7 @@ BOOL CFCheckPoint::SaveData( const CFMtx43A &rData )
 		return FALSE;
 	}
 
-	_SaveDataToStream( pPoint, (void*) &rData.a, uSize );
-
-	return TRUE;
+	return _SaveDataToStream( pPoint, (void*) &rData.a, uSize );
 }
 
 //------------------------------------------------------------------------------

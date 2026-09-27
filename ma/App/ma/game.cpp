@@ -366,6 +366,7 @@ static const _PcPhrase_t _aPcPhrases[] = {
 	{ GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER,	L"Press E\nto flip vehicle over",		L"Press Y\nto flip vehicle over" },
 	{ GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE,		L"Press E\nto drive vehicle",			L"Press Y\nto drive vehicle" },
 	{ GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN,		L"Press E\nto operate gun",				L"Press Y\nto operate gun" },
+	{ GAMEPHRASE_HOLD_TO_EXIT_BOT,				L"Hold Q to exit",						L"Hold X to exit" },
 	{ GAMEPHRASE_PRESS_Y_TO_RECRUIT_BUDDY,		L"Press E to recruit",					L"Press Y to recruit" },
 	{ GAMEPHRASE_PRESS_Y_TO_DISCHARGE_BUDDY,	L"Press E to discharge",				L"Press Y to discharge" },
 	{ GAMEPHRASE_PRESS_Y_TO_USE_SWITCH,			L"Press E to use switch",				L"Press Y to use switch" },
@@ -389,6 +390,7 @@ static s32 _nPcPromptStyle = -1;
 
 static cwchar *_PcPlayStationPhrase( u32 nPhrase ) {
 	switch( nPhrase ) {
+	case GAMEPHRASE_HOLD_TO_EXIT_BOT: return L"Hold Square to exit";
 	case GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER: return L"Press Triangle\nto flip vehicle over";
 	case GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE: return L"Press Triangle\nto drive vehicle";
 	case GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN: return L"Press Triangle\nto operate gun";
@@ -2427,6 +2429,32 @@ void game_PcPromptWork( void ) {
 }
 #endif
 
+cwchar *game_GetPromptPhrase( u32 nPhrase, u32 nPort ) {
+	if( nPhrase >= GAMEPHRASE_COUNT ) {
+		return NULL;
+	}
+#if defined(MA_PC_INPUT)
+	for( u32 i = 0; i < _PC_PHRASE_COUNT; i++ ) {
+		if( _aPcPhrases[i].nPhrase == nPhrase ) {
+			PcPromptStyle nStyle = pcinput_PromptStyleForPort( nPort );
+			if( nStyle == PCINPUT_PROMPT_STYLE_KEYBOARD && _apwszPcPhraseKeyboard[i] ) {
+				return _apwszPcPhraseKeyboard[i];
+			}
+			if( nStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION && _apwszPcPhrasePlayStation[i] ) {
+				return _apwszPcPhrasePlayStation[i];
+			}
+			if( _apwszPcPhraseXbox[i] ) {
+				return _apwszPcPhraseXbox[i];
+			}
+			break;
+		}
+	}
+#else
+	(void)nPort;
+#endif
+	return Game_apwszPhrases[nPhrase];
+}
+
 // This function loads a phrases CSV table that
 // will contain the games displayable text.  This text
 // is wide-char localized.
@@ -2574,7 +2602,7 @@ BOOL _ControllerWaitForReconnect( void ) {
 		
 		CMsgBox::Clear();
 
-		_snwprintf( _wszString, 64, Game_apwszPhrases[GAMEPHRASE_PRESS_START_TO_CONTINUE], '\n' );
+		_snwprintf( _wszString, 64, game_GetPromptPhrase( GAMEPHRASE_PRESS_START_TO_CONTINUE, _nControllerToPlugIn ), '\n' );
 		CMsgBox::Display( "CtlPressStart", NULL, _wszString, NULL, NULL, NULL, 0, TRUE, _ControllerWaitForStart );
 	}
 

@@ -44,6 +44,9 @@
 #include "wpr_datatypes.h"
 #include "frenderer.h"
 #include "wpr_drawutils.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 #include "fcamanim.h"
 #include "entity.h"
 #include "fsh.h"
@@ -1185,10 +1188,19 @@ static void _DrawPressStart( void ) {
 	u32 nSecs = (u32)_fTimer;
 	if( nSecs & 0x3 ) {
 		if( Gamepad_nPortOnlineMask ) {
+			cwchar *pwszStartPrompt = L"Press START";
+#if defined(MA_PC_INPUT)
+			const PcPromptStyle nStyle = pcinput_PromptStyleForPort( _nControllerToLookAt >= 0 ? (u32)_nControllerToLookAt : pcinput_KeyboardPort() );
+			if( nStyle == PCINPUT_PROMPT_STYLE_KEYBOARD ) {
+				pwszStartPrompt = L"Press Enter";
+			} else if( nStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION ) {
+				pwszStartPrompt = L"Press OPTIONS";
+			}
+#endif
 			ftext_Printf( 0.5f, 0.65f, 
 						L"~f1~C%ls~w0~ac~s1.20%ls",
 						WprDataTypes_pwszPressStartColor,
-						L"Press START" );
+						pwszStartPrompt );
 		} else {
 			ftext_Printf( 0.5f, 0.65f, 
 						L"~f1~C%ls~w0~ac~s1.20%ls",
@@ -1235,7 +1247,16 @@ static BOOL _Draw( void ) {
 	switch( _nCurrentMode ) {
 		
 	case _MODE_LEVEL_LOAD_ERROR:
+#if defined(MA_PC_INPUT)
+		{
+			const PcPromptStyle nStyle = pcinput_PromptStyleForPort( _nControllerToLookAt >= 0 ? (u32)_nControllerToLookAt : pcinput_KeyboardPort() );
+			cwchar *pwszAccept = nStyle == PCINPUT_PROMPT_STYLE_KEYBOARD ? L"Space" :
+				( nStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION ? L"Cross" : L"A" );
+			ftext_Printf( 0.5f, 0.20f, "~f0~C92929299~w1~ac~s0.85Error: Could not load\n\n%s.\n\nPress %ls to continue.", _pszLevelToLoad, pwszAccept );
+		}
+#else
 		ftext_Printf( 0.5f, 0.20f, "~f0~C92929299~w1~ac~s0.85Error: Could not load\n\n%s.\n\nPress 'A' to continue.", _pszLevelToLoad );
+#endif
 		break;
 
 	case _MODE_ATTRACT_MOVIE:
@@ -1407,7 +1428,8 @@ static void _DrawPickLevelMenu( f32 fScaleFactor ) {
 		WPR_DATATYPES_DRAW_AB_BUTTONS,
 		fScaleFactor,
 		_pViewportOrtho3D->HalfRes.x,
-		_pViewportOrtho3D->HalfRes.y );
+		_pViewportOrtho3D->HalfRes.y,
+		(u32)(_nControllerToLookAt >= 0 ? _nControllerToLookAt : 0) );
 
 	// push the fdraw renderer off 
 	frenderer_Pop();
@@ -1444,12 +1466,14 @@ static void _DrawControllerConfigMenu( f32 fScaleFactor ) {
 #endif
 										fScaleFactor,
 										_pViewportOrtho3D->HalfRes.x,
-										_pViewportOrtho3D->HalfRes.y );
+										_pViewportOrtho3D->HalfRes.y,
+										(u32)(_nControllerToLookAt >= 0 ? _nControllerToLookAt : 0) );
 	wpr_drawutils_DrawButtonOverlay( &_CCScreen, 
 		WPR_DATATYPES_DRAW_ABY_BUTTONS,
 		fScaleFactor,
 		_pViewportOrtho3D->HalfRes.x,
-		_pViewportOrtho3D->HalfRes.y );
+		_pViewportOrtho3D->HalfRes.y,
+		(u32)(_nControllerToLookAt >= 0 ? _nControllerToLookAt : 0) );
 	// push the fdraw renderer off 
 	frenderer_Pop();
 }
@@ -1561,7 +1585,8 @@ static void _DrawMultiPlayerMenu( f32 fScaleFactor ) {
 		WPR_DATATYPES_DRAW_ABY_BUTTONS,
 		fScaleFactor,
 		_pViewportOrtho3D->HalfRes.x,
-		_pViewportOrtho3D->HalfRes.y );
+		_pViewportOrtho3D->HalfRes.y,
+		(u32)(_nControllerToLookAt >= 0 ? _nControllerToLookAt : 0) );
 
 	// push the fdraw renderer off 
 	frenderer_Pop();

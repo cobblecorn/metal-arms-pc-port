@@ -32,6 +32,9 @@
 #include "gamepad.h"
 #include "game.h"
 #include "pausescreen.h"
+#if defined(MA_PC_INPUT)
+	#include "pc_input.h"
+#endif
 
 //====================
 // private definitions
@@ -573,8 +576,8 @@ static void _DrawBackgroundAndHighlight( BOOL bDrawHighlight ) {
 			f32 fUpperY = _aMenuItems[ i ].fYRegionTopPos;
 			f32 fLowerY = fUpperY + _fRegionHeight;
 
-			wpr_drawutils_ConvertTextCoordsToOrthoCoords( fUpperX, fUpperY, Upper.x, Upper.y, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y ); 
-			wpr_drawutils_ConvertTextCoordsToOrthoCoords( fLowerX, fLowerY, Lower.x, Lower.y, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y ); 
+			wpr_drawutils_ConvertTextCoordsToOrthoCoords( fUpperX, fUpperY, Upper.x, Upper.y, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y );
+			wpr_drawutils_ConvertTextCoordsToOrthoCoords( fLowerX, fLowerY, Lower.x, Lower.y, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y );
 
 			//Now, multiply the ortho coordinates by the half screen resolution!
 			Upper.x *= _pViewportOrtho3D->HalfRes.x;
@@ -591,8 +594,8 @@ static void _DrawBackgroundAndHighlight( BOOL bDrawHighlight ) {
 			CFColorRGBA Color;
 			Color.Set( 0.0f, 0.0f, 0.0f, 0.25f );
 
-			aVtx[0].Pos_MS.Set( Lower.x, Lower.y, 1.0f ); 
-			aVtx[1].Pos_MS.Set( Lower.x, Upper.y, 1.0f );						
+			aVtx[0].Pos_MS.Set( Lower.x, Lower.y, 1.0f );
+			aVtx[1].Pos_MS.Set( Lower.x, Upper.y, 1.0f );
 			aVtx[2].Pos_MS.Set( Upper.x, Lower.y, 1.0f );
 			aVtx[3].Pos_MS.Set( Upper.x, Upper.y, 1.0f );
 
@@ -633,39 +636,54 @@ void _DrawButton( void ) {
 	fButtonSizeX = _pButtonData->fButtonWidth;
 	fButtonSizeY = _pButtonData->fButtonHeight;
 
-	fdraw_SetTexture( _pButtonTexInst );
+#if defined(MA_PC_INPUT)
+	if( pcinput_UsePlayStationPromptsForPort( pcinput_KeyboardPort() ) ) {
+		wpr_drawutils_DrawFaceButton( TRUE, 0,
+			_pButtonData->fButtonPosX + 0.5f * fButtonSizeX,
+			_pButtonData->fButtonPosY + 0.5f * fButtonSizeY,
+			0.40f * fButtonSizeY, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y );
+	} else if( pcinput_UseKeyboardPromptsForPort( pcinput_KeyboardPort() ) ) {
+		wpr_drawutils_DrawKeyCapCentered( L"Space",
+			_pButtonData->fButtonPosX + 0.5f * fButtonSizeX,
+			_pButtonData->fButtonPosY + 0.5f * fButtonSizeY, L'C', 0.80f, 0.0f,
+			_pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y, NULL, NULL, NULL, NULL );
+	} else
+#endif
+	{
+		fdraw_SetTexture( _pButtonTexInst );
 
-	f32 fUpperX = _pButtonData->fButtonPosX;
-	f32 fLowerX = _pButtonData->fButtonPosX + fButtonSizeX;
-	f32 fUpperY = _pButtonData->fButtonPosY;
-	f32 fLowerY = _pButtonData->fButtonPosY + fButtonSizeY;
+		f32 fUpperX = _pButtonData->fButtonPosX;
+		f32 fLowerX = _pButtonData->fButtonPosX + fButtonSizeX;
+		f32 fUpperY = _pButtonData->fButtonPosY;
+		f32 fLowerY = _pButtonData->fButtonPosY + fButtonSizeY;
 
-	wpr_drawutils_ConvertTextCoordsToOrthoCoords( fUpperX, fUpperY, Upper.x, Upper.y, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y ); 
-	wpr_drawutils_ConvertTextCoordsToOrthoCoords( fLowerX, fLowerY, Lower.x, Lower.y, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y ); 
+		wpr_drawutils_ConvertTextCoordsToOrthoCoords( fUpperX, fUpperY, Upper.x, Upper.y, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y );
+		wpr_drawutils_ConvertTextCoordsToOrthoCoords( fLowerX, fLowerY, Lower.x, Lower.y, _pViewportOrtho3D->HalfRes.x, _pViewportOrtho3D->HalfRes.y );
 
-	aVtx[0].Pos_MS.Set( Lower.x, Lower.y, 1.0f ); 
-	aVtx[1].Pos_MS.Set( Lower.x, Upper.y, 1.0f );						
-	aVtx[2].Pos_MS.Set( Upper.x, Lower.y, 1.0f );
-	aVtx[3].Pos_MS.Set( Upper.x, Upper.y, 1.0f );
+		aVtx[0].Pos_MS.Set( Lower.x, Lower.y, 1.0f );
+		aVtx[1].Pos_MS.Set( Lower.x, Upper.y, 1.0f );
+		aVtx[2].Pos_MS.Set( Upper.x, Lower.y, 1.0f );
+		aVtx[3].Pos_MS.Set( Upper.x, Upper.y, 1.0f );
 
-	aVtx[0].ST.Set( CPauseScreen_avecButtonST2[PAUSESCREEN_BUTTON_ST_A].x, CPauseScreen_avecButtonST2[PAUSESCREEN_BUTTON_ST_A].y );
-	aVtx[1].ST.Set( CPauseScreen_avecButtonST2[PAUSESCREEN_BUTTON_ST_A].x, CPauseScreen_avecButtonST1[PAUSESCREEN_BUTTON_ST_A].y );
-	aVtx[2].ST.Set( CPauseScreen_avecButtonST1[PAUSESCREEN_BUTTON_ST_A].x, CPauseScreen_avecButtonST2[PAUSESCREEN_BUTTON_ST_A].y );
-	aVtx[3].ST.Set( CPauseScreen_avecButtonST1[PAUSESCREEN_BUTTON_ST_A].x, CPauseScreen_avecButtonST1[PAUSESCREEN_BUTTON_ST_A].y );
+		aVtx[0].ST.Set( CPauseScreen_avecButtonST2[PAUSESCREEN_BUTTON_ST_A].x, CPauseScreen_avecButtonST2[PAUSESCREEN_BUTTON_ST_A].y );
+		aVtx[1].ST.Set( CPauseScreen_avecButtonST2[PAUSESCREEN_BUTTON_ST_A].x, CPauseScreen_avecButtonST1[PAUSESCREEN_BUTTON_ST_A].y );
+		aVtx[2].ST.Set( CPauseScreen_avecButtonST1[PAUSESCREEN_BUTTON_ST_A].x, CPauseScreen_avecButtonST2[PAUSESCREEN_BUTTON_ST_A].y );
+		aVtx[3].ST.Set( CPauseScreen_avecButtonST1[PAUSESCREEN_BUTTON_ST_A].x, CPauseScreen_avecButtonST1[PAUSESCREEN_BUTTON_ST_A].y );
 
-	CFColorRGBA TexColor;
-	TexColor.Set( 1.0f, 1.0f, 1.0f, 1.0f );
-	aVtx[0].ColorRGBA = TexColor;
-	aVtx[1].ColorRGBA = TexColor;
-	aVtx[2].ColorRGBA = TexColor;
-	aVtx[3].ColorRGBA = TexColor;
+		CFColorRGBA TexColor;
+		TexColor.Set( 1.0f, 1.0f, 1.0f, 1.0f );
+		aVtx[0].ColorRGBA = TexColor;
+		aVtx[1].ColorRGBA = TexColor;
+		aVtx[2].ColorRGBA = TexColor;
+		aVtx[3].ColorRGBA = TexColor;
 
-	for( i=0; i<4; i++ ) {
-		aVtx[i].Pos_MS.x *= _pViewportOrtho3D->HalfRes.x;
-		aVtx[i].Pos_MS.y *= _pViewportOrtho3D->HalfRes.y;
+		for( i=0; i<4; i++ ) {
+			aVtx[i].Pos_MS.x *= _pViewportOrtho3D->HalfRes.x;
+			aVtx[i].Pos_MS.y *= _pViewportOrtho3D->HalfRes.y;
+		}
+
+		fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, aVtx, 4 );
 	}
-
-	fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, aVtx, 4 );
 
 	// Now draw the text
 	ftext_Printf( _pButtonData->fButtonPosX + fButtonSizeX, _pButtonData->fButtonPosY + _pButtonData->fButtonYTextAdj, _pButtonData->wszButtonTextStyle, L"Accept" );

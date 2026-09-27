@@ -31,6 +31,9 @@
 #include "floop.h"
 #include "fpadio.h"
 #include "fpad.h"
+#if defined(MA_PC_INPUT)
+	#include "pc_input.h"
+#endif
 #include "fmath.h"
 #include "sas_user.h"
 #include "user_albert.h"
@@ -585,6 +588,10 @@ cchar *gameloop_GetSkipLevelName( void ) {
 
 BOOL gameloop_GetSkipLevelUseMissionData( void ) {
 	return _InitParms.bLoadRegisteredMission;
+}
+
+u8 gameloop_GetQuickLaunchCampaignPlayers( void ) {
+	return _InitParms.nQuickLaunchCampaignPlayers;
 }
 
 void gameloop_ResetIdleTimer() {
@@ -1144,7 +1151,11 @@ static BOOL _IsEscKeyHit( void ) {
 
 static BOOL _ShouldAppMinimize( void ) {
 	// under windows, look for the backspace key
+#if defined(MA_PC_INPUT)
+	return pcinput_KeyHeld( VK_BACK );
+#else
 	return (GetAsyncKeyState( VK_BACK ) < 0);
+#endif
 }
 #endif
 

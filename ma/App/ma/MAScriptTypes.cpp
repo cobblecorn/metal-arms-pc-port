@@ -4422,7 +4422,7 @@ cell AMX_NATIVE_CALL CMAST_Audio::Audio_GetSFXHandle(AMX *pAMX, cell *aParams)
 	FillStringFromCell(szSFXName, 63, pAMX, aParams[1]);
 
 	FSndFx_FxHandle_t hSFX = fsndfx_GetFxHandle( szSFXName );
-	if( hSFX == FSNDFX_INVALID_FX_HANDLE ) {
+	if( hSFX == FSNDFX_INVALID_FX_HANDLE && faudio_IsInstalled() ) {
 		SCRIPT_ERROR("Audio_GetSFXHandle() : Invalid SFX Handle returned." );
 	}
 	return( (cell) hSFX );
@@ -4443,6 +4443,9 @@ cell AMX_NATIVE_CALL CMAST_Audio::Audio_SetAmbientSFX(AMX *pAMX, cell *aParams)
 	FSndFx_FxHandle_t hSFX = (FSndFx_FxHandle_t)(aParams[2]);
 	if( ( hSFX == NULL ) || ( hSFX == FSNDFX_INVALID_FX_HANDLE ) )
 	{
+		// No-audio test runs intentionally skip every SFX bank. Scripts still resolve
+		// their optional ambient sounds; treat the resulting zero handle as a no-op.
+		if( !faudio_IsInstalled() ) return((cell)(0));
 		SCRIPT_ERROR("Audio_SetAmbientSFX() : Invalid SFX Handle provided." );
 		return((cell)(0));
 	}
@@ -4587,6 +4590,7 @@ cell AMX_NATIVE_CALL CMAST_Audio::Audio_Play2DSound(AMX *pAMX, cell *aParams)
 	FSndFx_FxHandle_t hSFX = (FSndFx_FxHandle_t)(aParams[1]);
 	if( ( hSFX == NULL ) || ( hSFX == FSNDFX_INVALID_FX_HANDLE ) )
 	{
+		if( !faudio_IsInstalled() ) return((cell)(0));
 		SCRIPT_ERROR("Audio_Play2DSound : Invalid SFX Handle provided." );
 		return((cell)(0));
 	}
@@ -6474,6 +6478,7 @@ cell AMX_NATIVE_CALL CMAST_Audio::Audio_Play2DSoundEx(AMX *pAMX, cell *aParams)
 
 	FSndFx_FxHandle_t hSFX = (FSndFx_FxHandle_t)(aParams[1]);
 	if( ( hSFX == NULL ) || ( hSFX == FSNDFX_INVALID_FX_HANDLE ) ) {
+		if( !faudio_IsInstalled() ) return (cell)0;
 		SCRIPT_ERROR( "Audio_Play2DSoundEx : Invalid SFX Handle provided." );
 		return (cell)0;
 	}

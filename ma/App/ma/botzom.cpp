@@ -36,6 +36,8 @@
 #include "fsound.h"
 #include "player.h"
 
+#include <vector>
+
 #define _BOTINFO_FILENAME		"b_zom"
 #define _SOUND_BANK_NAME		"ZombieBot"
 
@@ -122,6 +124,17 @@ CFCollInfo CBotZom::m_CollInfo;
 CFMtx43A CBotZom::m_TempAnimMtx;
 
 CFTexInst CBotZom::m_StreamerTexInst;
+
+struct _ZomSlashHit_t {
+	CEntity *pEntity;
+	CFWorldMesh *pWorldMesh;
+	FCollImpact_t Impact;
+	BOOL bApplyDamage;
+};
+
+// Damage and debris effects can add or remove mesh trackers. Collect hits during the world-list
+// traversal, then apply them after fworld_CollideWithTrackers has finished walking those lists.
+static std::vector<_ZomSlashHit_t> _aZomSlashHits;
 
 cchar *CBotZom::m_apszStreamerBones[] = {
 	"L_Finger_1_Tip",
@@ -1096,8 +1109,17 @@ void CBotZom::_PerformSlashDamage( const CFVec3A *pPrevSpherePos_WS, const CFVec
 	TrackerCollideInfo.nTrackerSkipCount = 0;
 	TrackerCollideInfo.ppTrackerSkipList = NULL;
 
+	_aZomSlashHits.clear();
 	m_pCollBot = this;
 	fworld_CollideWithTrackers( &TrackerCollideInfo );
+
+	for( size_t i = 0; i < _aZomSlashHits.size(); ++i ) {
+		const _ZomSlashHit_t &Hit = _aZomSlashHits[i];
+		_SpawnSlashImpactEffects( &Hit.Impact );
+		if( Hit.bApplyDamage )
+			_InflictSlashDamage( Hit.pEntity, Hit.pWorldMesh, &Hit.Impact );
+	}
+	_aZomSlashHits.clear();
 
 	fcoll_Clear();
 
@@ -1125,17 +1147,16 @@ BOOL CBotZom::_SlashHitTrackerCallback( CFWorldTracker *pTracker, FVisVolume_t *
 		fcoll_Clear();
 
 		if( pWorldMesh->CollideWithMeshTris( &m_CollInfo ) ) {
-			// We hit a terrain triangle...
+			// Defer effects and damage until the tracker traversal completes; both can change its lists.
+			_ZomSlashHit_t Hit;
+			Hit.pEntity = NULL;
+			Hit.pWorldMesh = pWorldMesh;
+			Hit.Impact = FColl_aImpactBuf[0];
+			Hit.bApplyDamage = !(pBotZom->m_nZomFlags & ZOMFLAG_SLASH_HIT_TERRAIN);
+			_aZomSlashHits.push_back( Hit );
 
-			pBotZom->_SpawnSlashImpactEffects( &FColl_aImpactBuf[0] );
-
-			if( !(pBotZom->m_nZomFlags & ZOMFLAG_SLASH_HIT_TERRAIN) ) {
-				// Haven't yet collided with terrain...
-
-				pBotZom->_InflictSlashDamage( NULL, NULL, &FColl_aImpactBuf[0] );
-
+			if( Hit.bApplyDamage )
 				FMATH_SETBITMASK( pBotZom->m_nZomFlags, ZOMFLAG_SLASH_HIT_TERRAIN );
-			}
 		}
 
 		return TRUE;
@@ -1167,44 +1188,34 @@ BOOL CBotZom::_SlashHitTrackerCallback( CFWorldTracker *pTracker, FVisVolume_t *
 		return TRUE;
 	}
 
-	// We hit a triangle on the entity...
+	// Record the hit for processing once tracker-list traversal is complete.
+	_ZomSlashHit_t Hit;
+	Hit.pEntity = pEntity;
+	Hit.pWorldMesh = pWorldMesh;
+	Hit.Impact = FColl_aImpactBuf[0];
+	Hit.bApplyDamage = FALSE;
 
-	pBotZom->_SpawnSlashImpactEffects( &FColl_aImpactBuf[0] );
-
-	if( pBotZom->m_nHitEntityCount >= HIT_ENTITY_MAX_COUNT ) {
-		// Cannot damage any more entities with this slash...
-		return TRUE;
-	}
-
-	u32 i;
-
-	for( i=0; i<pBotZom->m_nHitEntityCount; ++i ) {
-		if( pBotZom->m_apHitEntity[i] == pEntity ) {
-			// Already issued damage to this entity during this slash...
-			return TRUE;
+	if( pBotZom->m_nHitEntityCount < HIT_ENTITY_MAX_COUNT ) {
+		u32 i;
+		for( i = 0; i < pBotZom->m_nHitEntityCount; ++i ) {
+			if( pBotZom->m_apHitEntity[i] == pEntity )
+				break;
 		}
-	}
 
-	pBotZom->_InflictSlashDamage( pEntity, pWorldMesh, &FColl_aImpactBuf[0] );
+		if( i == pBotZom->m_nHitEntityCount ) {
+			Hit.bApplyDamage = TRUE;
 
-	// Now, add this entity to our hit-entity buffer to remember that we've already damaged it...
-	if( pEntity->TypeBits() & ENTITY_BIT_WEAPON ) {
-		// Entity is a CWeapon...
-
-		CWeapon *pWeapon = (CWeapon *)pEntity;
-
-		if( pWeapon->GetOwner() ) {
-			// Weapon has an owner...
-
-			if( pWeapon->GetBotDamageBoneIndex() >= 0 ) {
-				// Weapon will pass damage onto its owner...
-
-				pEntity = pWeapon->GetOwner();
+			// Track the owner for weapon hits so the same bot cannot be damaged twice by its weapon mesh.
+			if( pEntity->TypeBits() & ENTITY_BIT_WEAPON ) {
+				CWeapon *pWeapon = (CWeapon *)pEntity;
+				if( pWeapon->GetOwner() && pWeapon->GetBotDamageBoneIndex() >= 0 )
+					pEntity = pWeapon->GetOwner();
 			}
+			pBotZom->m_apHitEntity[ pBotZom->m_nHitEntityCount++ ] = pEntity;
 		}
 	}
 
-	pBotZom->m_apHitEntity[ pBotZom->m_nHitEntityCount++ ] = pEntity;
+	_aZomSlashHits.push_back( Hit );
 
 	return TRUE;
 }

@@ -1,5 +1,12 @@
 # Co-op audit: single-player assumptions
 
+Status: a basic Windows-only `-coop 2` to `-coop 4` launch prototype now creates multiple campaign
+player slots for registered `-mission` launches while keeping `bSinglePlayer=TRUE`. It has no
+profile-backed persistence or bot selector. Smoke loads reached end-of-loading, but the captures were
+black because the muted Bink soundtrack clock froze intro playback; that issue is fixed by muting Bink
+tracks by volume. Co-op visuals and gameplay behavior still need a fresh check. Keep work at this
+initialization level unless the user asks to continue the co-op feature.
+
 Goal: campaign levels with 2-4 local players. This lists what already works per player, and every
 place found that assumes a single player, with a suggested change. It was written from source only
 (no runs). Line numbers are for `x86-port` at the time of writing; search for the quoted code if they

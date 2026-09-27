@@ -477,6 +477,7 @@ static BOOL _math_RestorePools( s32 nCheckpoint )
 static BOOL _checkpoint_Save( s32 nCheckpoint, BOOL bPrintText )
 {
 	BOOL bResult = FALSE;
+	BOOL bFlushResult;
 
 	FASSERT( nCheckpoint >= 0 && nCheckpoint < FCHECKPOINT_MAX_CHECKPOINTS );
 
@@ -491,6 +492,9 @@ static BOOL _checkpoint_Save( s32 nCheckpoint, BOOL bPrintText )
 	{
 		return FALSE;
 	}
+
+	// A new save replaces the prior stream contents, so invalidate its saved flag first.
+	_bCheckpointSaved[ nCheckpoint ] = FALSE;
 
 	_SaveGlobalData( nCheckpoint );
 	_SavePlayerPossession( nCheckpoint );
@@ -520,7 +524,11 @@ static BOOL _checkpoint_Save( s32 nCheckpoint, BOOL bPrintText )
 	CSpaceDock::CheckpointSave(nCheckpoint);
 
 
-	CFCheckPoint::DoneSaving();
+	bFlushResult = CFCheckPoint::DoneSaving();
+	if( !bFlushResult )
+	{
+		bResult = FALSE;
+	}
 
 	if( bResult )
 	{
@@ -535,7 +543,7 @@ static BOOL _checkpoint_Save( s32 nCheckpoint, BOOL bPrintText )
 		}
 	}
 
-	FASSERT( bResult );
+	FASSERT( bResult || !bFlushResult );
 	return bResult;
 }
 

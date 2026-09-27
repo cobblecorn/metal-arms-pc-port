@@ -659,6 +659,7 @@ static BOOL _ReloadCurrentLevel( void ) {
 static BOOL _StartQuickSkipLevel( BOOL bLoadTestMode ) {
 	u32 i;
 	cchar *pszLevelName;
+	static GameInitInfo_t _CampaignCoopInit;
 
 	_bLoadTestMode = FALSE;
 	pszLevelName = gameloop_GetSkipLevelName();
@@ -675,7 +676,22 @@ static BOOL _StartQuickSkipLevel( BOOL bLoadTestMode ) {
 				mission.nLevel >= 0 && mission.nLevel < LEVEL_SINGLE_PLAYER_COUNT ) {
 				DEVPRINTF( "Mission launch: %s, world=%s, data=%s, materials=%s.\n",
 					mission.pszTitle, mission.pszWorldResName, mission.pszCSVFile, mission.pszMaterialCSVFile );
-				if( !game_LoadLevel( mission.pszTitle, FALSE, NULL ) ) return FALSE;
+				const u8 nCampaignPlayers = gameloop_GetQuickLaunchCampaignPlayers();
+				const GameInitInfo_t *pGameInit = NULL;
+				if( nCampaignPlayers > 1 ) {
+					// Experimental PC path: keep campaign rules and virtual/no-save profiles while the
+					// existing per-player split-screen, HUD, and controller setup initializes each slot.
+					memset( &_CampaignCoopInit, 0, sizeof( _CampaignCoopInit ) );
+					_CampaignCoopInit.nNumPlayers = nCampaignPlayers;
+					_CampaignCoopInit.bSinglePlayer = TRUE;
+					_CampaignCoopInit.bNewGame = TRUE;
+					_CampaignCoopInit.nLevelToPlay = (u8)mission.nLevel;
+					_CampaignCoopInit.nDifficultyLevel = GAMESAVE_DIFFICULTY_NORMAL;
+					pGameInit = &_CampaignCoopInit;
+					DEVPRINTF( "Campaign co-op prototype: %u local players, campaign rules, no profile saves.\n",
+						nCampaignPlayers );
+				}
+				if( !game_LoadLevel( mission.pszTitle, FALSE, pGameInit ) ) return FALSE;
 				gameloop_ShowFPS( TRUE );
 				return TRUE;
 			}

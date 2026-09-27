@@ -56,6 +56,7 @@ typedef struct
 	s32						m_hCurObj;							// current object data handle
 	FCheckPointObjectData_t	*m_aObjData;						// pointer to an array of object data structs, indexed by object data handle
 	FCheckPointState_t		m_nState;							// state of CheckPoint system
+	BOOL						m_bSaveFailed;					// TRUE if this checkpoint save could not be completed
 } FCheckPointData_t;
 
 

@@ -24,11 +24,13 @@ engine's asserts.
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-no-audio] [-debug-info] [-save-dir <dir>] [-console] [-port-diag] [-discord-app-id <id>|off] [-test-keys <s:vk,...>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> [-coop 2-4] | -world-only <world>] [-log <file>] [-asset-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-no-audio] [-debug-info] [-save-dir <dir>] [-console] [-port-diag] [-discord-app-id <id>|off] [-test-keys <s:vk,...>]
 
 `ma_port.exe` is a windowed app with no console window; `-console` opens one showing the log (engine
 output and the level scripts' own print messages, such as "NONETRIPWIRE ENTER EVENT"). The log
-file (`-log`, default `ma_port.log` in the working directory) always has everything. `-port-diag`
+file (`-log`, default `ma_port.log` in the working directory) always has everything. Fang's asset
+loading log defaults to `ma_port_asset_log.txt`; use `-asset-log <file>` to give each concurrent run
+its own asset log. `-port-diag`
 (or `MA_PORT_DIAG=1`) adds the port's diagnostics: `PORT-HITCH` frames over 40 ms, `PORT-SND` the
 first plays of each sound, `PORT-MIX` a snapshot of every playing sound's level every 2 seconds,
 `PORT-TALK` bot dialog and `PORT-DUCK` audio ducking. They are off by default because writing them
@@ -41,9 +43,16 @@ hitches fixed so far: the log being written on the game thread (it is written by
 now), music/speech streams being opened and their buffers made on the game thread (a worker does the
 whole load now), and movies waiting on Bink's file reads (Bink gets a 16 MB read-ahead now).
 
-`-test-keys "62:0x1B,70:0x51"` presses those virtual keys (Escape, Q) that many seconds after start,
-for unattended tests with `-shots`: they reach the game without its window having focus, so a test
-never takes the keyboard from the desktop. (`MA_PORT_TEST_KEYS` is the same.)
+`-test-keys "62:0x1B,70:0x51"` presses those virtual keys (Escape, Q) that many seconds after start;
+`g8:0x1B` presses Escape eight seconds after the first gameplay frame. These work without the window
+having focus, so a test never takes the keyboard from the desktop. (`MA_PORT_TEST_KEYS` is the same.)
+`-no-audio` disables game audio and mutes Bink movie tracks by volume while keeping the video clock
+running. The test window title includes `[TEST RUN - NO AUDIO]`.
+
+For concurrent mission checks, use `python tools/mission_parallel.py --config Debug --seconds 75 --jobs 4 wewchold_01 wedttown_01 WEWHchase01 WEWJjourn01`.
+Each instance gets separate engine, asset, and save paths. It reports load completion, script events
+and errors, data warnings, allocations, asserts, crashes, frame timing, and stalls. `--jobs` caps the
+number of simultaneous windows; `-no-audio` and Discord-off are defaults.
 
 Discord Rich Presence is on by default: "In the menus", or the level ("Level 4: Clean Up") with
 "Campaign" / "Multiplayer: <game type> (N players)" and the elapsed time, under the port's own Discord
@@ -62,6 +71,13 @@ application ID or an activity (for example an unknown asset key).
 material table and normal level-loading path. Unknown/unregistered worlds fail explicitly.
 `-world-only <world>` loads and converts the WLD resource, then exits before localized setup
 and gameplay entity creation. These three launch modes are mutually exclusive.
+
+`-coop 2` through `-coop 4` is a basic campaign player-slot prototype and requires `-mission`.
+It keeps campaign rules active, assigns keyboard and XInput to separate ports by default, and creates
+the normal split-screen player slots without persistent profiles. It does not add a character/bot
+selector or implement campaign co-op behavior. Current smoke runs reached end-of-loading. A captured
+frame showed the main view, but the lower split-screen view was malformed; treat this as an
+initialization experiment, not a playable mode.
 
 For the mission path with engine captures:
 
@@ -280,8 +296,10 @@ environment variables remain available.
       scripts now bind every native. `Bot_LoadTalk` accepts the retail 5-argument form.
 - [ ] Verify mission objectives, level transitions and saves.
 - [x] Bink cutscenes play full screen (4:3, stretched with linear filtering) with their own
-      audio. The retail movies use the `GC_` prefix.
-- [ ] Game audio (GC MusyX sound banks / DSP-ADPCM streams). Still disabled.
+      audio. The retail movies use the `GC_` prefix; `-no-audio` mutes these tracks for test runs.
+- [x] Game audio: GameCube MusyX banks convert to PCM, and DSP-ADPCM music/speech streams use the
+      retail GameCube volume chain. User confirmed effects, droid speech, and music in a mission;
+      final mix and individual weapon/UI levels still need listening checks.
 - [ ] Vehicle controls: the RAT in `WEWHchase01` does not respond to WASD for driving or the
       turret, and mouse motion appears to steer it (user report).
 - [x] Keyboard controls and direct raw mouse look, confirmed interactively in `wecdsneak01`.
@@ -352,17 +370,20 @@ environment variables remain available.
   `mozer01` lookup are skipped in the GC build.
 - Assert and `/RTC` reports are rate-limited (first 10, then 100, 1000, ...) with a stack on
   the first occurrence, and world entities that fail to build are logged by name.
-- Known: `CFQuatTang3::Calculate` (scripted carts in `WEDTtown_01`) unitizes a zero XZ tangent
-  and produces NaNs that reach collision; the same math would do so on the GameCube, so the
-  input path (path tangent) needs checking. `-level we01multi01`-era notes predate these fixes.
+- `CFQuatTang3::Calculate` now falls back to +Z when the path tangent has no usable XZ
+  component. `WEDTtown_01` loads `xedt_carts.sma`, whose swinging spline actor passes the
+  point-path tangent into this math; a vertical/degenerate tangent previously reached
+  `Unitize()` as zero and produced NaNs. The fallback leaves acceleration unrotated and keeps
+  the existing normalized path for valid XZ tangents. The town mission reached end-of-loading
+  without asserts or crashes; cart motion still needs a visual check.
 - Weapon selection rejects unavailable runtime weapon objects and retains the previous equipped
   item. Starting with Empty Secondary now preserves the inventory count so throwables remain
   selectable. These changes build successfully; runtime confirmation is pending.
 - The wrapper system accepts trailing retail phrases and reads its six-field screen-name stride,
   selecting the Xbox UI entries and ignoring the two screens this source does not define.
 - A regular `-level we01multi01` launch now passes wrapper and world setup and reaches
-  `END OF BOOTUP`. Audio remains disabled: `fsndfx.cpp` skips parsing GC SFX banks, so sound groups
-  have no loaded sound definitions.
+  `END OF BOOTUP`. Use `-mission` for registered campaign content; the generic debug-level path
+  does not establish campaign audio/content behavior.
 - Older multiplayer `we01multi01` logs showed a repeated startup cycle. The later skinned-mesh,
   collision, shader, and matrix fixes supersede the earlier blocker descriptions in the handoff.
   Use `wecdsneak01` as the current interactive baseline; multiplayer behavior needs a fresh check.

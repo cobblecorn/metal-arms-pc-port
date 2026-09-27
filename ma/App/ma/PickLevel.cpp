@@ -36,6 +36,9 @@
 #include "fclib.h"
 #include "wpr_system.h"
 #include "difficulty.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 
 //====================
@@ -557,7 +560,16 @@ static BOOL _Draw( void ) {
 	switch( _nCurrentMode ) {
 		
 	case _MODE_LEVEL_LOAD_ERROR:
+#if defined(MA_PC_INPUT)
+		{
+			const PcPromptStyle nStyle = pcinput_PromptStyleForPort( pcinput_KeyboardPort() );
+			cwchar *pwszAccept = nStyle == PCINPUT_PROMPT_STYLE_KEYBOARD ? L"Space" :
+				( nStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION ? L"Cross" : L"A" );
+			ftext_Printf( 0.5f, 0.20f, "~f0~C92929299~w1~ac~s0.85Error: Could not load\n\n%s.\n\nPress %ls to continue.", _pszLevelToLoad, pwszAccept );
+		}
+#else
 		ftext_Printf( 0.5f, 0.20f, "~f0~C92929299~w1~ac~s0.85Error: Could not load\n\n%s.\n\nPress 'A' to continue.", _pszLevelToLoad );
+#endif
 		break;
 
 	case _MODE_PICK_MULTI_PLAYER_LEVEL:

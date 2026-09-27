@@ -341,6 +341,9 @@ typedef enum {
 	_MENU_ITEMS_AS_LOOK_SENSITIVITY,
 	_MENU_ITEMS_AS_DPAD_COMBO,
 	_MENU_ITEMS_AS_ASSISTED_TARGETING,
+#if defined(MA_PC_INPUT)
+	_MENU_ITEMS_AS_PROMPTS,
+#endif
 	_MENU_ITEMS_AS_COUNT,
 
 	_MENU_ITEMS_AS_START_OFFSET = 2,
@@ -578,6 +581,10 @@ typedef struct {
 	s16 nASVibrationTicks;
 	s16 nASLookSensitivity;
 	BOOL8 bASFourWayQuickSelect;
+#if defined(MA_PC_INPUT)
+	PcPromptStyle nASPromptStyle;
+	PcPromptStyle nASPromptStyleOrig;
+#endif
 	u8 nASIndexOfFFBMesh;
 	f32 fASForceFeedbackOrigIntensity;
 	FForceHandle_t hASForceFeedback;
@@ -677,6 +684,7 @@ static CPlayerProfile *_paProfiles = NULL;// when non-NULL, will point to MAX_PL
 static GameInitInfo_t _GameInitInfo;// filled in when we go to actually start a game
 
 #if defined(MA_PC_INPUT)
+static BOOL _bPcPromptOptionAdded;
 //===================================
 // mouse pointer (PC port)
 //
@@ -752,11 +760,10 @@ static BOOL _bMouseDrawPointer;			// the menus drew this frame; draw the pointer
 static FViewport_t *_pMouseIGViewport;	// in-game screens (from the pause menu) draw in the caller's viewport
 static BOOL _bMouseDebug;				// MA_PORT_POINTER_DEBUG: outline the hit boxes and log clicks
 
-// The menu's button phrases name the keys, or the buttons of the chosen pad style, for the port they
-// address (nPort < 0: whoever is at the keyboard/mouse port). Ports without the keyboard always get
-// pad wording, so a second player's "Press A to join" never names a key.
+// Menu phrases and button icons resolve against the same controller port so the text and art match
+// in shared-input and keyboard-plus-pad layouts.
 static cwchar *_PromptPhrase( u32 nPhrase, s32 nPort ) {
-	const PcPromptStyle nStyle = pcinput_PromptStyleForPort( nPort < 0 ? pcinput_KeyboardPort() : (u32)nPort );
+	const PcPromptStyle nStyle = pcinput_PromptStyleForPort( nPort >= 0 ? (u32)nPort : pcinput_KeyboardPort() );
 	if( nStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION ) {
 		switch( nPhrase ) {
 		case WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN:		return L"Press Cross to join";
@@ -2280,7 +2287,7 @@ static _PcMapInput_e _PcMapInputFromKey( cchar *pszKey ) {
 		// the GameCube's: B is left of A, X right
 		{ "B", _PCMAP_FACE_LEFT }, { "X", _PCMAP_FACE_RIGHT },
 #endif
-		// melee: the Xbox's black button, the GameCube's Z; F or the right bumper here (GameCube Z)
+	// Melee: keyboard F; XInput accepts RB or Right Stick click on the GameCube Z mapping.
 		{ "Black", _PCMAP_MELEE }, { "Z", _PCMAP_MELEE },
 	};
 	for( u32 i=0; pszKey && i < sizeof( aKeys ) / sizeof( aKeys[0] ); i++ ) {
@@ -2313,21 +2320,38 @@ static void _PcMapIcons( _PcMapInput_e nInput, PcPromptStyle nStyle, f32 fRight,
 		if( bKeys ) { apwszCaps[nCaps++] = L"A"; apwszCaps[nCaps++] = L"D"; } else apwszCaps[nCaps++] = bPS ? L"L Stick" : L"LS";
 		break;
 	case _PCMAP_RIGHT_Y:
+		if( bKeys ) { apwszCaps[nCaps++] = L"Up"; apwszCaps[nCaps++] = L"Down"; nMouse = 0; }
+		else apwszCaps[nCaps++] = bPS ? L"R Stick" : L"RS";
+		break;
 	case _PCMAP_RIGHT_X:
-		if( bKeys ) nMouse = 0; else apwszCaps[nCaps++] = bPS ? L"R Stick" : L"RS";
+		if( bKeys ) { apwszCaps[nCaps++] = L"Left"; apwszCaps[nCaps++] = L"Right"; nMouse = 0; }
+		else apwszCaps[nCaps++] = bPS ? L"R Stick" : L"RS";
 		break;
 	case _PCMAP_DPAD_Y:
-	case _PCMAP_DPAD_X:
 		if( bKeys ) {
-			apwszCaps[nCaps++] = L"1"; apwszCaps[nCaps++] = L"2"; apwszCaps[nCaps++] = L"3"; apwszCaps[nCaps++] = L"4";
+			apwszCaps[nCaps++] = L"1 Up"; apwszCaps[nCaps++] = L"3 Down";
 		} else {
 			apwszCaps[nCaps++] = L"D-Pad";
 		}
 		break;
-	case _PCMAP_START:		apwszCaps[nCaps++] = bKeys ? L"Esc" : ( bPS ? L"Options" : L"Menu" ); break;
+	case _PCMAP_DPAD_X:
+		if( bKeys ) {
+			apwszCaps[nCaps++] = L"2 Right"; apwszCaps[nCaps++] = L"4 Left";
+		} else {
+			apwszCaps[nCaps++] = L"D-Pad";
+		}
+		break;
+	case _PCMAP_START:		apwszCaps[nCaps++] = bKeys ? L"Enter/Esc" : ( bPS ? L"Options" : L"Menu" ); break;
 	case _PCMAP_RTRIGGER:	if( bKeys ) nMouse = 1; else apwszCaps[nCaps++] = bPS ? L"R2" : L"RT"; break;
 	case _PCMAP_LTRIGGER:	if( bKeys ) nMouse = 2; else apwszCaps[nCaps++] = bPS ? L"L2" : L"LT"; break;
-	case _PCMAP_MELEE:		apwszCaps[nCaps++] = bKeys ? L"F" : ( bPS ? L"R1" : L"RB" ); break;
+	case _PCMAP_MELEE:
+		if( bKeys ) {
+			apwszCaps[nCaps++] = L"F";
+		} else {
+			apwszCaps[nCaps++] = bPS ? L"R1" : L"RB";
+			apwszCaps[nCaps++] = bPS ? L"R3" : L"RS Click";
+		}
+		break;
 	// Space/R/Q/E are the bottom/right/left/top face buttons (GameCube A/X/B/Y in pc_input)
 	case _PCMAP_FACE_BOTTOM:	if( bKeys ) apwszCaps[nCaps++] = L"Space"; else nFace = 0; break;
 	case _PCMAP_FACE_RIGHT:		if( bKeys ) apwszCaps[nCaps++] = L"R"; else nFace = 1; break;
@@ -2357,8 +2381,8 @@ static void _PcMapIcons( _PcMapInput_e nInput, PcPromptStyle nStyle, f32 fRight,
 	}
 }
 
-static void _PcControllerMap( const Wpr_DataTypes_ControllerConfig_t *pConfig, f32 fHalfXRes, f32 fHalfYRes ) {
-	const PcPromptStyle nStyle = pcinput_PromptStyleForPort( _MenuState.nControllerIndex );
+static void _PcControllerMap( const Wpr_DataTypes_ControllerConfig_t *pConfig, f32 fHalfXRes, f32 fHalfYRes, u32 nControllerPort ) {
+	const PcPromptStyle nStyle = pcinput_PromptStyleForPort( nControllerPort );
 	const f32 afIconsRight[2] = { 0.26f, 0.66f };	// each column: where its icons end; the labels follow
 	f32 afRowTop[2] = { 0.325f, 0.325f };			// where each column's next row starts
 
@@ -2381,18 +2405,29 @@ static void _PcControllerMap( const Wpr_DataTypes_ControllerConfig_t *pConfig, f
 			afRowTop[nColumn] = fB + 0.016f;
 		}
 	}
+	if( nStyle == PCINPUT_PROMPT_STYLE_KEYBOARD ) {
+		const f32 fNotesTop = FMATH_MAX( afRowTop[0], afRowTop[1] ) + 0.012f;
+		if( fNotesTop < 0.95f ) {
+			ftext_Printf( 0.08f, fNotesTop * 0.75f,
+				L"~f1~C%ls~w0~aL~s%.2fF1 toggles mouse look; arrows and mouse wheel navigate menus",
+				WprDataTypes_pwszWhiteTextColor, 0.58f );
+		}
+	}
 }
 #endif
 
 void wpr_system_ControllerConfig_DrawFDraw( Wpr_DataTypes_ControllerConfig_t *pConfig,
-										   CFTexInst *pTexInst,
-										   BOOL bDrawArrows,
-										   f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
+												   CFTexInst *pTexInst,
+												   BOOL bDrawArrows,
+												   f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes,
+												   u32 nControllerPort ) {
 	CFVec2 Lower, Upper;
 
 #if defined(MA_PC_INPUT)
-	_PcControllerMap( pConfig, fHalfXRes, fHalfYRes );
+	_PcControllerMap( pConfig, fHalfXRes, fHalfYRes, nControllerPort );
 	return;
+#else
+	(void)nControllerPort;
 #endif
 
 	// draw the controller
@@ -2938,6 +2973,37 @@ static BOOL _Init( void ) {
 		}
 	}
 
+
+	#if defined(MA_PC_INPUT)
+	// The PC-only prompt selector has no retail data-table row. Append one to both Advanced Settings
+	// variants at load time so existing navigation, selection arrows, and mouse hit-testing can use it.
+	pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS];
+	_bPcPromptOptionAdded = FALSE;
+	if( pScreen->nNumTextElements == _MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_COUNT - 1 ) {
+		const u32 nOldCount = pScreen->nNumTextElements;
+		Wpr_DataTypes_TextLayout_t *pExpanded = (Wpr_DataTypes_TextLayout_t *)fres_Alloc( sizeof( Wpr_DataTypes_TextLayout_t ) * (nOldCount + 1) );
+		if( pExpanded ) {
+			for( u32 nText = 0; nText < nOldCount; nText++ ) {
+				pExpanded[nText] = pScreen->pText[nText];
+			}
+			Wpr_DataTypes_TextLayout_t *pPrevious = &pExpanded[nOldCount - 2];
+			Wpr_DataTypes_TextLayout_t *pLast = &pExpanded[nOldCount - 1];
+			Wpr_DataTypes_TextLayout_t *pPrompt = &pExpanded[nOldCount];
+			*pPrompt = *pLast;
+			pPrompt->pwszText = _pStringTable->AddString( L"Button Prompts" );
+			pPrompt->fUnitY = pLast->fUnitY + (pLast->fUnitY - pPrevious->fUnitY);
+			FMATH_CLAMP( pPrompt->fUnitY, -0.94f, 0.94f );
+			pScreen->pText = pExpanded;
+			pScreen->nNumTextElements = (u16)(nOldCount + 1);
+			_bPcPromptOptionAdded = TRUE;
+		} else {
+			DEVPRINTF( "wpr_system::_Init() : Could not allocate the PC prompt option row.\n" );
+		}
+	} else {
+		DEVPRINTF( "wpr_system::_Init() : Advanced Settings has %u text rows; the PC prompt option was skipped.\n",
+			pScreen->nNumTextElements );
+	}
+	#endif
 
 	// ME:  moved this out of wrappers
 	///////////////////////////////////////
@@ -3592,6 +3658,10 @@ void wpr_system_IG_SelectScreen( Wpr_DataTypes_Screens_e nScreenIndex ) {
 	case WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS:
 		_MenuState.bASInvertAnalog = CPlayer::m_pCurrent->GetInvertLook();
 		_MenuState.bASAssistedTargeting = (CPlayer::m_pCurrent->GetTargetingAssistance() > 0.0f);
+#if defined(MA_PC_INPUT)
+		_MenuState.nASPromptStyle = pcinput_PromptStyleSetting();
+		_MenuState.nASPromptStyleOrig = _MenuState.nASPromptStyle;
+#endif
 		_MenuState.bASForceFeedbackON = FALSE;
 		_MenuState.bASAutoCenter = FALSE;
 		_MenuState.nASVibrationTicks = (s16)(fforce_GetMasterIntensity(Player_aPlayer[0].m_nControllerIndex) * (f32)(_MENU_ITEMS_AS_NUM_TICKS-1));
@@ -3649,6 +3719,9 @@ BOOL wpr_system_IG_Work( void ) {
 				CPlayer::m_pCurrent->SetInvertLook( _MenuState.bASInvertAnalog );
 				CPlayer::m_pCurrent->SetFourWayQuickSelect( _MenuState.bASFourWayQuickSelect );
 				CPlayer::m_pCurrent->SetTargetingAssistance( _MenuState.bASAssistedTargeting );
+#if defined(MA_PC_INPUT)
+				pcinput_SavePromptStyleSetting();
+#endif
 
 				if( _MenuState.nASVibrationTicks == 0 ) {
 					fforce_SetMasterIntensity( _MenuState.nControllerIndex, 0.0f );
@@ -3670,6 +3743,11 @@ BOOL wpr_system_IG_Work( void ) {
 			bScreenExited = TRUE;
 			
 			if( _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS ) {
+#if defined(MA_PC_INPUT)
+				_MenuState.nASPromptStyle = _MenuState.nASPromptStyleOrig;
+				pcinput_SetPromptStyleSetting( _MenuState.nASPromptStyleOrig );
+				game_PcPromptWork();
+#endif
 				fforce_SetMasterIntensity( _MenuState.nControllerIndex, _MenuState.fASForceFeedbackOrigIntensity );
 			} else if( _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_SOUND_OPTIONS ) {
 				faudio_SetSfxMasterVol( _MenuState.fSSOrigSoundPercent );
@@ -3726,7 +3804,8 @@ void wpr_system_IG_Draw( void ) {
 		_MenuState.nButtonDrawMask,
 		fScaleMultiplier,
 		pViewport->HalfRes.x,
-		pViewport->HalfRes.y );
+		pViewport->HalfRes.y,
+		(u32)_MenuState.nControllerIndex );
 
 	// push the fdraw renderer off 
 	frenderer_Pop();
@@ -4080,7 +4159,7 @@ static BOOL _ControllerWaitForReconnect( void ) {
 	if( Gamepad_nPortOnlineMask & (1<<_MenuState.nUnpluggedControllerState) ) {
 		CMsgBox::Clear();
 
-		_snwprintf( Wpr_DataTypes_wszTempString, 128, Game_apwszPhrases[GAMEPHRASE_PRESS_START_TO_CONTINUE], '\n' );
+		_snwprintf( Wpr_DataTypes_wszTempString, 128, game_GetPromptPhrase( GAMEPHRASE_PRESS_START_TO_CONTINUE, _MenuState.nUnpluggedControllerState ), '\n' );
 		CMsgBox::Display( "CtlPressStart", NULL, Wpr_DataTypes_wszTempString, NULL, NULL, NULL, 0, TRUE, _ControllerWaitForStart );
 	}
 
@@ -5252,6 +5331,18 @@ static void _DeleteProfile_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) 
 // 'advanced settings' functions
 /////////////////////////////////
 
+#if defined(MA_PC_INPUT)
+static cwchar *_AdvSettings_PromptStyleText() {
+	static cwchar *apwszStyles[] = { L"Auto", L"Keyboard", L"Xbox", L"PlayStation" };
+	static cwchar *apwszForcedStyles[] = { L"Auto [locked]", L"Keyboard [locked]", L"Xbox [locked]", L"PlayStation [locked]" };
+	const s32 nStyle = _MenuState.nASPromptStyle;
+	if( nStyle < PCINPUT_PROMPT_STYLE_AUTO || nStyle > PCINPUT_PROMPT_STYLE_PLAYSTATION ) {
+		return L"Auto";
+	}
+	return pcinput_PromptStyleIsCommandLineOverride() ? apwszForcedStyles[nStyle] : apwszStyles[nStyle];
+}
+#endif
+
 static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 	f32 fPercent;
 
@@ -5281,9 +5372,13 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 		return WPR_DATATYPES_NAV_CODE_BACK;			
 	}
 	s32 nCache = _MenuState.nCurItemIndex;
+	s32 nASItemCount = _MENU_ITEMS_AS_COUNT;
+#if defined(MA_PC_INPUT)
+	if( !_bPcPromptOptionAdded ) nASItemCount--;
+#endif
 
 #if defined(MA_PC_INPUT)
-	s32 nHover = _MouseHoverSelect( _MenuState.nControllerIndex, _MENU_ITEMS_AS_COUNT-1 );
+	s32 nHover = _MouseHoverSelect( _MenuState.nControllerIndex, nASItemCount-1 );
 	if( nHover >= 0 ) {
 		_MenuState.nCurItemIndex = (s8)nHover;
 	}
@@ -5297,8 +5392,8 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 		}
 	} else if( nUpDown == _DOWN ) {
 		_MenuState.nCurItemIndex++;
-		if( _MenuState.nCurItemIndex >= _MENU_ITEMS_AS_COUNT ) {
-			_MenuState.nCurItemIndex = (_MENU_ITEMS_AS_COUNT-1);
+		if( _MenuState.nCurItemIndex >= nASItemCount ) {
+			_MenuState.nCurItemIndex = (nASItemCount-1);
 		}
 	} else {
 		_LeftRight_e nLeftRight = _CheckLeftRightAxis( _MenuState.nControllerIndex );
@@ -5378,7 +5473,25 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 				if( nCache2 != _MenuState.bASAssistedTargeting ) {
 					fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
 				}
-				break;				
+				break;
+
+#if defined(MA_PC_INPUT)
+			case _MENU_ITEMS_AS_PROMPTS:
+				nCache2 = _MenuState.nASPromptStyle;
+				_MenuState.nASPromptStyle = (PcPromptStyle)((s32)_MenuState.nASPromptStyle + nLeftRight);
+				if( _MenuState.nASPromptStyle < PCINPUT_PROMPT_STYLE_AUTO ) {
+					_MenuState.nASPromptStyle = PCINPUT_PROMPT_STYLE_PLAYSTATION;
+				} else if( _MenuState.nASPromptStyle > PCINPUT_PROMPT_STYLE_PLAYSTATION ) {
+					_MenuState.nASPromptStyle = PCINPUT_PROMPT_STYLE_AUTO;
+				}
+				if( !pcinput_SetPromptStyleSetting( _MenuState.nASPromptStyle ) ) {
+					_MenuState.nASPromptStyle = (PcPromptStyle)nCache2;
+				} else if( nCache2 != _MenuState.nASPromptStyle ) {
+					game_PcPromptWork();
+					fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
+				}
+				break;
+#endif
 
 			default:
 				FASSERT_NOW;
@@ -5524,6 +5637,26 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 				_MouseAddToggle( nItem, _MenuState.bASFourWayQuickSelect );
 #endif
 				break;
+
+#if defined(MA_PC_INPUT)
+			case _MENU_ITEMS_AS_PROMPTS:
+				ftext_Printf( fOptionsX,
+							pScreen->pText[i].fUnitY,
+							L"~f1~C%ls~w0~a%lc~s%.2f%ls",
+							bSelected ? WprDataTypes_pwszWhiteTextColor : WprDataTypes_pwszGrayTextColor,
+							L'C',
+							pScreen->pText[i].fScale,
+							_AdvSettings_PromptStyleText() );
+				{
+					f32 fLeft, fTop, fRight, fBottom;
+					if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+						f32 fMiddle = 0.5f * (fLeft + fRight);
+						_MouseAddZone( _MOUSE_ZONE_LEFT, nItem, fLeft - 0.01f, fTop, fMiddle, fBottom );
+						_MouseAddZone( _MOUSE_ZONE_RIGHT, nItem, fMiddle, fTop, fRight + 0.01f, fBottom );
+					}
+				}
+				break;
+#endif
 			}
 		}
 	}	
@@ -5628,6 +5761,9 @@ static void _AdvSettings_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 	case WPR_DATATYPES_NAV_CODE_FORWARD:
 		// save the changes and return to the profile settings screen
 		_AdvSettings_WorkingVarsToProfile();
+#if defined(MA_PC_INPUT)
+		pcinput_SavePromptStyleSetting();
+#endif
 		_MenuState.nCurItemIndex = _MENU_ITEMS_PS_ADV_CONTROLLER;
 		_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_PROFILE_SETTINGS;
 		_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS;
@@ -5639,6 +5775,11 @@ static void _AdvSettings_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 	case WPR_DATATYPES_NAV_CODE_BACK:
 		// don't save the changes and return to the profile settings screen
 		_AdvSettings_ProfileToWorkingVars();
+#if defined(MA_PC_INPUT)
+		_MenuState.nASPromptStyle = _MenuState.nASPromptStyleOrig;
+		pcinput_SetPromptStyleSetting( _MenuState.nASPromptStyleOrig );
+		game_PcPromptWork();
+#endif
 		_MenuState.nCurItemIndex = _MENU_ITEMS_PS_ADV_CONTROLLER;
 		_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_PROFILE_SETTINGS;
 		_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS;
@@ -5703,6 +5844,10 @@ static void _ProfileSettings_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode 
 			break;
 #endif
 		case _MENU_ITEMS_PS_ADV_CONTROLLER:
+			#if defined(MA_PC_INPUT)
+			_MenuState.nASPromptStyle = pcinput_PromptStyleSetting();
+			_MenuState.nASPromptStyleOrig = _MenuState.nASPromptStyle;
+			#endif
 			_AdvSettings_ProfileToWorkingVars();
 			_MenuState.bASForceFeedbackON = FALSE;
 			_MenuState.nCurItemIndex = 0;
@@ -6922,7 +7067,7 @@ static void _ControllerConfig_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f3
 #else
 		FALSE,
 #endif
-		fScaleMultiplier, fHalfXRes, fHalfYRes );
+		fScaleMultiplier, fHalfXRes, fHalfYRes, (u32)_MenuState.nControllerIndex );
 }
 
 static void _ControllerConfig_ProfileToWorkingVars() {
