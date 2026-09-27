@@ -179,7 +179,11 @@ void CMenuItem::InitWithItemInst(CItemInst *pII)
 	}
 	else	// It must be an item.
 	{
-		m_bScaleDrawnText = FALSE; // we don't want to scale the item counter text for visual purposes...
+#if defined(MA_PC_INPUT)
+		m_bScaleDrawnText = TRUE; // counter text follows its slot at PC resolutions
+#else
+		m_bScaleDrawnText = FALSE; // retail item counter uses fixed texel size
+#endif
 		m_avecImageOfs[0].Set(m_vecBorderRect.x - m_vecBorderRect.y, 0.0f, 0.0f);
 
 		m_avecImageRect[1].Set(m_vecBorderRect.y * 0.45f * (0.238f / 0.125f), m_vecBorderRect.y * 0.30f, 0.0f);

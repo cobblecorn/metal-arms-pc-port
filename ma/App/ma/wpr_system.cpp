@@ -307,6 +307,10 @@ typedef enum {
 	// MM = MAIN MENU
 	_MENU_ITEMS_MM_SINGLE = 0,
 	_MENU_ITEMS_MM_MULTI,
+#if defined(MA_PC_INPUT)
+	_MENU_ITEMS_MM_COOP,
+	_MENU_ITEMS_MM_QUIT,
+#endif
 //	_MENU_ITEMS_MM_GAMEDEMOS,
 	_MENU_ITEMS_MM_COUNT,
 
@@ -343,6 +347,7 @@ typedef enum {
 	_MENU_ITEMS_AS_ASSISTED_TARGETING,
 #if defined(MA_PC_INPUT)
 	_MENU_ITEMS_AS_PROMPTS,
+	_MENU_ITEMS_AS_MOUSE_SENSITIVITY,
 #endif
 	_MENU_ITEMS_AS_COUNT,
 
@@ -560,6 +565,9 @@ typedef struct {
 	cwchar* pwszMUFormat;
 
 	// PP - 'pick profile' vars
+#if defined(MA_PC_INPUT)
+	BOOL8 bPPAutoSaveFolder; // entered directly from Campaign using the desktop save folder
+#endif
 	BOOL8 bPPRoomForNewProfiles;
 	BOOL8 bPPNeedToCacheProfiles;
 	s16 nPPBottomSelectionIndex;
@@ -584,6 +592,7 @@ typedef struct {
 #if defined(MA_PC_INPUT)
 	PcPromptStyle nASPromptStyle;
 	PcPromptStyle nASPromptStyleOrig;
+	f32 fASMouseSensitivityOrig;
 #endif
 	u8 nASIndexOfFFBMesh;
 	f32 fASForceFeedbackOrigIntensity;
@@ -664,6 +673,14 @@ static BOOL8 _bPrevGovernorState;
 static BOOL8 _bInGame;
 static BOOL8 _bBootup;
 static _MenuData_t _MenuState;
+#if defined(MA_PC_INPUT)
+static BOOL _bPcCoopMenu = FALSE;
+static BOOL _bPcCoopLaunch = FALSE;
+static u8 _nPcCoopPlayers = 2;
+static PcInputLayout _pcCoopLayout = PCINPUT_LAYOUT_SHARED;
+// Separate from the retail table indices: this page uses generated text.
+enum { _PC_COOP_START, _PC_COOP_PLAYERS, _PC_COOP_INPUT, _PC_COOP_BACK, _PC_COOP_COUNT };
+#endif
 static FResFrame_t _ResFrame;
 static CFStringTable *_pStringTable;
 static FSndFx_FxHandle_t _ahSounds[WPR_DATATYPES_SOUNDS_COUNT];
@@ -684,7 +701,7 @@ static CPlayerProfile *_paProfiles = NULL;// when non-NULL, will point to MAX_PL
 static GameInitInfo_t _GameInitInfo;// filled in when we go to actually start a game
 
 #if defined(MA_PC_INPUT)
-static BOOL _bPcPromptOptionAdded;
+static BOOL _bPcInputOptionsAdded;
 //===================================
 // mouse pointer (PC port)
 //
@@ -790,11 +807,30 @@ static cwchar *_PromptPhrase( u32 nPhrase, s32 nPort ) {
 // On the PC, leaving the audio or advanced settings by Back (Escape, a right click, the Back prompt)
 // keeps what was set, as PC games do. The console convention (Back cancels, only A saves) silently
 // threw away volume changes made with the mouse and then left with Escape.
+static BOOL _bPcSettingsSaveWarningShown = FALSE;
+
 static Wpr_DataTypes_NavCode_e _PcSettingsBackKeeps( Wpr_DataTypes_NavCode_e nNavCode ) {
 	if( nNavCode == WPR_DATATYPES_NAV_CODE_BACK &&
 		( _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_SOUND_OPTIONS ||
 		  _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS ) ) {
-		return WPR_DATATYPES_NAV_CODE_FORWARD;
+		nNavCode = WPR_DATATYPES_NAV_CODE_FORWARD;
+	}
+	if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD &&
+		_MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS ) {
+		// Launch overrides are intentionally not persisted. Try both independent preferences.
+		const BOOL bPromptsSaved = pcinput_PromptStyleIsCommandLineOverride() || pcinput_SavePromptStyleSetting();
+		const BOOL bMouseSaved = pcinput_MouseSensitivityIsOverride() || pcinput_SaveMouseSensitivity();
+		if( !bPromptsSaved || !bMouseSaved ) {
+			DEVPRINTF( "PC settings: could not save %s%s; current session values retained.\n",
+				bPromptsSaved ? "" : "button prompts ", bMouseSaved ? "" : "mouse sensitivity" );
+			if( !_bPcSettingsSaveWarningShown ) {
+				_bPcSettingsSaveWarningShown = TRUE;
+				CMsgBox::Display( "IGSave", Game_apwszPhrases[GAMEPHRASE_WARNING],
+					L"~s0.70PC settings could not be saved.\nBack again keeps them for this session.",
+					Game_apwszPhrases[GAMEPHRASE_ACCEPT], NULL, NULL, 0, TRUE );
+				return WPR_DATATYPES_NAV_CODE_NOTHING;
+			}
+		}
 	}
 	return nNavCode;
 }
@@ -1115,10 +1151,19 @@ static s32 _MouseHoverSelect( u32 nControllerID, s32 nMaxValidIndex ) {
 	return nItem;
 }
 
-// Keyboard or pad input on the mouse's port hides the pointer until the mouse moves again.
+// Keyboard/pad navigation owns the rest of this frame. Merely hiding the pointer
+// leaves _MouseFrame's cached hover/click able to replace the selection afterwards.
 static void _MouseOtherInput( u32 nControllerID ) {
 	if( _MousePort( nControllerID ) ) {
 		pcinput_HideMenuPointer();
+		_bMouseMoved = FALSE;
+		_bMouseRightClick = FALSE;
+		_nMouseClickFrames = 0;
+		_bMouseClickUsed = TRUE;
+		_nMouseWheelStep = 0;
+		_nMouseWheelPending = 0;
+		_nMouseTickTarget = -1;
+		_nMouseTickFrames = 0;
 	}
 }
 
@@ -1324,6 +1369,7 @@ static void _FillInStorageDeviceName( u32 nDeviceID, wchar *pwszTarget );
 /////////////////////////
 static Wpr_DataTypes_NavCode_e _MainMenu_Work( void );
 static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes );
+static void _MainMenu_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes );
 static void _MainMenu_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode );
 ////////////////////////////
 // 'sound setting' functions
@@ -1608,7 +1654,7 @@ static const Wpr_DataTypes_ScreenFunctions_t _aScreenFunctions[WPR_DATATYPES_SCR
 	// WPR_DATATYPES_SCREENS_MAIN_MENU
 	_MainMenu_Work,						// Wpr_DataTypes_WorkFcn
 	_MainMenu_DrawOrtho,				// Wpr_DataTypes_DrawOrthoFcn
-	NULL,								// Wpr_DataTypes_DrawFDrawFcn
+	_MainMenu_DrawFDraw,								// Wpr_DataTypes_DrawFDrawFcn
 	_MainMenu_ExitDecisions,			// Wpr_DataTypes_DecisionsFcn
 	///////////////////////////////////////////
 	// WPR_DATATYPES_SCREENS_SELECT_MEMORY_UNIT
@@ -1959,6 +2005,11 @@ void wpr_system_ResetToStartupScreen( BOOL bBootup ) {
 		return;
 	}
 
+#if defined(MA_PC_INPUT)
+	_bPcCoopMenu = FALSE;
+	_bPcCoopLaunch = FALSE;
+	pcinput_SetLocalCoopSession( false );
+#endif
 	//////////////////////
 	// init the 3d camera
 	_pCamAnimInst->UpdateUnitTime( 0.71f );
@@ -2975,13 +3026,13 @@ static BOOL _Init( void ) {
 
 
 	#if defined(MA_PC_INPUT)
-	// The PC-only prompt selector has no retail data-table row. Append one to both Advanced Settings
-	// variants at load time so existing navigation, selection arrows, and mouse hit-testing can use it.
+	// Append PC input options to both Advanced Settings variants. They use the existing
+	// navigation, selection arrows and mouse hit-testing without modifying retail data.
 	pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS];
-	_bPcPromptOptionAdded = FALSE;
-	if( pScreen->nNumTextElements == _MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_COUNT - 1 ) {
+	_bPcInputOptionsAdded = FALSE;
+	if( pScreen->nNumTextElements == _MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_COUNT - 2 ) {
 		const u32 nOldCount = pScreen->nNumTextElements;
-		Wpr_DataTypes_TextLayout_t *pExpanded = (Wpr_DataTypes_TextLayout_t *)fres_Alloc( sizeof( Wpr_DataTypes_TextLayout_t ) * (nOldCount + 1) );
+		Wpr_DataTypes_TextLayout_t *pExpanded = (Wpr_DataTypes_TextLayout_t *)fres_Alloc( sizeof( Wpr_DataTypes_TextLayout_t ) * (nOldCount + 2) );
 		if( pExpanded ) {
 			for( u32 nText = 0; nText < nOldCount; nText++ ) {
 				pExpanded[nText] = pScreen->pText[nText];
@@ -2992,15 +3043,18 @@ static BOOL _Init( void ) {
 			*pPrompt = *pLast;
 			pPrompt->pwszText = _pStringTable->AddString( L"Button Prompts" );
 			pPrompt->fUnitY = pLast->fUnitY + (pLast->fUnitY - pPrevious->fUnitY);
-			FMATH_CLAMP( pPrompt->fUnitY, -0.94f, 0.94f );
+			Wpr_DataTypes_TextLayout_t *pMouse = &pExpanded[nOldCount + 1];
+			*pMouse = *pLast;
+			pMouse->pwszText = _pStringTable->AddString( L"Mouse Sensitivity" );
+			pMouse->fUnitY = pPrompt->fUnitY + (pLast->fUnitY - pPrevious->fUnitY);
 			pScreen->pText = pExpanded;
-			pScreen->nNumTextElements = (u16)(nOldCount + 1);
-			_bPcPromptOptionAdded = TRUE;
+			pScreen->nNumTextElements = (u16)(nOldCount + 2);
+			_bPcInputOptionsAdded = TRUE;
 		} else {
-			DEVPRINTF( "wpr_system::_Init() : Could not allocate the PC prompt option row.\n" );
+			DEVPRINTF( "wpr_system::_Init() : Could not allocate the PC input option rows.\n" );
 		}
 	} else {
-		DEVPRINTF( "wpr_system::_Init() : Advanced Settings has %u text rows; the PC prompt option was skipped.\n",
+		DEVPRINTF( "wpr_system::_Init() : Advanced Settings has %u text rows; the PC input options were skipped.\n",
 			pScreen->nNumTextElements );
 	}
 	#endif
@@ -3661,6 +3715,8 @@ void wpr_system_IG_SelectScreen( Wpr_DataTypes_Screens_e nScreenIndex ) {
 #if defined(MA_PC_INPUT)
 		_MenuState.nASPromptStyle = pcinput_PromptStyleSetting();
 		_MenuState.nASPromptStyleOrig = _MenuState.nASPromptStyle;
+		_MenuState.fASMouseSensitivityOrig = pcinput_MouseSensitivity();
+		_bPcSettingsSaveWarningShown = FALSE;
 #endif
 		_MenuState.bASForceFeedbackON = FALSE;
 		_MenuState.bASAutoCenter = FALSE;
@@ -3719,9 +3775,6 @@ BOOL wpr_system_IG_Work( void ) {
 				CPlayer::m_pCurrent->SetInvertLook( _MenuState.bASInvertAnalog );
 				CPlayer::m_pCurrent->SetFourWayQuickSelect( _MenuState.bASFourWayQuickSelect );
 				CPlayer::m_pCurrent->SetTargetingAssistance( _MenuState.bASAssistedTargeting );
-#if defined(MA_PC_INPUT)
-				pcinput_SavePromptStyleSetting();
-#endif
 
 				if( _MenuState.nASVibrationTicks == 0 ) {
 					fforce_SetMasterIntensity( _MenuState.nControllerIndex, 0.0f );
@@ -3746,6 +3799,7 @@ BOOL wpr_system_IG_Work( void ) {
 #if defined(MA_PC_INPUT)
 				_MenuState.nASPromptStyle = _MenuState.nASPromptStyleOrig;
 				pcinput_SetPromptStyleSetting( _MenuState.nASPromptStyleOrig );
+				pcinput_SetMouseSensitivity( _MenuState.fASMouseSensitivityOrig );
 				game_PcPromptWork();
 #endif
 				fforce_SetMasterIntensity( _MenuState.nControllerIndex, _MenuState.fASForceFeedbackOrigIntensity );
@@ -3800,7 +3854,13 @@ void wpr_system_IG_Draw( void ) {
 																pViewport->HalfRes.x,
 																pViewport->HalfRes.y );
 	}
-	wpr_drawutils_DrawButtonOverlay( &Wpr_DataTypes_paScreenData[_MenuState.nCurrentScreen], 
+	Wpr_DataTypes_ScreenData_t *pOverlayScreen = &Wpr_DataTypes_paScreenData[_MenuState.nCurrentScreen];
+#if defined(MA_PC_INPUT)
+	if( _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_MAIN_MENU && _bPcCoopMenu ) {
+		pOverlayScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_PROFILE_SELECT];
+	}
+#endif
+	wpr_drawutils_DrawButtonOverlay( pOverlayScreen,
 		_MenuState.nButtonDrawMask,
 		fScaleMultiplier,
 		pViewport->HalfRes.x,
@@ -4736,6 +4796,9 @@ static BOOL _HandleAxisSelections( BOOL bLeftRight, u32 nControllerIndex, s8 &rn
 static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 
 	_MenuState.nButtonDrawMask = WPR_DATATYPES_DRAW_NO_BUTTONS;
+#if defined(MA_PC_INPUT)
+	if( _bPcCoopMenu ) _MenuState.nButtonDrawMask = WPR_DATATYPES_DRAW_AB_BUTTONS;
+#endif
 	
 	if( _MenuState.bFadeScreen ) {
 		// fade the screen in before allowing the user to make a selection
@@ -4746,6 +4809,32 @@ static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 		return WPR_DATATYPES_NAV_CODE_NOTHING;	
 	}
 
+#if defined(MA_PC_INPUT)
+	if( _bPcCoopMenu ) {
+		if( _MenuState.nControllerIndex < 0 ) {
+			_MenuState.nControllerIndex = wpr_system_FindActiveControllerPort( TRUE, TRUE, TRUE );
+		}
+		const s32 nController = _MenuState.nControllerIndex;
+		if( nController < 0 ) return WPR_DATATYPES_NAV_CODE_NOTHING;
+		if( _CheckBackButtons( nController ) ) return WPR_DATATYPES_NAV_CODE_BACK;
+		if( _CheckAcceptButtons( nController ) ) return WPR_DATATYPES_NAV_CODE_FORWARD;
+		const _UpDown_e nMove = _CheckUpDownAxis( nController );
+		if( nMove == _UP && _MenuState.nCurItemIndex > 0 ) --_MenuState.nCurItemIndex;
+		if( nMove == _DOWN && _MenuState.nCurItemIndex < _PC_COOP_COUNT - 1 ) ++_MenuState.nCurItemIndex;
+		const _LeftRight_e nAdjust = _CheckLeftRightAxis( nController );
+		if( nAdjust != _NOT_LEFT_OR_RIGHT ) {
+			if( _MenuState.nCurItemIndex == _PC_COOP_PLAYERS ) {
+				if( nAdjust == _LEFT && _nPcCoopPlayers > 2 ) --_nPcCoopPlayers;
+				if( nAdjust == _RIGHT && _nPcCoopPlayers < MAX_PLAYERS ) ++_nPcCoopPlayers;
+			} else if( _MenuState.nCurItemIndex == _PC_COOP_INPUT ) {
+				_pcCoopLayout = _pcCoopLayout == PCINPUT_LAYOUT_SHARED ? PCINPUT_LAYOUT_SEPARATE : PCINPUT_LAYOUT_SHARED;
+			}
+		}
+		const s32 nHover = _MouseHoverSelect( nController, _PC_COOP_COUNT - 1 );
+		if( nHover >= 0 ) _MenuState.nCurItemIndex = (s8)nHover;
+		return WPR_DATATYPES_NAV_CODE_NOTHING;
+	}
+#endif
 	// see if we have a valid controller index, if not see if a controller has been pressed
 	s32 nControllerIndex = _MenuState.nControllerIndex;
 	if( nControllerIndex < 0 ) {
@@ -4787,6 +4876,9 @@ static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 	}
 
 	if( nCache != _MenuState.nCurItemIndex ) {
+#if defined(MA_PC_INPUT)
+		DEVPRINTF( "PC main menu: selected %d (0 campaign, 1 PvP, 2 co-op, 3 quit).\n", _MenuState.nCurItemIndex );
+#endif
 		ftext_ResetBlinkTimers();
 		fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CURSOR_MOVED] );
 		_MenuState.fModeTimer = 0.0f;// reset the timer
@@ -4801,13 +4893,79 @@ static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 	return WPR_DATATYPES_NAV_CODE_NOTHING;
 }
 
+#if defined(MA_PC_INPUT)
+static void _PcMainMenuLabel( s32 nItem, cwchar *pwszLabel, f32 fScreenY,
+	f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
+	const f32 fX = 0.125f, fY = fScreenY * 0.75f;
+	// The retail labels are meshes. Use the game's angular display font with
+	// a blue rim and gold bevel for new labels, without shipping retail artwork.
+	const f32 fPixelX = 1.0f / (2.0f * fHalfXRes);
+	const f32 fPixelY = 0.75f / (2.0f * fHalfYRes);
+	const f32 afOffsets[8][2] = { {-2,-2}, {0,-2}, {2,-2}, {-2,0}, {2,0}, {-2,2}, {0,2}, {2,2} };
+	for( u32 i = 0; i < 8; ++i ) {
+		ftext_Printf( fX + afOffsets[i][0] * fPixelX, fY + afOffsets[i][1] * fPixelY,
+			L"~f3~w0~aL~t+04~i1~s1.00~C10203599%ls", pwszLabel );
+	}
+	ftext_Printf( fX, fY + 2 * fPixelY, L"~f3~w0~aL~t+04~i1~s1.00~C50330099%ls", pwszLabel );
+	ftext_Printf( fX, fY, L"~f3~w0~aL~t+04~i1~s1.00~C99851099%ls", pwszLabel );
+	_MouseAddItem( nItem );
+	if( _MenuState.nCurItemIndex == nItem ) {
+		f32 fLeft, fTop, fRight, fBottom;
+		Wpr_DataTypes_MeshLayout_t Highlight;
+		Highlight.pMeshInst = wpr_datatypes_FindMeshInst( "gfh_logo05", _nNumMeshes, _paMeshInsts );
+		if( Highlight.pMeshInst && ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+			Highlight.fBiPolarUnitX = fLeft + fRight - 1.0f;
+			Highlight.fBiPolarUnitY = 1.0f - fTop - fBottom;
+			Highlight.fDrawZ = 1.15f + WPR_DATATYPES_LAYER_Z;
+			Highlight.fScale = 1.15f;
+			wpr_drawutils_DrawMesh_WithRot( &Highlight, fScaleMultiplier, fHalfXRes, fHalfYRes, 0, 0, 0 );
+		}
+	}
+}
+#endif
+
 static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
 	Wpr_DataTypes_ScreenData_t *pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_MAIN_MENU];
 
+#if defined(MA_PC_INPUT)
+	if( _bPcCoopMenu ) {
+		ftext_Printf( 0.18f, 0.22f * 0.75f, L"~f1~C99999999~w0~aL~s1.50Co-op Campaign" );
+		ftext_Printf( 0.18f, 0.31f * 0.75f, L"~f1~C99999999~w0~aL~s0.80Experimental local play - 2 to 4 players" );
+		ftext_Printf( 0.18f, 0.36f * 0.75f, L"~f1~C99999999~w0~aL~s0.60%ls", _pcCoopLayout == PCINPUT_LAYOUT_SHARED ?
+			L"Controllers 1-4 control players 1-4. Keyboard is optional." :
+			L"Keyboard / mouse: player 1. Controllers: players 2-4." );
+		ftext_Printf( 0.18f, 0.41f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Starts a new campaign. Progress is not saved." );
+		ftext_Printf( 0.18f, 0.46f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Some missions and cutscenes may not work correctly." );
+		for( s32 nItem = 0; nItem < _PC_COOP_COUNT; ++nItem ) {
+			wchar wszLabel[96];
+			if( nItem == _PC_COOP_PLAYERS ) _snwprintf( wszLabel, 96, L"Players: %u", (u32)_nPcCoopPlayers );
+			else if( nItem == _PC_COOP_INPUT ) _snwprintf( wszLabel, 96, L"Controls: %ls",
+				_pcCoopLayout == PCINPUT_LAYOUT_SHARED ? L"Controllers" : L"Keyboard + controllers" );
+			else _snwprintf( wszLabel, 96, L"%ls", nItem == _PC_COOP_START ? L"Start Local Co-op" : L"Back" );
+			ftext_Printf( 0.18f, (0.53f + nItem * 0.065f) * 0.75f, L"~f1~C99999999~w0~aL~s0.85~C%ls%ls",
+				nItem == _MenuState.nCurItemIndex ? L"40994099" : L"85858599", wszLabel );
+			_MouseAddItem( nItem );
+		}
+		ftext_Printf( 0.18f, 0.79f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Network play: planned, not available" );
+		return;
+	}
+#endif
+#if defined(MA_PC_INPUT)
+	// Make room for the desktop entries without changing the loaded retail layout.
+	Wpr_DataTypes_ScreenData_t DesktopScreen = *pScreen;
+	Wpr_DataTypes_MeshLayout_t DesktopMeshes[3];
+	if( pScreen->nNumMeshElements == 3 ) {
+		for( u32 i = 0; i < 3; ++i ) DesktopMeshes[i] = pScreen->pMesh[i];
+		DesktopMeshes[1].fBiPolarUnitY += 0.20f;
+		DesktopMeshes[2].fBiPolarUnitY += 0.20f;
+		DesktopScreen.pMesh = DesktopMeshes;
+		pScreen = &DesktopScreen;
+	}
+#endif
 	// draw the highlight behind the selected world
 	Wpr_DataTypes_MeshLayout_t Layout, *pCurrent;
 	Layout.pMeshInst = wpr_datatypes_FindMeshInst( "gfh_logo05", _nNumMeshes, _paMeshInsts );
-	if( Layout.pMeshInst ) {
+	if( Layout.pMeshInst && _MENU_ITEMS_MM_START_OFFSET + _MenuState.nCurItemIndex < (s32)pScreen->nNumMeshElements ) {
 		pCurrent = &pScreen->pMesh[_MENU_ITEMS_MM_START_OFFSET + _MenuState.nCurItemIndex];
 
 		Layout.fBiPolarUnitX = pCurrent->fBiPolarUnitX;
@@ -4826,7 +4984,9 @@ static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 		FALSE,
         fScaleMultiplier, fHalfXRes, fHalfYRes );
 #if defined(MA_PC_INPUT)
-	// the items are 3D text meshes
+	_PcMainMenuLabel( _MENU_ITEMS_MM_COOP, L"Co-op", 0.79f, fScaleMultiplier, fHalfXRes, fHalfYRes );
+	_PcMainMenuLabel( _MENU_ITEMS_MM_QUIT, L"Quit to Desktop", 0.865f, fScaleMultiplier, fHalfXRes, fHalfYRes );
+	// the retail items are 3D text meshes
 	for( s32 nItem=0; nItem < _MENU_ITEMS_MM_COUNT; nItem++ ) {
 		if( _MENU_ITEMS_MM_START_OFFSET + nItem < (s32)pScreen->nNumMeshElements ) {
 			_MouseAddMesh( nItem, &pScreen->pMesh[_MENU_ITEMS_MM_START_OFFSET + nItem], fScaleMultiplier, fHalfXRes, fHalfYRes );
@@ -4845,7 +5005,39 @@ static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 	}
 }
 
+static void _MainMenu_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
+#if defined(MA_PC_INPUT)
+	// Text is flushed later; dim only the animated scene behind this page.
+	if( _bPcCoopMenu ) game_DrawSolidFullScreenOverlay( 0.30f, 0.0f );
+#endif
+}
+
 static void _MainMenu_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
+#if defined(MA_PC_INPUT)
+	DEVPRINTF( "PC main menu: navigation %d, selected %d, co-op page %d.\n", nNavCode, _MenuState.nCurItemIndex, _bPcCoopMenu );
+	if( _bPcCoopMenu ) {
+		if( nNavCode == WPR_DATATYPES_NAV_CODE_BACK ||
+			(nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD && _MenuState.nCurItemIndex == _PC_COOP_BACK) ) {
+			_bPcCoopMenu = FALSE;
+			_MenuState.nCurItemIndex = _MENU_ITEMS_MM_COOP;
+			_MenuState.fModeTimer = 0.0f;
+		} else if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD && _MenuState.nCurItemIndex == _PC_COOP_PLAYERS ) {
+			_nPcCoopPlayers = _nPcCoopPlayers < MAX_PLAYERS ? _nPcCoopPlayers + 1 : 2;
+		} else if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD && _MenuState.nCurItemIndex == _PC_COOP_INPUT ) {
+			_pcCoopLayout = _pcCoopLayout == PCINPUT_LAYOUT_SHARED ? PCINPUT_LAYOUT_SEPARATE : PCINPUT_LAYOUT_SHARED;
+		} else if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD && _MenuState.nCurItemIndex == _PC_COOP_START ) {
+			_bPcCoopMenu = FALSE;
+			_bPcCoopLaunch = TRUE;
+			// The no-save launch must not inherit a previous profile's device check.
+			_paProfiles[0].m_SaveInfo.nStorageDeviceID = FSTORAGE_DEVICE_ID_NONE;
+			_MenuState.nMode = WPR_DATATYPES_MODES_SINGLE_PLAYER;
+			_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_NONE;
+			_MenuState.nStartGameMethod = _START_METHOD_NEW;
+			_MenuState.fModeTimer = 0.0f;
+		}
+		return;
+	}
+#endif
 
 	switch( nNavCode ) {
 
@@ -4889,9 +5081,35 @@ static void _MainMenu_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 #else
 			_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_SELECT_MEMORY_UNIT;
 #endif
+#if defined(MA_PC_INPUT)
+			// The desktop backend has one save folder. Reuse the normal device selection
+			// checks and profile-list setup, while retaining the storage error path.
+			_MenuState.bPPAutoSaveFolder = FALSE;
+			if( _MenuState.nCurItemIndex > 0 ) {
+				const Wpr_DataTypes_MUSelectEntry_t *pEntry = &_MenuState.paMUEntries[_MenuState.nCurItemIndex];
+				if( pEntry->bOfferDevice && !pEntry->bDeviceUnusable && pEntry->pDeviceInfo &&
+					pEntry->pDeviceInfo->oeID == FSTORAGE_DEVICE_ID_XB_PC_HD ) {
+					_SelectMU_SP_ExitDecisions( WPR_DATATYPES_NAV_CODE_FORWARD );
+					_MenuState.bPPAutoSaveFolder = (_MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_PROFILE_SELECT);
+					_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_MAIN_MENU;
+				}
+			}
+#endif
 			fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_SUCCESS] );
 			break;
 
+#if defined(MA_PC_INPUT)
+		case _MENU_ITEMS_MM_QUIT:
+			// Let the normal game-loop teardown release audio, graphics and log workers.
+			gameloop_ScheduleExit();
+			break;
+		case _MENU_ITEMS_MM_COOP:
+			_bPcCoopMenu = TRUE;
+			_MenuState.nCurItemIndex = 0;
+			_MenuState.fModeTimer = 0.0f;
+			fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_SUCCESS] );
+			break;
+#endif
 		case _MENU_ITEMS_MM_MULTI:
 			_MenuState.nMode = WPR_DATATYPES_MODES_MULTIPLAYER;
 			// setup the multiplayer join screen
@@ -5374,7 +5592,7 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 	s32 nCache = _MenuState.nCurItemIndex;
 	s32 nASItemCount = _MENU_ITEMS_AS_COUNT;
 #if defined(MA_PC_INPUT)
-	if( !_bPcPromptOptionAdded ) nASItemCount--;
+	if( !_bPcInputOptionsAdded ) nASItemCount -= 2;
 #endif
 
 #if defined(MA_PC_INPUT)
@@ -5476,6 +5694,16 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 				break;
 
 #if defined(MA_PC_INPUT)
+			case _MENU_ITEMS_AS_MOUSE_SENSITIVITY:
+				{
+					const f32 fBefore = pcinput_MouseSensitivity();
+					f32 fValue = fBefore + 0.01f * nLeftRight;
+					FMATH_CLAMP( fValue, 0.01f, 1.0f );
+					if( pcinput_SetMouseSensitivity( fValue ) && fBefore != fValue ) {
+						fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
+					}
+				}
+				break;
 			case _MENU_ITEMS_AS_PROMPTS:
 				nCache2 = _MenuState.nASPromptStyle;
 				_MenuState.nASPromptStyle = (PcPromptStyle)((s32)_MenuState.nASPromptStyle + nLeftRight);
@@ -5639,7 +5867,15 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 				break;
 
 #if defined(MA_PC_INPUT)
+			case _MENU_ITEMS_AS_MOUSE_SENSITIVITY:
 			case _MENU_ITEMS_AS_PROMPTS:
+				if( nItem == _MENU_ITEMS_AS_MOUSE_SENSITIVITY ) {
+					ftext_Printf( fOptionsX, pScreen->pText[i].fUnitY,
+						L"~f1~C%ls~w0~aC~s%.2f%.2fx%ls",
+						bSelected ? WprDataTypes_pwszWhiteTextColor : WprDataTypes_pwszGrayTextColor,
+						pScreen->pText[i].fScale, pcinput_MouseSensitivity() / 0.1f,
+						pcinput_MouseSensitivityIsOverride() ? L" (locked)" : L"" );
+				} else {
 				ftext_Printf( fOptionsX,
 							pScreen->pText[i].fUnitY,
 							L"~f1~C%ls~w0~a%lc~s%.2f%ls",
@@ -5647,6 +5883,7 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 							L'C',
 							pScreen->pText[i].fScale,
 							_AdvSettings_PromptStyleText() );
+				}
 				{
 					f32 fLeft, fTop, fRight, fBottom;
 					if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
@@ -5761,9 +5998,6 @@ static void _AdvSettings_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 	case WPR_DATATYPES_NAV_CODE_FORWARD:
 		// save the changes and return to the profile settings screen
 		_AdvSettings_WorkingVarsToProfile();
-#if defined(MA_PC_INPUT)
-		pcinput_SavePromptStyleSetting();
-#endif
 		_MenuState.nCurItemIndex = _MENU_ITEMS_PS_ADV_CONTROLLER;
 		_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_PROFILE_SETTINGS;
 		_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS;
@@ -5778,6 +6012,7 @@ static void _AdvSettings_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 #if defined(MA_PC_INPUT)
 		_MenuState.nASPromptStyle = _MenuState.nASPromptStyleOrig;
 		pcinput_SetPromptStyleSetting( _MenuState.nASPromptStyleOrig );
+		pcinput_SetMouseSensitivity( _MenuState.fASMouseSensitivityOrig );
 		game_PcPromptWork();
 #endif
 		_MenuState.nCurItemIndex = _MENU_ITEMS_PS_ADV_CONTROLLER;
@@ -5847,6 +6082,8 @@ static void _ProfileSettings_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode 
 			#if defined(MA_PC_INPUT)
 			_MenuState.nASPromptStyle = pcinput_PromptStyleSetting();
 			_MenuState.nASPromptStyleOrig = _MenuState.nASPromptStyle;
+			_MenuState.fASMouseSensitivityOrig = pcinput_MouseSensitivity();
+			_bPcSettingsSaveWarningShown = FALSE;
 			#endif
 			_AdvSettings_ProfileToWorkingVars();
 			_MenuState.bASForceFeedbackON = FALSE;
@@ -7249,6 +7486,25 @@ static void _SelectMU_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 	Wpr_DataTypes_ScreenData_t *pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_SELECT_MEMORY_UNIT];
 	Wpr_DataTypes_MUSelectEntry_t *pEntry = &_MenuState.paMUEntries[_MenuState.nCurItemIndex];
 	BOOL bPrintDeviceName, bWarnAboutNewProfiles;
+
+#if defined(MA_PC_INPUT)
+	if( !pEntry->pDeviceInfo ) {
+		// "None" is a deliberate no-save choice, not a disk reporting zero space.
+		Wpr_DataTypes_ScreenData_t NoSaveScreen = *pScreen;
+		if( NoSaveScreen.nNumTextElements > 2 ) NoSaveScreen.nNumTextElements = 2;
+		wpr_system_DrawBasicScreen( &NoSaveScreen, -1, FALSE, fScaleMultiplier, fHalfXRes, fHalfYRes );
+		ftext_Printf( _MU_SELECT_DISPLAY_NAME_X, _MU_SELECT_DISPLAY_NAME_Y,
+			L"~f1~C70707099~w0~aC~s1.00Play Without Saving" );
+		_MouseAddItem( _MenuState.nCurItemIndex );
+		_MouseAddArrowZones( 0.08f );
+		const FStorage_DeviceInfo_t *pFolder = fstorage_GetDeviceInfo( FSTORAGE_DEVICE_ID_XB_PC_HD );
+		const BOOL bFolderReady = pFolder && (pFolder->uStatus & FSTORAGE_DEVICE_READY_FOR_USE) == FSTORAGE_DEVICE_READY_FOR_USE;
+		ftext_Printf( 0.5f, 0.37f, L"~f1~C70707099~w0~aC~s0.70%ls", bFolderReady ?
+			L"Progress will not be saved.\nSelect Save Folder to use a profile." :
+			L"The save folder is unavailable.\nYou can play, but progress will not be saved.\nCheck the folder and its write permissions." );
+		return;
+	}
+#endif
 			
 	wpr_system_DrawBasicScreen( pScreen, 
 		-1,
@@ -7421,7 +7677,11 @@ static void _SelectMU_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
 	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
 
-	fUnitLen = (f32)fclib_wcslen( pEntry->pwszDisplayName );
+	fUnitLen = (f32)fclib_wcslen(
+#if defined(MA_PC_INPUT)
+		!pEntry->pDeviceInfo ? L"Play Without Saving" :
+#endif
+		pEntry->pwszDisplayName );
 	if( fUnitLen <= 6.0f ) {
 		fUnitLen *= 16.5f;
 	} else if( fUnitLen <= 11.0f ) {
@@ -7445,6 +7705,9 @@ static void _SelectMU_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 }
 
 static void _SelectMU_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
+#if defined(MA_PC_INPUT)
+	_MenuState.bPPAutoSaveFolder = FALSE;
+#endif
 	BOOL bToggleCamera = TRUE;
 	GameSave_SaveInfo_t *pSaveInfo = &_paProfiles[0].m_SaveInfo;
 
@@ -7701,7 +7964,18 @@ static void _SelectProfile_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 f
 	Wpr_DataTypes_TextLayout_t *pText = &pScreen->pText[_MENU_ITEMS_PP_MEM_UNIT + _MENU_ITEMS_PP_START_OFFSET];
 
 	_SafeCopyFStorageName( Wpr_DataTypes_wszTempString, _MenuState.pPPDevInfo->wszName, _MAX_MU_NAME_DISPLAY_LEN );
-	ftext_Printf( pText->fUnitX + (0.055f * (fclib_wcslen( pText->pwszText )/3)), pText->fUnitY,
+	f32 fDeviceNameX = pText->fUnitX + (0.055f * (fclib_wcslen( pText->pwszText )/3));
+#if defined(MA_PC_INPUT)
+	// The PC "Save Location" label is proportional text. Use its rendered width
+	// when it is the final basic-screen text instead of guessing from character count.
+	if( _MENU_ITEMS_PP_MEM_UNIT + _MENU_ITEMS_PP_START_OFFSET + 1 == (s32)pScreen->nNumTextElements ) {
+		f32 fLeft, fTop, fRight, fBottom;
+		if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+			fDeviceNameX = fRight + 0.012f;
+		}
+	}
+#endif
+	ftext_Printf( fDeviceNameX, pText->fUnitY,
 				L"~f1~C%ls~w0~a%lc~s%.2f%ls", 
 				WprDataTypes_pwszWhiteTextColor,
 				L'L',
@@ -7884,6 +8158,13 @@ static void _SelectProfile_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) 
 		break;
 
 	case WPR_DATATYPES_NAV_CODE_BACK:
+#if defined(MA_PC_INPUT)
+		if( _MenuState.bPPAutoSaveFolder ) {
+			_MenuState.bPPAutoSaveFolder = FALSE;
+			_SelectMU_SP_ExitDecisions( WPR_DATATYPES_NAV_CODE_BACK );
+			break;
+		}
+#endif
 		// go back to the MU select screen
 		_MUSelectUpdate( _MenuState.paMUEntries, TRUE );
 		_MenuState.nButtonDrawMask = WPR_DATATYPES_DRAW_AB_BUTTONS;
@@ -10315,6 +10596,26 @@ static Wpr_DataTypes_NavCode_e _PrepareToLoad_Work( void ) {
 
 		fang_MemZero( &_GameInitInfo, sizeof( GameInitInfo_t ) );
 
+#if defined(MA_PC_INPUT)
+		if( _bPcCoopLaunch ) {
+			// Campaign rules with virtual profiles for the wrapper completion screens.
+			_GameInitInfo.nNumPlayers = _nPcCoopPlayers;
+			_GameInitInfo.bSinglePlayer = TRUE;
+			_GameInitInfo.bNewGame = TRUE;
+			_GameInitInfo.nLevelToPlay = 0;
+			_GameInitInfo.nDifficultyLevel = GAMESAVE_DIFFICULTY_NORMAL;
+			for( u32 nPlayer = 0; nPlayer < _nPcCoopPlayers; ++nPlayer ) {
+				_paProfiles[nPlayer].InitNewProfile( TRUE );
+				fang_MemZero( &_paProfiles[nPlayer].m_SaveInfo, sizeof( GameSave_SaveInfo_t ) );
+				_paProfiles[nPlayer].m_SaveInfo.nStorageDeviceID = FSTORAGE_DEVICE_ID_NONE;
+				_paProfiles[nPlayer].m_nControllerIndex = nPlayer;
+				_GameInitInfo.apProfile[nPlayer] = &_paProfiles[nPlayer];
+			}
+			pcinput_SetLocalCoopSession( true, _pcCoopLayout );
+			DEVPRINTF( "Campaign co-op menu: %u local players, %s input, no profile saves.\n", (u32)_nPcCoopPlayers,
+				_pcCoopLayout == PCINPUT_LAYOUT_SHARED ? "controllers" : "keyboard + controllers" );
+		} else
+#endif
 		if( _MenuState.nMode == WPR_DATATYPES_MODES_SINGLE_PLAYER ) {
 			// setup a single palyer game
 			_GameInitInfo.apProfile[0] = &_paProfiles[0];

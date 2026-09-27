@@ -1,387 +1,606 @@
 # HANDOFF - Metal Arms Windows port (read this first)
 
-Current state for the next session, local (Windows) or cloud (Linux). Other documents:
+Current state for the next session or the next model, local (Windows) or cloud (Linux). It is written
+so a model that has never seen the project can pick it up: what exists, how to build, run and test it,
+the diagnostic commands, what is open, and how this user works. Other documents:
 
 | File | What |
 |---|---|
 | `PORTING.md` | Reviewer-facing: build, run, controls, what changed and why, status checklist, known issues. |
 | `CLOUD_SESSION_LOG.md` | Every change made from a cloud session, each with what to verify in a real run. |
-| `docs/handoff-history.md` | The old chronological HANDOFF (sessions 1-24), kept verbatim for the reasoning behind decisions. |
-| `docs/coop-audit.md` | Single-player assumptions to remove for campaign co-op. |
+| `docs/handoff-history.md` | Every earlier HANDOFF, chronological (sections 1-25), for the reasoning behind past decisions. |
+| `docs/coop-audit.md` | Campaign co-op: what is done, what single-player assumptions remain. |
 | `docs/mouse-menus-design.md` | Design for mouse-driven front-end menus. |
 
 ## Goal
 
 A working native Windows build of *Metal Arms: Glitch in the System* that runs the user's retail
-**GameCube** disc data (disc ID `GM5E7D`, rev 0). The user also wants mouse-driven menus and,
-local co-op. A CLI-only campaign player-slot prototype exists; gameplay rules and bot selection are
-not implemented.
+**GameCube** disc data (disc ID `GM5E7D`, rev 0), with mouse-driven menus and, later, local campaign
+co-op. The whole campaign is playable today; the work now is polish, the remaining log errors, and
+co-op.
 
 ## Repository
 
 - Private GitHub repo `cobblecorn/metal-arms-pc-port`. `main` is the verbatim source drop; all work is
   on `x86-port`, so `git diff main..x86-port` is the whole port.
-- **Never commit retail data.** `gamedata/`, disc images and anything extracted from them are
-  git-ignored; tool reports that contain asset values go under ignored `build/`. Before pushing, check
-  `git ls-files | grep -iE '^gamedata/|\.rvz$|\.iso$'` prints nothing.
-- Pushing to `x86-port` is fine. Local and cloud sessions both push there: fetch and rebase your own
-  unpushed commits before pushing.
-- Commit messages end with a `Co-Authored-By:` trailer naming the parallel session model that made the change.
-- Sources under `ma/` are **CRLF**; keep them CRLF (edit byte-safely, or normalize after editing).
-  Port files (`port/`, `tools/`, docs) are LF.
+- **Never commit retail data.** `gamedata/`, `main.dol`, disc images (`.rvz`/`.iso`) and anything
+  extracted from them are git-ignored; tool reports that contain asset values go under ignored `build/`.
+  Before pushing: `git ls-files | grep -iE '^gamedata/|main\.dol|\.rvz$|\.iso$'` must print nothing.
+- Push to `origin x86-port` after the change is built and tested. Fetch and rebase your own unpushed
+  commits first if another session may have pushed.
+- Use a `Co-Authored-By:` trailer only when a collaborator is explicitly credited.
+- Sources under `ma/` are **CRLF**; keep them CRLF. Port files (`port/`, `tools/`, docs) are LF.
+  `python tools/eol.py check` lists files whose endings differ from the committed file;
+  `python tools/eol.py fix FILE...` repairs them. Run it before every commit.
+- The untracked `windows icon/` folder is the user's; leave it alone.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `ma/` | Original Swingin' Ape source: engine in `ma/Lib/Fang2`, game in `ma/App/ma`, tools in `ma/App/*`. Port changes are small and in place. |
-| `port/main_win.cpp` | Win32 entry point (replaces the MFC launcher): options, crash/CRT diagnostics, boot. |
+| `ma/` | Original Swingin' Ape source: engine in `ma/Lib/Fang2`, game in `ma/App/ma`, tools in `ma/App/*`. Port changes are small and in place, under `#if FANG_WINGC` (the Windows build using GameCube data) or `MA_PC_INPUT`. |
+| `port/main_win.cpp` | Win32 entry point (replaces the MFC launcher): options, logging, crash/CRT diagnostics, stall sampler, test keys, boot. |
 | `port/gcdata.cpp`, `port/gcmesh.cpp`, `port/gcaudio.cpp` | GameCube data converters: tables, textures, meshes and collision, worlds, animations, particles, fonts, camera animations, sound banks and streams. |
-| `port/pc_input.cpp` | Keyboard/mouse and XInput mapped onto Fang's pads; mouse look; input layouts. |
-| `port/compat/` | Direct3D 8 API on top of D3D9 (`d3d8_compat.cpp`), minimal D3DX. |
-| `tools/` | Build helpers and retail-data tools (below). |
+| `port/pc_input.cpp` | Keyboard/mouse and XInput mapped onto Fang's pads; mouse look; menu pointer; typed text; input layouts; prompt style. |
+| `port/discord_rpc.cpp` | Discord Rich Presence over the IPC pipe (no SDK). |
+| `port/compat/` | Direct3D 8 API on top of D3D9Ex (`d3d8_compat.cpp`), minimal D3DX. |
+| `tools/` | Test runners, log tools, retail-data tools (see Diagnostics). |
 | `gamedata/` (ignored) | `sys/main.dol`, `files/` (`mettlearms_gc.mst`, `Movies/*.bik`, `*.wvs`), `mst/` (extracted files). |
+| `build/` (ignored) | Build output; `build/logs/` test logs; `build/shots/` captures; `build/test-saves/` test profiles. |
 
 ## Build and run (Windows)
 
-Visual Studio 2022 (x86 tools), CMake 3.20+, Python 3. 32-bit only.
+Visual Studio 2022 (x86 tools), CMake 3.20+, Python 3 (Pillow for screenshot helpers). 32-bit only.
 
     cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
+    cmake --build build --config Release --target ma_port -- -nologo -v:m
     cmake --build build --config Debug --target ma_port -- -nologo -v:m
-    build\Debug\ma_port.exe -data gamedata\files -mission wecdsneak01 -log build\logs\run.log
+    build\Release\ma_port.exe -data gamedata\files -mission wedmmines01 -log build\logs\play.log
 
-All options are in `PORTING.md` and at the top of `port/main_win.cpp` (`-level`, `-mission`,
-`-world-only`, `-res`, `-fullscreen`, `-no-audio`, `-shots`, `-mouse-sensitivity`, `-aim-assist`,
-`-input-layout`, `-save-dir`, `-debug-info` for the on-screen script monitors and debug overlays). `-mission <world>` is the normal way to test a campaign level.
+- **Release** (`build/Release/ma_port.exe`) is what the user plays: ~1.5 ms of frame work. It is built
+  with `/Zi /Oy-` and linked `/DEBUG`, so crash stacks and the stall sampler still symbolize.
+- **Debug** has the engine's asserts (`FASSERT`) and the CRT's checks: use it for sweeps and bug hunts.
+- Input unit tests: `cmake --build build --config Debug --target ma_input_tests -- -nologo -v:m`, then
+  `build\Debug\ma_input_tests.exe` (must print that all tests passed). Run after touching `pc_input`.
+- A running game locks its exe: close that PID before relinking.
+- Git Bash turns `/flag` arguments into paths: pass MSBuild options as `-nologo -v:m`. PowerShell wraps
+  native stderr as errors.
 
-## Debugging (Windows)
+### Game options (all in `port/main_win.cpp`'s header comment)
 
-- **A run that looks hung is usually a dialog.** `main_win.cpp` routes CRT asserts, `/RTC` failures,
-  pure-virtual calls and invalid-parameter errors to the log, but check anyway:
-  `Get-Process -Name ma_port | select MainWindowTitle`, and `taskkill /F /IM ma_port.exe` to clear it.
-- Crashes and the first occurrence of each assert log a symbolized stack. Asserts are rate-limited
-  (first 10, then 100, 1000, ...). Treat a firing assert as a real bug.
-- Engine captures: `-shots <dir> -shot-every <frames>`.
-- `tools/mission_sweep.sh <secs> <world>...` runs each mission and counts loads, crashes, asserts,
-  script/data errors and audio problems (logs under `build/logs/sweep/`). Run it in the foreground.
-- `tools/port_run.py` runs a muted, Discord-off test build and summarizes its log; `--keep` and `--stop`
-  support menu-driving runs. `tools/menu_drive.py` posts mouse messages to a selected game PID and can
-  wait for a pause-menu screenshot. `tools/eol.py` checks or fixes line endings against Git.
-- `tools/audio_meter.ps1` reads a process's audio peak meter (is the game audible?).
-- Retail formats and schemas: `tools/mst_list.py` (list/extract the `.mst`), `tools/gamedata_dump.py`
-  (binary `.csv` tables as JSON), `tools/dol_vocab.py` (retail table vocabularies from `main.dol`),
-  `tools/dol_xref.py` (PowerPC code referencing an address). Use them to settle schema questions from
-  retail evidence instead of guessing.
-- Git Bash turns `/flag` arguments into paths: use `-nologo -v:m`. PowerShell wraps native stderr as
-  errors.
+| Option | What |
+|---|---|
+| `-data DIR` / `-mst FILE` | data directory (default `gamedata\files`) / master file (default `mettlearms_gc.mst`) |
+| `-mission WORLD` | start a campaign level with its mission data (the normal way to test a level) |
+| `-coop 2..4` | with `-mission`: local campaign co-op, 2-4 players (shared or separate inputs) |
+| `-level WORLD` / `-world-only WORLD` | debug-launch a world / load a world and exit |
+| `-dev-menu` | boot into the development level picker instead of the retail front end |
+| `-res WxH`, `-fullscreen`, `-no-vsync` | window size (default 1280x960), fullscreen, present without vsync (for measuring) |
+| `-mute` | all audio runs (so audio errors are logged) but plays silently; **use for every test run** |
+| `-no-audio` | skip audio setup entirely (faster loads; audio errors are then meaningless) |
+| `-log FILE`, `-asset-log FILE`, `-console` | engine log, resource-loading log, a console window showing the log |
+| `-port-diag` | the port's `PORT-*` diagnostics (perf, hitches, stalls, audio mix); also `MA_PORT_DIAG=1` |
+| `-debug-info` | the game's on-screen debug overlays (script messages/errors, fps, AI and checkpoint drawing) |
+| `-shots DIR -shot-every N` | save the back buffer as `DIR\shot_NNN.bmp` every N frames (default 300) |
+| `-test-keys "S:VK,..."` | press virtual key VK S seconds after launch; `gS` counts from the first gameplay frame. Works without focus |
+| `-discord-app-id ID\|off` | Rich Presence application (default: the port's own); `off` for tests |
+| `-input-layout shared\|separate`, `-button-prompts auto\|keyboard\|xbox\|playstation`, `-mouse-sensitivity N`, `-aim-assist auto\|on\|off`, `-save-dir DIR`, `-instance-label NAME` | input, prompts, saves, a window-title label |
+
+Useful virtual keys for `-test-keys`: Esc `0x1B` (pause; skips movies), Space `0x20` (jump; skips
+movies), Enter `0x0D`, E `0x45` (use/drive), Q `0x51` / R `0x52` (weapon lists), W `0x57`.
+
+Environment variables: `MA_PORT_DIAG`, `MA_PORT_STALL_MS` (stall threshold, default 100),
+`MA_PORT_TEST_KEYS`, `MA_PORT_SHOTS`/`MA_PORT_SHOT_EVERY`, `MA_PORT_POINTER_DEBUG=1` (outline menu hit
+boxes), `MA_PORT_TEXPROBE=1` (dump texture instances), `MA_PORT_INPUT_LAYOUT`,
+`MA_PORT_BUTTON_PROMPTS`, `MA_PORT_MOUSE_SENSITIVITY`, `MA_PORT_AIM_ASSIST`, `MA_PORT_SAVE_DIR`,
+`MA_PORT_DISCORD_APP_ID`, `MA_PORT_DISCORD_LARGE_IMAGE`/`_TEXT`.
+
+## Where development is (2026-09-27)
+
+| Area | State |
+|---|---|
+| Data | Every retail asset type converts: tables, GX textures, static/skinned/streamed meshes and kDOP collision, worlds and visibility, animations, AI graphs, particles, fonts, camera animations, sound banks, DSP-ADPCM streams. All 393 scripts bind every native. |
+| Missions | All 42 campaign missions load and run under the sweep (`-mission`, Debug, 90 s each, scripted jumps). See "Mission sweep" below for the last result. |
+| Rendering | Direct3D 9Ex behind the D3D8 API. Baked vertex lighting, HUD, particles, decals. Glitch's dark legs fixed (`fmesh_InitNormalSphere`). Not rechecked since D3D9Ex: alt-tab, fullscreen switching, window resize. |
+| Front end | Retail front end (language, logo movies, main menu, profiles, campaign) with the mouse: hover, click, right click = Back, wheel. Pause menu and its settings screens take the pointer; On/Off, arrows and bars take clicks (user confirmed). Generated controller chart. Back keeps settings changes. |
+| Input | Keyboard/mouse (raw mouse look, auto capture) and XInput; mouse aiming in vehicles and manned guns including the AA gun (Hold Your Ground, user confirmed). Keyboard/Xbox/PlayStation prompts, flush left of the text. Typed profile names. |
+| Audio | MusyX banks, streams, and the GameCube volume chain. Gameplay audio after the intro movies fixed this session (39 of 39 samples audible in a meter run); the user confirmed audio in play. |
+| Movies | Bink on the game's DirectSound device, 16 MB read-ahead, heap allocations. |
+| Performance | Log writes on a background thread, stream loads on a worker; no stalls in normal play except a rare vertex-buffer lock wait (Open work 2). |
+| Saves | Profiles in `%APPDATA%\Metal Arms PC Port\Saves`; checkpoints (1 MB). Checkpoint write-failure handling compiles but is untested. |
+| Discord | Connects under the port's application; Discord accepts the activity. No image asset. |
+| Co-op | Experimental PC menu entry (2-4 players, selectable controls); command line (`-mission W -coop N`): start points beside player 1, respawn beside a standing partner, scripts use player 1. Two-player menu launch verified; physical multi-pad play pending; no progress saving. See `docs/coop-audit.md`. |
+
+### Information item counts and pause-page scope (2026-09-27)
+
+- The active pause build sets `_4_SCREEN_SETUP` to FALSE, intentionally using
+  Options and Information only. Primary/Secondary Equipment screens in source
+  are inactive in this configuration; previous attempts to reach them were
+  misclassified as incomplete navigation tests. Do not enable four-page mode
+  solely for a visual test.
+- PC item counter text now uses the slot's text-area scale rather than fixed
+  retail texels. Isolated muted Debug captures `pc_info_counts_wide`
+  (1920x1080) and `pc_info_counts_classic` (1280x960) show the counters readable
+  inside their item slots. The Washer description and objective remain contained.
+- Debug/Release builds pass. No crash/assert/audio/script errors in these runs.
+  Physical pointer and longer item descriptions are still pending.
+
+### Information page readability (2026-09-27)
+
+- PC pause Information page item descriptions and mission objectives no longer
+  force one-to-one retail font pixels. They use their existing text-area line
+  sizing and wrapping; console builds retain the retail formatting.
+- Debug/Release builds pass. Isolated muted Debug captures
+  `pc_info_readable_wide` (1920x1080) and `pc_info_readable_classic`
+  (1280x960) show the Washer description and Mines objective readable and
+  contained within their panels. Logs show no crash/assert/audio/script errors.
+- `pc_inventory_primary` and `pc_inventory_info` both reached Information via
+  scripted pause-page keys; the later section clarifies the two-page build.
+  Longer item text, physical pointer and live resize remain pending.
+
+### Widescreen pause layout correction (2026-09-27)
+
+- Pause fdraw layout and mouse cursor now scale x from half-width and y from
+  half-height / 0.75, matching the retail normalized coordinate range. The old
+  width-only scale pushed highlights and pad prompts off their text at 16:9.
+- The helper supplies matching full forward/inverse matrices, confined to 2D
+  fdraw. CFXfm uniform-scale metadata is not used for sphere/normal calculations
+  in these passes. Generated PlayStation symbols additionally compensate their
+  local x scale to stay round while the layout fills the display.
+- Debug/Release builds pass. Debug captures `pc_pause_wide` (1920x1080,
+  PlayStation) and `pc_pause_classic` (1280x960, keyboard) confirm aligned Options
+  highlights, frame and unclipped prompts. `pc_pause_wide_final/options.png`
+  confirms round PlayStation symbols after the final correction.
+  Its final capture also verifies Advanced Settings Cross/Circle footers at
+  1080p. No crashes/asserts/audio/script errors; loading/Present stalls remain.
+- Tests use muted isolated instances. Physical pointer alignment, inventory
+  pages beyond Information, Xbox art proportions, alternate aspect ratios and
+  live resize still require coverage. This is not a claim of complete widescreen UI support.
+
+### Xbox dialog alignment and two-button coverage (2026-09-27)
+
+- Xbox dialog prompts retain their retail atlas art but now use the measured
+  action label's center and height, with allowance for the atlas cell padding.
+  This matches the placement used by the generated PC themes.
+- Debug/Release builds passed. Debug `pc_dialog_xbox_confirm` and
+  `pc_dialog_playstation_confirm` visibly reached the Quit confirmation at
+  1920x1080: A/B and Cross/Circle align with Accept/Cancel. Final captures are
+  in build/shots/<run>/latest.png; corresponding logs have no crash/assert,
+  audio or script errors. Existing loading/render hitches remain.
+- Runs were muted and isolated, ended after 57 seconds, and did not accept the
+  quit confirmation. Physical pads and alternate Y/Triangle remain unverified.
+
+### Widescreen pause-menu issue found (2026-09-27)
+
+- 1920x1080 captures in `pc_dialog_xbox_pair` and
+  `pc_dialog_playstation_pair` show the pause Options highlight displaced from
+  its label and bottom/top pad prompts clipped. This is outside the fixed dialog
+  coordinate path: do not claim the full pause screen is widescreen-correct.
+- Starting point: CPauseScreen::Draw uses xfmTemp.BuildScale(HalfRes.x) for both
+  axes of a layout whose y range is +/-0.75. The cursor repeats that uniform
+  scale. Audit those transforms, the ortho viewport and wrapper entry/return
+  state together; preserve the working 4:3 layout and mouse hit coordinates.
+- Script navigation: W/S drive pause-menu selection. Arrow keys drive the right
+  stick and did not move selection in the initial pair of runs.
+
+### PlayStation and widescreen dialogs (2026-09-27)
+
+- Fixed PlayStation message-box glyphs using centered coordinates in a top-left
+  pixel viewport. The glyph helper now accepts y-down drawing (including an
+  upright Triangle); regular wrapper callers keep y-up coordinates.
+- Widescreen verification exposed dialog text using display aspect instead of
+  the PC ftext 0..0.75 vertical range. Corrected title, body and all three action
+  labels under MA_PC_INPUT. This prevents text drifting above its dialog at 16:9.
+- Dialogs now measure each action label before drawing generated prompts. Their
+  center and right edge follow the actual text bounds; PlayStation icon radius
+  follows the text height. Keyboard keycaps retain their capped readable scale.
+- Debug/Release builds pass. Muted isolated Debug captures verify the Accept
+  Cross at 1920x1080 (`pc_dialog_ps_aligned`) and keyboard Space at 1280x960
+  (`pc_dialog_keyboard_aligned`), under build/shots and build/logs. Both reached
+  the settings write-failure warning without crashes/asserts/audio/script errors.
+  Loading/render hitches remain. Physical controller input, Circle/Triangle
+  dialogs and the Xbox dialog theme still need runtime coverage.
+
+### Dialog keyboard keycaps (2026-09-27)
+
+- Message boxes used top-left screen pixels but the generated keyboard keycap
+  helper drew centered y-up geometry. Text appeared, while the raised key and
+  border were misplaced. Added an explicit screen-pixel mode to both keycap
+  helpers; message boxes select it and wrapper callers retain their default.
+  Keycap drawing restores culling after supporting either coordinate direction.
+- Debug/Release builds passed. Muted, isolated Debug `pc_dialog_keycap` capture
+  `build/shots/pc_dialog_keycap/warning-keycap.png` confirms the Space keycap
+  border and label align next to Accept; earlier frames show normal wrapper
+  keycaps intact. No crash/assert/audio/script errors; existing stalls remain.
+- The PlayStation coordinate follow-up is addressed in the newer section above;
+  that section records the remaining theme coverage limits.
+
+### PC settings write-failure feedback (2026-09-27)
+
+- Advanced Settings now checks both PC preference writes before leaving, in the
+  frontend and pause wrapper. Locked launch overrides are skipped. A failed
+  write shows the existing warning dialog once per visit; dismissing it and
+  selecting Back again retries and permits leaving with session values intact.
+- Fixed keyboard message-box prompts overlapping their action text: key labels
+  now have a capped scale and align to the retail glyph's right edge. Xbox and
+  PlayStation glyph paths are unchanged.
+- Debug/Release builds passed. Isolated Debug `pc_settings_final` deliberately
+  blocked the settings directory with a file. Visually confirmed the fitted
+  warning (`build/shots/pc_settings_final/warning.png`). The earlier
+  `pc_settings_warning_fixed` run confirmed dismissal and return to Options.
+  No crash/assert/audio/script errors. Loading/Present stalls still occur.
+- Test uses -mute, isolated saves and LOCALAPPDATA. Physical pad operation and
+  frontend runtime coverage of this warning remain pending; both wrapper paths
+  share the same helper. No changes to actual checkpoint write-failure handling.
+
+### Save-folder failure UI (2026-09-27)
+
+- Verified the Campaign shortcut's error fallback with a file deliberately used
+  as `-save-dir`: backend logged No usable save directory and the menu stayed
+  usable. This fixture is under ignored build/test-saves; user saves unaffected.
+- On PC, the no-device selection now reads Play Without Saving, hides meaningless
+  free-space/profile zeroes, and explains an unavailable folder plus the lack of
+  progress saving. If the folder is available, it instead explains how to choose
+  Save Folder. Existing confirmation/launch behavior is unchanged.
+- Release/Debug builds passed. Debug `pc_save_failure_ui` screenshot confirms the
+  final layout and failure message (`build/shots/pc_save_failure_ui/latest.png`).
+  No crashes/asserts/script/audio errors; the injected storage initialization error
+  is expected. Startup stalls remain. This checks the fallback UI, not checkpoint
+  write failures or the full no-save campaign flow. All test processes closed.
+
+### Input handoff and profile verification (2026-09-27)
+
+- `_MouseOtherInput` now clears the wrapper's cached same-frame hover, click,
+  right-click, wheel and tick-drag state after keyboard/controller navigation.
+  Previously it only hid the pointer, leaving `_MouseHoverSelect` able to apply
+  cached mouse input after a key/stick selection. This is a source-confirmed
+  conflict; it is not established as the cause of earlier test-route variations.
+- Release and Debug builds passed. `pc_profile_direct` (muted, isolated settings
+  and saves; keys `10:0x20,14:0x1B,22:0x20`) visibly reached Select Profile directly
+  from Campaign, with proper space between Save Location and Save Folder.
+  Screenshot: `build/shots/pc_profile_direct/latest.png`. No crash/assert/script/
+  audio errors; startup stalls remain. This closes the profile-label visual check.
+- Earlier `pc_profile_spacing` stopped at the main menu, so it is not profile
+  verification. All runs ended and no game/test processes remain. Simultaneous
+  physical mouse + controller interaction is still not exercised.
+
+### Main-menu style follow-up (2026-09-27)
+
+- User requested matching the existing label style. Generated Co-op and Quit labels
+  now use the already loaded angular display font (slot 3), italic tilt, a blue
+  outline and layered gold face/shadow. Selected labels reuse the retail green
+  highlight mesh centered on the measured text bounds. Labels remain gold when
+  selected. The font uses uppercase glyphs; these approximate the mesh lettering,
+  rather than replacing or shipping extracted retail assets.
+- Release/Debug builds passed. Muted `pc_menu_style` visually confirms the labels
+  and selected Quit highlight in `build/shots/pc_menu_style/latest.png`; Quit
+  exited by itself with code 0. No crashes/asserts/audio/script errors; startup
+  and shutdown stalls remain. Test used isolated settings/saves and closed.
+- Added and passed input checks for all four controller slots, separate keyboard
+  routing, restoring configured layout, and invalid session-layout fallback.
+  These validate mapping logic, not physical multi-controller gameplay.
+- User is away: continue automated verification, record physical pad/audio checks
+  as pending, and do not wait for user verification to advance independent work.
+
+### Desktop exit follow-up (2026-09-27)
+
+- Added PC-only Quit to Desktop to the main menu, using gameloop_ScheduleExit()
+  for ordinary game-loop and application teardown. Mouse hit target and existing
+  keyboard/controller navigation include the new fourth item.
+- Main-menu drawing makes a temporary copy of the three retail mesh layouts and
+  moves the two selection meshes up. Co-op and Quit fit below them; loaded retail
+  layout data is not modified. No change to console menu entries.
+- Release and Debug builds succeeded. Muted `pc_desktop_quit` with isolated saves
+  and settings selected Quit and exited by itself with code 0 before the runner
+  timeout. No crashes/asserts/audio/script errors; startup loading stalls remain.
+  `build/shots/pc_desktop_quit/latest.png` visibly confirms all four menu entries
+  and the selected Quit button. Physical controller and pointer acceptance were
+  not exercised by this scripted-key run. No game/test processes remain.
+
+### Controller-first co-op menu follow-up (2026-09-27)
+
+- User requires controller-only co-op. Menu now defaults to Controllers, mapping
+  pads 1-4 to P1-P4 (keyboard optional for P1), with a Keyboard + controllers
+  alternative and Players 2-4 selector. No progress saving; networking inactive.
+- CLI co-op no longer rejects shared layout or forces separate layout. Normal
+  configured layout applies, shared by default. Use `-input-layout separate` for
+  keyboard P1 + pads P2-P4. Temporary menu routing restores configured input at
+  startup reset. `docs/coop-network-plan.md` describes current behavior.
+- Added sparse main-menu navigation logs. `pc_menu_trace` proved co-op entry.
+  `pc_coop_controls` proved Back, re-entry and a two-player controllers-layout
+  launch into Mines. Split-screen rendered; the expected missing-P2-controller
+  prompt appeared. No crashes/asserts/audio/script errors; loading stalls remain.
+  The scripted route did not prove four-player launch or switching controls.
+- All finite runs used mute, Discord off, isolated saves/settings and ended.
+  Physical multi-pad play remains unverified; do not expand gameplay scope.
+- Co-op page now uses standard Accept/Back prompts. Removed an attempted borrowed
+  panel mesh after its capture showed rendering artifacts; use a dimmed animated
+  background instead. Final dimming change builds, visual check pending.
+
+### Co-op menu prototype (2026-09-27)
+
+- PC main menu adds Co-op with a separate Start Local Co-op / Back screen. It
+  clearly labels two-player local play as experimental, no progress saves, and
+  network play as unavailable. Start uses campaign level 0 and virtual profiles.
+- Keyboard/mouse owns player 1; first controller owns player 2. A temporary input
+  routing override restores the configured layout at startup-menu reset.
+- Release and Debug builds succeeded. Follow-up captures found the initial Co-op
+  label offscreen: ftext Y uses a 0..0.75 coordinate range. Fixed the new menu's
+  positions, explicit colors, and two-decimal scale escapes. Main-menu label now
+  visibly renders (`build/shots/pc_coop_menu_checked/submenu-check.png` is actually
+  a main-menu capture). Co-op submenu navigation/launch remains unverified: the
+  scripted routes reached main/PvP join instead. Do not count these as co-op tests.
+- Finite muted runs `pc_coop_menu_visual`, `pc_coop_menu_layout`,
+  `pc_coop_menu_checked`, and `pc_menu_routes` ended without logged crashes,
+  asserts, audio or script errors. Startup loading stalls remain. No personal
+  saves/settings used. All runners and games closed.
+- Source follow-up: reacquire controller selection after hotplug in the co-op
+  submenu; initialize virtual profiles with InitNewProfile(TRUE), clear their
+  storage metadata, and clear the prior profile device before the no-save launch.
+  These changes build but still require runtime verification.
+- Profile screen now positions the save-folder name after the measured label
+  width (when the label is the final text row), fixing the character-count spacing
+  estimate. Visual verification of this change is pending.
+- Changes remain uncommitted with the earlier PC menu work.
+- Read `docs/coop-network-plan.md` for source findings and staged network design.
+  No networking is implemented. AI, cutscenes and campaign rules still have the
+  limitations in `docs/coop-audit.md`; keep further gameplay work out of this pass.
+
+### PC input polish follow-up (2026-09-27)
+
+- Advanced Settings now has a **Mouse Sensitivity** row in the front end and pause settings.
+  It shows a multiplier of the default 0.1 degrees/count, changes in 0.10x steps (0.10xÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ10.00x),
+  and saves on Back/Accept under Local AppData alongside Button Prompts. The profile's existing
+  Look Sensitivity still multiplies mouse look. Valid launch/environment overrides lock the row
+  and do not overwrite the saved preference. Invalid settings fall back to the default.
+- `pcinput_Sample` previously discarded scripted test keys whenever the window lacked focus,
+  contradicting the documented test recipe. Scripted keys now bypass that gate; the physical
+  controller sample is zeroed first so real background input remains blocked.
+- Debug and Release builds succeeded. `ma_input_tests` passed, including isolated settings-file
+  round trips, invalid values, override precedence/protection, and background scripted input.
+  The Release `pc_mouse_verified` run navigated to the new row, changed it from 1.00x to 1.10x,
+  and saved `MouseSensitivity=0.110000` on Escape. No crashes, asserts, script or audio errors;
+  one 110 ms Present stall remains. All test processes and runners were confirmed stopped.
+  Captures and logs are under `build/shots/pc_mouse_verified/` and `build/logs/pc_mouse_verified.log`.
+  All private runs used `-mute` with separate test settings; no listening check was performed.
+- Pause Advanced Settings and Audio Levels now use the localized Back footer, matching their
+  save-on-exit behavior and the front-end label. Debug/Release builds passed; `pc_back_footer`
+  visibly confirmed the new footer without crashes/asserts/script/audio errors (one Present stall).
+- `menu_drive.py` now refuses pointer actions when the target window is unfocused or minimized,
+  instead of reporting success for input the game discards. Its documentation now states the focus
+  requirement. Use `-test-keys` for unattended background navigation.
+- Front-end checks (`pc_front_settings`, `pc_front_existing`) created an isolated profile and loaded
+  it again to the Launch screen. Advanced Settings there still needs a visual check; posted pointer
+  input stopped working when focus changed. One capture showed a Reset confirmation; No was selected,
+  and the existing profile loaded afterwards. Its trigger was not established. All tests were muted,
+  used `build/test-saves/`, and their processes were closed. Retail front-end and pause layout tables
+  have identical option-row positions, but this alone does not verify front-end runtime behavior.
+
+### This session (2026-09-27, final pass), newest first
+
+Commits `9a0268a`, `fcdaeb0`, `8241ffb`, `84cdfae`, all pushed.
+
+1. **Mission sweep fixes** (`84cdfae`), from running all 42 missions and grouping their log errors:
+   - **Crash opening Shady's shop in `wessstatn01`** (`BarterTypes.cpp`, `CBarterLevel::InitLevel`): the
+     sale-chain array was sized to the candidate items alone, so a level listing more chains wrote past
+     it, and chains left without an item were read. Now sized chains + candidates, the fill is bounded,
+     and `m_nSaleChains` is the number filled. **Not yet confirmed in play by the user.**
+   - **Audio assert in `WEWJjourn01`**: an emitter with an outer radius below DirectSound's minimum;
+     `Create3D` clamps it to `DS3D_DEFAULTMINDISTANCE` (`fdx8audio.cpp`).
+   - Budgets raised for the PC (`fang.cpp`, WINGC): collision impacts 4096, decals 400 / 6000 vertices
+     (both ran out in busy fights).
+   - Log noise removed where the retail game ignores the same data: retired items (Mil Translator,
+     Antenna, EUK, Mission Briefing) in `ItemInst.cpp`; weight class `none` and the BotDie lookup in
+     `bot.cpp`; sound group `None` in `fsound.cpp`; a missing intro movie in `level.cpp`.
+   - `-mute`, `tools/mission_parallel.py` options (`--quiet`, `--test-keys`, `--no-audio`) and the new
+     `tools/log_errors.py`.
+2. **Campaign co-op** (`8241ffb`): start points (`CStartPtMgr::InitLevel`: 3 units beside or 4 behind
+   player 1 instead of inside walls), `_CoopRespawnNearPartner` (`player.cpp`: a player who dies or falls
+   out comes back beside a standing partner; the level checkpoint restore runs only when nobody is
+   standing), `_ScriptPlayer()` / `_ScriptSetPlayersControl` (`MAScriptTypes.cpp`: scripts and cutscenes
+   act on player 1 and freeze everyone). Split screen verified; respawn not yet exercised.
+3. **AA gun aims with the mouse** (`fcdaeb0`, `botAAgun.cpp`): it only read the right stick; now adds
+   `TakeMouseLookDelta` to heading and pitch. User confirmed.
+4. **Gameplay audio after the intro movies** (`9a0268a`, `fdx8audio.cpp`): once Bink's heap allocation
+   let the 110 MB intro play, emitters paused by it came back without voices:
+   - `CFAudioEmitter::Pause(FALSE)` on a voiceless emitter now requests PLAY (it asked to unpause a voice
+     it did not have);
+   - `_ResumeStrandedEmitters()` (start of `faudio_Work`) resumes emitters left paused above the
+     current pause level;
+   - 3D voices are allocated for emitters already in range (listener state PRESENT/SWITCHED), not only
+     on ENTERED.
+   The `PORT-MIX` snapshot now counts voiced vs. voiceless emitters and names in-range voiceless ones.
+5. **Q/R weapon lists no longer flicker** (`9a0268a`, `gamepad.cpp`): the weapon list pauses the game
+   loop, and mouse look (hence menu mode) was keyed off any pause; now off the pause menu only
+   (`pausescreen_IsActive()`).
+
+Earlier this day (details in `docs/handoff-history.md` section 25): D3D9Ex and the dark-legs fix
+(another model), the pointer in the pause menu and its settings screens, clickable settings, the
+controller chart, flush-left prompts, Back keeps settings, the hitch fixes (async log, stream worker,
+Bink read-ahead), the Release build, Discord, test tooling, and another model's pass (Xbox menu map on
+PC, prompt settings, `-coop`, `-asset-log`, `mission_parallel.py`, checkpoint write hardening).
+
+### Mission sweep
+
+The last full sweep, `sweep3`, after all the fixes above:
+
+SWEEP3_RESULT
+
+Warnings that remain in the logs (all reproduce retail data the source does not handle; none crash):
+
+- **`Unknown command 'shield'`** (hundreds of lines, 12 levels): retail grunts have a shield the source
+  lacks. `main.dol` has `GruntShield`; the Titan's shield (`CEShield`, `bottitan.cpp`, "TitanShield")
+  shows how a bot owns one. This is a missing retail feature, the most visible item left.
+- Explosion `rocket`, texture `tfa1sawstr4`, a duplicate `laserl3` decal table, sounds `Door Locked` and
+  `SOM_MOpen`, the `Vehicle` bank (absent from the GameCube data), `megawasher`, `debrisshakespersec`,
+  `tripwirewho`, `AI_ATTACKWHO PLAYER`, `AI_RACE good`, barter `EUK` names and `Battery 2`-`6`.
+  Check the retail tables (`tools/gamedata_dump.py`) and `main.dol` strings before mapping any of them.
+
+## Diagnostics cookbook
+
+Everything here is muted and keeps Discord off unless it says otherwise. Logs go to `build/logs/`.
+
+**One private test run, summarized** (Release by default; `--config Debug` for asserts):
+
+    python tools/port_run.py --mission wedmmines01 --seconds 60
+    python tools/port_run.py --config Debug --mission wessstatn01 --seconds 90 --name shop_test
+
+The summary lists `PORT-PERF` lines (fps, worst frame, work before Present), the longest hitches, each
+`PORT-STALL` stack, crash/assert/run-time-check reports and audio errors.
+
+**Screenshots** (engine captures of the back buffer; cost frame time, never in the user's session):
+
+    python tools/port_run.py --mission WEDTtown_01 --seconds 40 --shots 120
+    build\Release\ma_port.exe -data gamedata\files -mission wedmmines01 -mute -discord-app-id off -shots build\shots\mines -shot-every 150
+
+`port_run.py --shots N` clears `build/shots/NAME/`, and saves the newest frame as `latest.png`.
+Read the PNG/BMP to look at it.
+
+**Scripted keys** (no focus needed):
+
+    python tools/port_run.py --mission wedmmines01 --seconds 30 --shots 60 --test-keys "g8:0x1B"
+    python tools/port_run.py --seconds 60 --test-keys "10:0x20,14:0x20,30:0x0D"
+
+The first pauses 8 s into gameplay (pause-menu tests); the second skips the logo movies and presses
+Enter in the front end.
+
+**Driving menus with the mouse** (posts window messages; never moves the desktop cursor):
+
+    python tools/port_run.py --mission wedmmines01 --keep --shots 30 --test-keys "g8:0x1B" --name pause
+    python tools/menu_drive.py --pid PID waitpause build/shots/pause 60
+    python tools/menu_drive.py --pid PID click 630 296
+    python tools/port_run.py --stop PID --name pause
+
+The target game must be focused for posted pointer input; `-test-keys` works in the background.
+Always pass `--pid`: without it the first game window found is used, which may be the user's. Fixed
+coordinates are layout-dependent; confirm the screen in a capture.
+
+**All missions in parallel** (up to 4 instances on the user's PC; use 3 while they play):
+
+    python tools/mission_parallel.py --config Debug --seconds 90 --jobs 3 --run-name sweepN --quiet --test-keys "10:0x20,14:0x20,18:0x20,24:0x20,30:0x20,40:0x20" MISSIONS...
+    python tools/log_errors.py "build/logs/sweepN_*.log"
+
+The 42 missions: `WECDsneak01 WEDMmines01 WEDTtown_01 WEMCcity_01 WERRreactr1 WEWCcomm_01 WEWHchase01
+WEWJjourn01 WEWZzombi01 webccolis01 webccolis02 webccolis03 webccolis04 wecdsneak02 wecffacty01
+wecrruins01 wecrruins02 wediinvas01 wedmmines02 wedmmines03 wemccity_02 wemccity_03 wemccity_05
+wermmorbot1 wermmorbot2 werrreactr2 wesccorros1 weshhangr01 wesrrepair1 wessstatn01 wessstatn02
+wewccomm_02 wewccomm_03 wewchold_01 wewjjourn02 wewjjourn03 wewkrockt01 wewrresrch1 wewrresrch2
+wewrresrch3 wewrresrch4 wewtrace_01`. A 42-mission sweep at 3 jobs takes about 25 minutes; run it with
+a background shell or a second terminal and wait for it to finish rather than polling. `log_errors.py` lists
+crashes/asserts per log first, then each distinct message with how many logs and lines have it.
+
+**Co-op:** `python tools/port_run.py --mission WEDTtown_01 --coop 2 --shots 120` (split screen; player
+1 on keyboard/mouse, players 2-4 on pads).
+
+**Performance and stalls:** runs with `-port-diag -no-vsync` (what `port_run.py` passes) log
+`PORT-PERF` every 10 s. A frame over `MA_PORT_STALL_MS` (default 100) makes the stall sampler suspend
+the game thread and log its symbolized stack as `PORT-STALL`; `--stall-ms 50` lowers it.
+
+**Audio:**
+
+- `-port-diag` logs `PORT-MIX` snapshots every 2 s: active and voiced emitters, free voices, pause
+  levels, each sound's level, and in-range playing emitters that have no voice ("voiceless"). Also
+  `PORT-SND`, `PORT-TALK` (bot dialog), `PORT-DUCK`.
+- Is a process audible? Start it with `--audio` (only when the user expects sound) and meter it:
+  `powershell -ExecutionPolicy Bypass -File tools\audio_meter.ps1 -ProcessId PID -Seconds 30`.
+  A `-mute` run meters 0 by design; so does `-no-audio`.
+
+**Crashes and hangs:** crashes and the first of each assert log a symbolized stack (asserts are
+rate-limited: first 10, then 100, 1000...). A run that looks hung is usually a dialog: check
+`Get-Process -Name ma_port | select Id, MainWindowTitle`.
+
+**Retail evidence** (settle schema questions from the retail data, not guesses; write outputs under
+`build/`): `tools/mst_list.py` (list/extract the `.mst`), `tools/gamedata_dump.py` (binary `.csv` tables
+as JSON), `tools/dol_vocab.py` (table vocabularies from `main.dol`), `tools/dol_xref.py` (PowerPC code
+referencing an address), and a plain string search of `gamedata/sys/main.dol`.
+
+**Workflow for a fix:** reproduce in a private Debug run (or a sweep) -> patch -> build Debug and
+Release -> rerun the affected missions -> `log_errors.py` on the new logs -> `tools/eol.py check` ->
+commit (trailer) -> check no retail data is tracked -> push. Tell the user what to try in their session.
 
 ## Working without Windows (cloud / Linux sessions)
 
 No MSVC, no retail data, no game runs or logs. What works:
 
 - `python3 tools/syntax_check.py [--changed REF | FILE...]`: clang against MinGW headers with the
-  MSVC build's settings; all 403 C/C++ files pass. Catches type errors and API misuse; not a
-  substitute for an MSVC build. Needs `clang mingw-w64-i686-dev g++-mingw-w64-i686-win32`.
+  MSVC build's settings; all C/C++ files pass. Catches type errors and API misuse; not a substitute
+  for an MSVC build. Needs `clang mingw-w64-i686-dev g++-mingw-w64-i686-win32`.
 - `python3 tools/mathdiff/mathdiff.py`: runs the GC-layout math (`dx/fdx8gcmath_*.inl`, what this build
-  uses) and the shipped SSE math on the same inputs and reports differences; known ones are explained
-  in the tool. Needs `clang gcc-multilib g++-multilib`.
+  uses) and the shipped SSE math on the same inputs and reports differences. Needs
+  `clang gcc-multilib g++-multilib`.
 - Everything a cloud session changes goes in `CLOUD_SESSION_LOG.md` with what to verify; the user
   builds, runs and reports back.
 
-## Current state
+## Where things are (code map)
 
-Working (verified by runs or by the user, see `PORTING.md` for detail):
-
-- Boot, the GameCube master file, and conversion of every retail asset type the game loads: tables,
-  textures (GX formats), static/skinned/streamed meshes and kDOP collision, worlds and visibility,
-  animations, AI graphs, particles (v8), fonts, camera animations, scripts (all 393 bind every native).
-- All 44 campaign worlds swept with `-mission`. Rendering with textures, lighting and HUD; world objects
-  get their baked vertex lighting (GameCube color streams remapped onto the converted vertex buffers).
-- The retail front end boots (language → logo movies → main menu → campaign/multiplayer setup) and is
-  **mouse-driven** (see below). Keyboard/mouse (raw mouse look, auto capture) and XInput; mouse aiming
-  for vehicles and manned guns.
-- Audio: sound effects (MusyX banks → PCM), music/speech streams (DSP-ADPCM), and **the GameCube volume
-  chain** (below). User confirmed 2026-09-26 on the first mission (`wedmmines01`): droids now talk, the
-  laser is audible, music no longer drowns dialog ("still slightly loud" was before the 2D fix below).
-- Bink movies; checkpoints (1 MB streams on Windows). Saves in `%APPDATA%\Metal Arms PC Port\Saves`.
-- Many retail schema changes mapped from `main.dol`.
-- Pause menu with the pointer (user confirmed 2026-09-27), Discord Rich Presence (connects under the
-  port's own application by default), typed profile names, keyboard/Xbox/PlayStation prompts.
-
-## Session of 2026-09-27 (follow-up: mission error cleanup)
-
-1. **Tracer alpha clamp** (`ma/App/ma/tracer.cpp`): `_GroupWork` now clamps normalized distance and
-   computed alpha to `[0,1]`. The approximate reciprocal used for max distance could put a tracer a
-   little past full distance immediately before its kill check, producing negative vertex alpha and
-   reaching the float-to-color assertion in `tracer_Draw`. Four Debug mission runs (60 seconds each)
-   reached end-of-loading without crashes, asserts, allocation failures, script errors, or data
-   warnings. The earlier intermittent assert was not reproduced.
-2. **Grunt `dropweapon` property** (`ma/App/ma/botgrunt.cpp`): after parsing this recognized property,
-   `CBotGruntBuilder::InterpretTable` now returns success instead of letting the base builder report
-   it as unknown. Two focused runs and a four-mission follow-up had no `Unknown command 'dropweapon'`
-   messages.
-3. **Retail barter response** (`ma/App/ma/BarterTypes.cpp`): `NOSOUPFORYOU` now maps to the existing
-   `PURCHASE_ABORT` Shady state. The retail Generic_Bot_Talks table pairs it with the valid
-   `bd_nothing` response, so it had been an unsupported keyword causing barter initialization to
-   fail. In `WEMCcity_01` and `WEWRresrch4`, generic response initialization and `Barter_MoveToPoint`
-   failures no longer appear. `WERMmorbot1` has no barter data for that level; its no-barter message
-   is expected.
-4. The Debug `ma_port` build succeeded. All ten mission runs for these fixes were **muted**; no
-   audio behavior was checked. The runs covered `WEWJjourn01`, `WEWCcomm_01`, `WERMmorbot1`,
-   `WEMCcity_01`, and `WEWRresrch4`.
-5. **Open log/retail-data leads; no code changes made:** barter tables contain unrecognized `EUK`
-   weapon/scope names and `Battery 2`–`Battery 6`; resolve how barter purchases preserve EUK mesh and
-   battery-count semantics before adding aliases. `WEMCcity_01` also uses `megawasher` and
-   `disablevelocityimpulses`, which have no source implementation; it sets `Shield=on` on grunts even
-   though only Titans parse it, and two liquid `ColorRed` values are malformed three-string fields.
-   In `WEWRresrch3`, retail `AI_Race=Evil` actors target players as enemies; `MIL` is the compatible
-   port race, but retail exposes no explicit `EVIL` alias. These findings came from read-only retail
-   and log audits and were not implemented in this pass.
-6. No commits or pushes were made for this follow-up. Preserve the other dirty working-tree changes.
-
-## Session of 2026-09-27 (current uncommitted pass)
-
-1. **Quiet tests mute Bink without freezing its video.** `-no-audio` now sets Bink track volume to zero
-   instead of calling `BinkSetSoundOnOff(FALSE)`. That API stopped the silent movie clock: the mines
-   intro stayed on black frame 2. The Debug build now plays the muted intro through at least frame 900;
-   its screenshot shows the movie, and the per-process audio meter stayed at 0.000 for 115 samples.
-   Normal user launches keep movie and game audio enabled unless `-no-audio` is supplied.
-2. **Per-instance testing:** `-asset-log <file>` gives every process a separate asset log. The new
-   `tools/mission_parallel.py` can queue several missions with a `--jobs` cap, unique engine/asset/save
-   paths, and concise load/script/assert/performance summaries. `port_run.py` also reports script and
-   data-load errors; `audio_meter.ps1 -ProcessId PID` measures one process among multiple instances.
-   Two-player mission smoke runs reached end-of-loading in `WEDTtown_01` and `wedmmines01`; both ran
-   around 140 fps with no asserts or crashes. Tests were muted. The Mines script emitted one invalid
-   SFX-handle error under `-no-audio`; gameplay audio is intentionally unavailable in those runs.
-3. **Basic campaign co-op initialization prototype:** `-mission WEDTtown_01 -coop 2` (2–4) creates
-   multiple local campaign player slots, keeps `bSinglePlayer=TRUE` and uses the existing split-screen
-   setup. It defaults to separate keyboard/controller ports, has no profile pointers or persistent
-   saves, and is for initialization experiments only. It does not add a bot selector or solve campaign
-   combat, cutscenes, pause, death/checkpoint, or progression behavior. A run loaded two players at
-   distinct positions. A later capture showed the main view, but the lower split-screen view was
-   malformed. The user asked to keep this prototype basic and not pursue those gaps in this pass.
-4. **Button prompt preference** was added to PC Advanced Settings (Auto, Keyboard, Xbox, PlayStation),
-   saved under Local AppData. A valid command-line/environment override locks the choice for that run.
-   Prompt changes also cover start text, message buttons, and the vehicle-exit prompt. It compiles;
-   menu placement, persistence and visuals still need a user-visible check. XInput cannot identify a
-   PlayStation controller, so Auto uses Xbox glyphs for pad-only ports.
-5. **Checkpoint write hardening:** reserve flush alignment padding, retain backend write/flush errors,
-   and do not mark a failed checkpoint save as complete. The Debug build compiled these changes;
-   checkpoint failure behavior has not been runtime-tested.
-6. **Resolved handoff items:** the Hold Your Ground `Mini_Game` 104-field loader fix is already in
-   `d696cbc`; retail-only fields 62–103 are intentionally ignored. The `CFQuatTang3` fallback for a
-   degenerate/vertical cart tangent is already present; the town mission reached end-of-loading with
-   no assert/crash, but cart motion was not visually verified.
-7. Debug build command used:
-   `cmake --build build --config Debug --target ma_port -- /nologo /verbosity:minimal`.
-   It succeeded after changing enum stepping in the prompt option to an explicit cast. No changes from
-   this pass have been committed or pushed. Keep the pre-existing `windows icon/` files. Three other
-   active UI files (`PauseScreen.cpp`, `win/screenshot.cpp`, `wpr_drawutils.cpp`) still have mixed
-   line endings; check and normalize after that UI edit pass settles.
-
-## Session of 2026-09-27 (latest): test tools in the repository
-
-Code is committed and pushed as `59dd5bf` (`Test tooling in tools/; test windows say they are muted;
-gameplay-relative test keys`).
-
-1. `tools/port_run.py` starts Release by default (Debug is optional), adds `-port-diag`, disables
-   Discord and audio by default, and uses `-no-vsync` for timing. It can capture `-shots`, summarize
-   performance, hitches, stalls, asserts/crashes and audio errors, and stop only the PID it started.
-   `--keep` leaves the game running for menu interaction; `--stop PID` ends that test and summarizes it.
-2. `tools/menu_drive.py` posts mouse messages to the game window without moving the desktop cursor.
-   Pass `--pid PID` to select a test window. It supports pixel or fractional coordinates, clicks,
-   wheel input, and `waitpause` for detecting the pause screen in captured frames.
-3. `tools/eol.py` checks and fixes line endings to match the committed file (or the majority ending for
-   a new file). Use it after editing original CRLF sources with tools that may normalize line endings.
-4. Test windows launched with `-no-audio` show `[TEST RUN - NO AUDIO]` in their title, so they are
-   distinguishable from the user's audible session.
-5. Test keys can now be gameplay-relative: `-test-keys "g8:0x1B"` presses Escape eight seconds after
-   gameplay begins. This avoids timing the key from process launch, since muted runs load the level
-   faster and can otherwise press Escape during the intro. The pause test succeeded with this form.
-6. In the last menu recipe, mouse navigation selected Audio Levels when Controller Map was intended.
-   Treat fixed menu coordinates as layout-dependent; use captured frames to confirm the destination.
-   The scripted key path is the dependable way to time keyboard actions.
-
-## Session of 2026-09-27 (later): settings clicks, controller chart, hitches, Release
-
-All committed and pushed (last code commit `9f56059`). Newest first:
-
-1. **Back keeps settings** (`_PcSettingsBackKeeps` in `wpr_system.cpp`): leaving Audio Levels or
-   Advanced Settings with Back (Esc, right click) used to cancel (console convention); the user lost a
-   volume change that way. Now Back = Accept there, front end and in game.
-2. **Movies**: the frame loop waited on Bink's file reads mid-movie (600+ ms; the intro's stutter when
-   the disk is busy). PC Bink now has a 16 MB read-ahead (`_FMOVIE2_PC_IO_BYTES`, `BINKIOSIZE`) and heap
-   allocations (`_MovieAlloc`) instead of the consoles' 2 MB pool. One ~1 s pause remains *between* the
-   front end's logo movies (opening the next one); not chased.
-3. **Hitches** (`b2793a8`): the log was written/flushed on the game thread per line (1+ s stalls on a
-   busy disk) -> background writer in `main_win.cpp` (`_LogAppend`/`_LogFlush`/`_LogWriter`, crash and
-   exit paths flush synchronously). Streams (`CFAudioStream::Create`) read the header and made a
-   track-sized DirectSound buffer on the game thread -> the whole load runs on a worker
-   (`_StreamJob_t`, `_LoadStream`, reference counted; destroy-while-loading abandons the job to its
-   worker; `faudio_Uninstall` waits via `_WaitForStreamLoads`). Result on `wedmmines01`: no stalls
-   except one driver `Present` on a level's first frames; worst frames 14-30 ms.
-4. **Measuring tools** (keep using them): `-no-vsync`; under `-port-diag` a `PORT-PERF` line every 10 s
-   (fps, worst frame, work before Present) and the **stall sampler** (`_StallWatchdog` in
-   `main_win.cpp`): when a frame passes 100 ms (`MA_PORT_STALL_MS` to change) it suspends the game
-   thread, copies its frame-pointer chain and logs it symbolized as `PORT-STALL`. Needs frame pointers:
-   Debug, and Release now builds with `/Zi /Oy-` and links `/DEBUG` (`CMakeLists.txt`).
-5. **Release build** works (front end and a mission tested): ~1.5 ms of frame work vs ~5 ms in Debug.
-   `cmake --build build --config Release --target ma_port` -> `build/Release/ma_port.exe`. The user
-   should play Release from now on (it's what was launched for them last).
-6. **Controller map** is a generated chart (`_PcControllerMap`/`_PcMapIcons` in `wpr_system.cpp`):
-   each label's input comes from its position key (`"A"`, `"LeftY"`, `"Black"`; this build loads the
-   Xbox layout, B = right face button). Keys + mouse glyph for keyboard, Xbox/PS glyphs for pads.
-   `wpr_drawutils_DrawMouseGlyph`, `wpr_drawutils_DrawFaceButton`.
-7. **Settings take clicks**: selection arrows, On/Off and 2-way/4-way values, and level bars are click
-   zones that carry their row (`_MouseAddZone`, `_MouseAddToggle`, `_MouseAddTickBar`,
-   `_MouseAddSelectionArrows`; a bar click walks the value to the clicked tick one step a frame).
-8. Key caps/glyphs center on text using the prompt font's measured line (`_MeasurePromptFont`,
-   defaults 0.041 / 0.0115 per unit of scale); if icons sit off-center, check those.
-
-## Session of 2026-09-27: another model's commits, reviewed and continued
-
-An intervening session added:
-Direct3D 9Ex (`Direct3DCreate9Ex`/`CreateDeviceEx`, managed pool mapped to default + dynamic, because
-plain D3D9 HAL caps failed on the user's RTX 5070 Ti after a driver change), pause-menu mouse and Q/E
-pages, `-button-prompts auto|keyboard|xbox|playstation`, typed profile names (`pcinput_SetTextInput`,
-WM_CHAR queue), Discord asset options, and **the fix for Glitch's dark legs**: `fmesh_InitNormalSphere()`
-was never called on the PC, so every unskinned GameCube normal decoded as straight up (verified on
-screen: the legs are lit now). Reviewed; kept, with these fixes and additions on top:
-
-1. **Pointer in the pause menu actually works**: the pause menu switches to the menu control map only
-   while it samples buttons, so `pcinput_BeginFrame` saw the gameplay map and kept the mouse captured.
-   `gamepad_Sample()` now passes `allowLook = MAIN1 map && !FLoop_bGamePaused`. With that, Escape is
-   Back in the pause menu (it resumes), and an Escape press that began before a gameplay/menu switch
-   is ignored until released (`escapeHeldOver` in `pcinput_Sample`), so pausing never unpauses.
-2. **Settings screens opened from the pause menu** (Advanced Settings etc., the in-game wrappers) lost
-   the pointer: `_MouseDrawOverlay` drew in `_pViewportOrtho3D`, which only exists in the front end.
-   In-game it now uses the viewport `wpr_system_IG_Draw` drew with (`_pMouseIGViewport`), from the
-   overlay hook after the text. **Not yet confirmed by the user.**
-3. Q is no longer Back in menus (GameCube map: CROSS_LEFT = Back, so Q both flipped the pause page and
-   closed the pause menu). The pause keys read through `pcinput_KeyHeld` (focus-aware) instead of raw
-   `GetAsyncKeyState`.
-4. **Prompt layout** (user request: "flush left instead of a weird off angle"): every icon style is
-   sized to its text line, centered on it and flush left of the text (`wpr_drawutils_DrawButtonOverlay`,
-   PC version; tuning constants `_PROMPT_ICON_SIZE/_CENTER/_ART_FILL`). **Not yet seen by the user.**
-   The pause menu draws key caps (Space/Esc at the bottom, right-aligned to the art; Q/E on the tabs).
-   PlayStation glyphs are now solid round buttons with thick symbols (`wpr_drawutils_DrawPlayStationGlyph`).
-5. Menu prompt wording follows the port it addresses (`pcinput_PromptStyleForPort`): other players'
-   pads never get key names (co-op).
-6. Typed names accept only characters the on-screen keyboard has (`_ProfileName_HasKey`; a stray
-   profile "Profile1&&&" was made while the old filter let `_`/`'` through); Enter is Done and is not
-   also START while typing.
-7. **Discord**: the user's application ID `1553650972218363985` is the default
-   (`_szDefaultDiscordAppId` in `main_win.cpp`; `-discord-app-id off` disables). The worker logs
-   "Discord: connected", a refused handshake, or Discord's error answer to SET_ACTIVITY. Verified: it
-   connects and Discord accepts the activity. No Rich Presence image asset is set (Discord shows the
-   application's icon).
-8. `-test-keys "62:0x1B,70:0x51"` (`MA_PORT_TEST_KEYS`): scripted key presses the game reads without
-   focus, for unattended `-shots` tests. `port/compat/d3d8.h` restored to CRLF (the D3D9Ex commit
-   rewrote its line endings).
-
-## Session of 2026-09-26 (evening): what changed, and where it stopped
-
-All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newest first:
-
-1. **Audio, the real GameCube chain** (`ma/Lib/Fang2/dx/fdx8audio.cpp`, block starting "The retail
-   GameCube mix"). From `gc/fgcaudio.cpp` + MusyX: every volume passes `_GetVolume()` (≈ 0.38·(v^¼+v^½)),
-   ×0.8 for 3D effects or ×0.6 for stereo streams, MusyX fades 3D linearly to 0 at 1.25× radius, then
-   MusyX's DLS table squares it (`main.dol` 0x3de80c, entry i = (i/127)²). `_GCMusyxVolume`,
-   `_GC3DDistanceGain`, `_GCStreamGain`, emitter volume at "MIDI volume as fgcaudio.cpp and MusyX
-   compute it". Full-volume music ≈ 0.21 amplitude, full-volume effects/speech ≈ 0.58.
-   Also removed (for FANG_WINGC) the DX layer's `fVolume *= 0.1f; // Hack to attenuate 2D sounds` in
-   `CFAudioEmitter::SetVolume` — it cut the player's weapon and 2D dialog to a tenth. **The user has
-   not heard this last change yet** (build `6cfcd81`); ask whether music is now balanced, and whether
-   anything 2D is now too loud (UI sounds, footsteps).
-2. **Laser firing sound**: retail `w_laser.csv` field 65 is a sound *group* ("LaserFire"); resolved in
-   `CWeaponLaser::ClassHierarchyBuild` and played via `CFSoundGroup::PlaySound` (`weapon_laser.cpp`).
-3. **Streamed bot dialog**: `BotTalkInst.cpp` used Win32 `PlaySound()` on .wav files that don't exist;
-   now uses the console path `level_PlayStreamingSpeech` (the first droids in the mines were silent).
-4. **Movies (#4 of the user's list, not yet confirmed by the user)**: Bink now uses the game's
-   DirectSound device (`fdx8audio_GetDirectSound()`, handed over in `fmovie2_Play`) instead of opening
-   a second one, and `fmovie2_Draw` never spins waiting for the next movie frame (vsync paces it).
-   The front end's logo movies now use the GameCube names (`GC_*_logo.bik`; it asked for `XB_*`).
-5. **Mouse menus** (`wpr_system.cpp` "mouse pointer (PC port)" block, `pc_input.cpp` menu pointer,
-   `ftext_GetLastPrintBounds()` in `ftext.cpp`, button hit boxes in `wpr_drawutils.cpp`): hover
-   selects, click picks, right click = Back, prompts clickable, wheel steps lists/adjusts settings,
-   clicks queued with positions, main-menu items hit-tested from their 3D meshes. Pointer = HUD reticle
-   `tfh_cross01`. `MA_PORT_POINTER_DEBUG=1` outlines hit boxes. User confirmed it mostly works; the pause
-   menu (`PauseScreen.cpp`/`MenuTypes.cpp`) is **not** mouse-enabled yet.
-6. **Retail phrase-table drift fixed**: `wpr_system.cpp` `_anRetailPhraseField` (menu phrases) and
-   `game.cpp` `_anRetailGamePhraseField` (in-game phrases) map the source's enums to retail fields
-   (the retail tables were reordered; e.g. "Delete" showed "You will not be able to save...", the MP
-   join screen showed "head").
-7. **PC wording and prompts**: `wpr_datatypes_PcText()` (storage text: save folder / reset / free
-   space); game phrases `_aPcPhrases` in `game.cpp` name keys ("Press E to drive vehicle") or Xbox
-   buttons, switched by `game_PcPromptWork()` from `pcinput_PromptsForPad()`; menu prompts draw
-   generated key caps (Enter/Esc/E/R) in `wpr_drawutils.cpp` `_DrawKeyCap`. In menus Esc = Back,
-   Enter = accept (`PcInputState::menus`); Esc still pauses in gameplay and skips movies.
-8. **Windowed exe** (`/SUBSYSTEM:WINDOWS`, `-console` to get a console) — the console full of
-   script prints ("NONETRIPWIRE ENTER EVENT") is gone. **Diagnostics off by default**:
-   `Fang_bPortDiag` (`-port-diag` / `MA_PORT_DIAG=1`) gates all `PORT-*` logging; the periodic ones
-   caused the ~5 s lag spikes. With it on: PORT-HITCH, PORT-SND, PORT-MIX (2 s snapshots of every
-   sound's level), PORT-TALK, PORT-DUCK.
-9. **Discord Rich Presence** (`port/discord_rpc.cpp`, IPC pipe, no SDK): `-discord-app-id <id>` /
-   `MA_PORT_DISCORD_APP_ID`. **Untested end to end: the user still has to create a Discord
-   application and give its ID.** Discord runs on the user's PC (`\\.\pipe\discord-ipc-0` exists).
-10. Exe icon from the user's art (`port/res/ma_port.ico`, `.rc`); Q/R weapon-list hold now 0.3 s;
-   the miner bot no longer loads a nonexistent 'Miner' bank.
+| Topic | Where |
+|---|---|
+| Options, logging, stall sampler, test keys, crash reports | `port/main_win.cpp` |
+| Input mapping, menu mode, pointer, text input, prompt style | `port/pc_input.cpp`; `ma/App/ma/gamepad.cpp` (`gamepad_Sample`: control maps, `allowLook`) |
+| Mouse in menus, settings clicks, controller chart | `ma/App/ma/wpr_system.cpp` ("mouse pointer (PC port)", `_MouseAdd*`, `_PcControllerMap`) |
+| Prompt icons and key caps | `ma/App/ma/wpr_drawutils.cpp` (`wpr_drawutils_DrawButtonOverlay`, `_DrawKeyCap`) |
+| Pause menu | `ma/App/ma/PauseScreen.cpp` (`CPauseScreen::Work`, `pausescreen_IsActive`) |
+| In-game PC wording | `ma/App/ma/game.cpp` (`_aPcPhrases`, `game_PcPromptWork`), retail phrase maps `_anRetailPhraseField` / `_anRetailGamePhraseField` |
+| Audio emitters, voices, GameCube volume chain, stream worker | `ma/Lib/Fang2/dx/fdx8audio.cpp` |
+| Movies | `ma/Lib/Fang2/dx/fdx8movie2.cpp` (`_MovieAlloc`, `BINKIOSIZE`) |
+| D3D8-on-D3D9Ex, screenshots | `port/compat/d3d8_compat.cpp` |
+| Co-op | `launcher.cpp` (`-coop` init), `MultiplayerMgr.cpp` (`CStartPtMgr::InitLevel`), `player.cpp` (`_CoopRespawnNearPartner`), `MAScriptTypes.cpp` (`_ScriptPlayer`) |
+| Budgets | `ma/Lib/Fang2/fang.cpp` (WINGC block) |
 
 ## How to work with this user (important)
 
-- The user plays the game windows you launch, **while you work**, and reports by ear/eye; they cannot
-  read logs. **Run your own test/benchmark instances with `-no-audio`** (they otherwise blast full-volume
-  default-profile audio over the user's session) and `-discord-app-id off`.
-- Run private test sessions with `python tools/port_run.py --mission wedmmines01 --seconds 60`;
-  they are muted and keep Discord off by default. Add `--shots N` for screenshots or
-  `--test-keys "g8:0x1B"` to pause eight seconds into gameplay. For scripted menu work, use
-  `--keep`, then `python tools/menu_drive.py --pid PID ...`, and finish with
-  `python tools/port_run.py --stop PID --name NAME`. Mouse messages do not move the desktop cursor.
-  Keys still require focus unless sent through `-test-keys`; verify mouse-selected screens in captures
-  because fixed coordinates can land on a neighboring menu item. Screenshots cost frame time; do not
-  leave them on in sessions the user plays.
-- A running game locks its executable (`build/Release/ma_port.exe` for the normal player build).
-  Stop the specific PID before relinking, then relaunch the user's session when needed — the user asked
-  for this explicitly; don't make them wait.
-- `sed -i` in this Git Bash strips CRs from CRLF files (most sources are CRLF); edit with a script that
-  keeps line endings, or the Edit tool.
-- Commit trailer: `Co-Authored-By: parallel session Opus 5.5 <noreply@collaborator.com>`; push to `origin x86-port`.
-  Never commit retail data (`gamedata/`, `main.dol`, dumps) — keep derived reports under `build/`.
+- The user plays the game windows you launch, **while you work**, and reports by ear and eye; they
+  cannot read logs. Their session is Release, audible, with Discord on, launched like:
+  `build\Release\ma_port.exe -data gamedata\files -mission WORLD -port-diag -log build\logs\play_NAME.log`
+  (`-port-diag` so you can read what happened in their session afterwards).
+- **Every one of your own test instances is muted** (`-mute`, or `-no-audio` when audio doesn't
+  matter) with `-discord-app-id off`. The tools do this by default. Muted windows say
+  `[TEST RUN - MUTED]` / `[TEST RUN - NO AUDIO]` in their title. An unmuted test window blasts
+  default-volume audio over the user's game; a muted one looks like "no audio" to the user if they
+  pick it up, so close your test windows when done.
+- Never kill the user's game except to relink its exe: then stop that exact PID, rebuild, and relaunch
+  it for them without being asked (they asked for this). Tools only ever close the PIDs they started.
+- The user prefers less time on visual checks: capture a frame when a change is visual, don't iterate
+  on pixel details unless they ask.
+- Keep replies short and concrete: what changed, what to try in game.
+- Edit CRLF sources with the Edit tool or a script that keeps line endings (`sed -i` in Git Bash strips
+  CRs). Build C string edits with the Edit tool: shell heredocs mangle backslash escapes.
 
 ## Open work, roughly in priority order
 
-1. **Confirm with the user**: settings clicks (arrows, On/Off, bars) and the controller chart; the
-   flush-left prompt layout; movie stutter with the 16 MB read-ahead (#4); that Esc out of Audio Levels
-   now keeps the volume. The user reported audio "super loud" — their profile's lower volume had been
-   lost to Back-cancels (fixed); the front end before a profile loads plays at default volume (retail).
-2. Pause menu hit boxes for its page tabs and bottom prompts are fixed fractions (`CPauseScreen::Work`);
-   derive them from `m_avtxButton` and the text areas if the layout ever changes.
-3. The PC Button Prompts setting is implemented but still needs menu, persistence and visual
-   confirmation. XInput does not identify PlayStation pads, so Auto resolves them as Xbox.
-4. D3D9Ex: default-pool resources survive device resets on Ex, but alt-tab / fullscreen switching and
-   window resizing have not been retested since `4d13270`.
-5. Performance: done for now (see the later 2026-09-27 section). Remaining: the ~1 s pause between
-   logo movies; a Bink movie open still reads on the game thread (short, before playback).
-6. Discord: optional Rich Presence image (needs an asset uploaded to the application).
-7. Pause-menu page flips with a pad's shoulders work as before; check they still do with the keyboard
-   map change (Q no longer CROSS_LEFT in menus).
-8. Older items: verify the save flow from the menus; laser charged burst and other weapons' particle/
-   sound fields; `Difficulty.csv` extra fields' meaning; barter EUK kits; failed-load teardown beyond
-   `CLOUD_SESSION_LOG.md` 5/10; expand campaign co-op only when requested (`docs/coop-audit.md`);
-   64-bit, widescreen, rumble.
+1. **Grunt shields** (see "Mission sweep"): implement the retail `shield` property for grunts, modeled
+   on the Titan's `CEShield`. Find the retail fields with `gamedata_dump.py` on the grunt tables and the
+   `GruntShield` references in `main.dol` first.
+2. **Occasional ~110 ms stall in a dynamic vertex-buffer lock**: `PORT-STALL` stacks in
+   `build/logs/coop2.log` (from `CEZipLine::_Draw` -> `fdraw_PrimList`) and `build/logs/rel_front2.log`
+   (front end) end in `fdx8vb_Lock` (`fdx8vb.cpp`, the `D3DLOCK_DISCARD`/`NOOVERWRITE` lock) waiting on
+   a critical section inside the D3D9 runtime. Rare (2 of many runs). Look at how often fdraw's dynamic
+   buffer wraps (each DISCARD) per frame, and whether a larger buffer avoids it.
+3. **Confirm with the user**: Shady's shop in `wessstatn01` opens; a co-op death respawns beside the
+   partner; alt-tab/fullscreen/resize under D3D9Ex; the PC Button Prompts setting persists.
+4. **Co-op** (`docs/coop-audit.md`): front-end entry, progress saving, barter, collectables, AI
+   targeting, minigames and bosses, cutscene cameras for players 2-4.
+5. One ambient in `L02_rslide3` stays voiceless (its listener state is EXITED while in range); see the
+   "voiceless" lines in `PORT-MIX`.
+6. The remaining retail-data warnings (see "Mission sweep").
+7. The ~1 s pause between the front end's logo movies (opening the next movie on the game thread).
+8. Older items: the save flow from the menus; the laser's charged burst and other weapons' particle and
+   sound fields; `Difficulty.csv` extra fields; failed-load teardown beyond `CLOUD_SESSION_LOG.md` 5/10;
+   a Discord image asset; 64-bit, widescreen, rumble.
 
 ## Things that cost time before
 
-- Don't re-investigate solved problems: fonts, skinned meshes, the world-origin bone, world collision.
-  The `we01multi01` restart loop was never explained (likely multiplayer-specific: it is a multiplayer
-  map launched through the debug path); test with campaign levels (`-mission`) instead.
-- The Debug CRT's modal dialogs looked like hangs (see Debugging).
-- Tool inputs can collapse backslash escapes; build C string edits with the Edit tool.
-- Editing CRLF files with some tools leaves mixed line endings; normalize afterwards.
-- A backgrounded sweep loop outlived the task that started it and kept opening windows: run sweeps
-  in the foreground.
-- Retail data drift is the usual cause of "wrong text/sound/value": the retail tables were
-  reordered or extended after this source snapshot. Dump the retail table (`tools/gamedata_dump.py`)
-  and compare with the source enum before changing code; check `main.dol` for names/tables.
-- The Bash tool mangles backslash escapes in heredocs (a backslash-n became a real newline inside C
-  strings): write edit scripts with the Write tool and run them, or use the Edit tool.
+- Don't re-investigate solved problems: fonts, skinned meshes, the world-origin bone, world collision,
+  dark legs (normal sphere), gameplay audio after the intro (paused voiceless emitters).
+- "No audio" reports: first check whether the window is one of your muted test windows (title), then
+  the in-game volume (Back used to cancel settings changes), then `PORT-MIX` voiced vs. voiceless.
+- The `we01multi01` restart loop was never explained (it is a multiplayer map launched through the
+  debug path); test with campaign levels (`-mission`) instead.
+- Sweeps with `-no-audio` hide every audio error; sweep with `-mute`.
+- A backgrounded shell loop outlived its task and kept opening windows: use the tools, which close
+  their own processes.
+- Retail data drift is the usual cause of "wrong text/sound/value": the retail tables were reordered
+  or extended after this source snapshot. Dump the retail table and compare with the source enum before
+  changing code; check `main.dol` for names and tables.
+- `PauseScreen.h` cannot be included from `gamepad.cpp` (it redefines `_PLATFORM_XB`); use the
+  `pausescreen_IsActive()` accessor.

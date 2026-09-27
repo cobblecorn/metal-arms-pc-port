@@ -261,6 +261,18 @@ CFTexInst CPauseScreen::m_MousePointerTex;
 
 // =============================================================================================================
 
+#if defined(MA_PC_INPUT)
+// Pause UI positions use x +/-1 and y +/-0.75, independently of the display aspect.
+// Only used by the 2D fdraw passes: their full forward/reverse matrices support
+// axis scaling; no sphere/normal operations use CFXfm's uniform-scale metadata.
+static void _PcPauseLayoutScale( CFXfm &xfm, const FViewport_t *pViewport ) {
+	xfm.BuildScale( pViewport->HalfRes.x );
+	const f32 fYScale = pViewport->HalfRes.y / 0.75f;
+	xfm.m_MtxF.aa[1][1] = fYScale;
+	xfm.m_MtxR.aa[1][1] = 1.0f / fYScale;
+}
+#endif
+
 BOOL CPauseScreen::InitSystem()
 {
 	m_bIsEnabled = TRUE;
@@ -1396,6 +1408,13 @@ void CPauseScreen::Work(CInventory *pInventory)
 		} else {
 			CPauseScreen_apwszButtonText[0] = Game_apwszPhrases[ GAMEPHRASE_ACCEPT ];
 			CPauseScreen_apwszButtonText[1] = Game_apwszPhrases[ GAMEPHRASE_CANCEL ];
+#if defined(MA_PC_INPUT)
+			// These PC settings keep changes on Escape/right click, matching the front end.
+			if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_SOUND_OPTIONS ||
+				_nActiveWrapperScreen == WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS ) {
+				CPauseScreen_apwszButtonText[1] = Game_apwszPhrases[ GAMEPHRASE_BACK ];
+			}
+#endif
 		}
 	} else {
 		CPauseScreen_apwszButtonText[0] = NULL;
@@ -1444,7 +1463,11 @@ void CPauseScreen::Draw(CInventory *pInventory)
 		xfmWindow.BuildTranslation(0.0f, 0.0f, 1.0f);
 		// This is used to normalize the coordinates that I will be using (x E [-1.0f, 1.0f], y E [-0.75f, 0.75f])
 		// This assumes a 4:3, x:y, window ratio, if otherwise, each axis must be scaled differently.
+#if defined(MA_PC_INPUT)
+		_PcPauseLayoutScale( xfmTemp, m_pviewOrtho3d );
+#else
 		xfmTemp.BuildScale(pviewPrevious->HalfRes.x);
+#endif
 		xfmWindow.ReceiveProductOf(xfmWindow, xfmTemp);
 		xfmWindow.PushModel();
 		//
@@ -1527,7 +1550,7 @@ void CPauseScreen::Draw(CInventory *pInventory)
 
 		CFXfm xfmCursor, xfmCursorScale;
 		xfmCursor.BuildTranslation( 0.0f, 0.0f, 1.0f );
-		xfmCursorScale.BuildScale( pviewPrevious->HalfRes.x );
+		_PcPauseLayoutScale( xfmCursorScale, m_pviewOrtho3d );
 		xfmCursor.ReceiveProductOf( xfmCursor, xfmCursorScale );
 		xfmCursor.PushModel();
 
@@ -1782,7 +1805,16 @@ void CPauseScreen::DrawFrame()
 					const f32 fCenterY = 0.5f * (pButton[0].Pos_MS.y + pButton[5].Pos_MS.y);
 					const f32 fRadius = FMATH_MIN( FMATH_FABS( pButton[1].Pos_MS.x - pButton[0].Pos_MS.x ),
 						FMATH_FABS( pButton[0].Pos_MS.y - pButton[2].Pos_MS.y ) ) * 0.40f;
-					wpr_drawutils_DrawPlayStationGlyph( nButtonIndex == 0 ? 0 : (nButtonIndex == 1 ? 1 : 4), fCenterX, fCenterY, fRadius );
+					// The layout fills the screen; keep the generated symbol itself square in pixels.
+					const f32 fXCorrection = m_pviewOrtho3d->HalfRes.y / (0.75f * m_pviewOrtho3d->HalfRes.x);
+					CFXfm xfmGlyph;
+					xfmGlyph.BuildTranslation( fCenterX, fCenterY, 0.0f );
+					xfmGlyph.m_MtxF.aa[0][0] = fXCorrection;
+					xfmGlyph.m_MtxR.aa[0][0] = 1.0f / fXCorrection;
+					xfmGlyph.m_MtxR.m_vPos.x /= fXCorrection;
+					xfmGlyph.PushModel();
+					wpr_drawutils_DrawPlayStationGlyph( nButtonIndex == 0 ? 0 : (nButtonIndex == 1 ? 1 : 4), 0.0f, 0.0f, fRadius );
+					CFXfm::PopModel();
 				} else {
 					fdraw_PrimList( FDRAW_PRIMTYPE_TRILIST, &(m_avtxButton[6 * nButtonIndex]), 6 );
 				}
@@ -2157,7 +2189,13 @@ void CPauseScreen::DrawInfoBoxText(CMenuItem *pMI, CInventory *pInventory) {
 	FASSERT(pI != NULL);
 
 	ftext_PrintString( m_hInfoName, pI->m_pwszDisplayName );
-	ftext_Printf( m_hInfoDesc, L"~o1%ls", pI->m_pwszLongDesc ); 
+
+#if defined(MA_PC_INPUT)
+	// Use the text area line sizing instead of fixed retail font pixels.
+	ftext_Printf( m_hInfoDesc, L"%ls", pI->m_pwszLongDesc );
+#else
+	ftext_Printf( m_hInfoDesc, L"~o1%ls", pI->m_pwszLongDesc );
+#endif
 }
 
 
@@ -2172,7 +2210,13 @@ void CPauseScreen::DrawMissionText( void ) {
 	}
 
 	ftext_PrintString( m_hMissionTitle, Game_apwszPhrases[ GAMEPHRASE_MISSION_OBJECTIVE ] );
-	ftext_Printf( m_hMissionText, L"~C70701099~o1%ls", pwszMissionText ); 
+
+#if defined(MA_PC_INPUT)
+	// Use the text area line sizing instead of fixed retail font pixels.
+	ftext_Printf( m_hMissionText, L"~C70701099%ls", pwszMissionText );
+#else
+	ftext_Printf( m_hMissionText, L"~C70701099~o1%ls", pwszMissionText );
+#endif
 
 	FTextArea_t *pTextArea = ftext_GetAttributes( m_hMissionTitle );
 	if( pTextArea && !CMsgBox::IsActive() ) {

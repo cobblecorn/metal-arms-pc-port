@@ -10,6 +10,8 @@ typedef DWORD (WINAPI *GetStateFn)(DWORD, XINPUT_STATE *);
 static GetStateFn s_getState;
 static FPadio_InputEmulationPlatform_e s_platform;
 static PcInputLayout s_layout = PCINPUT_LAYOUT_SHARED;
+static bool s_localCoopSession = false;
+static PcInputLayout s_localCoopLayout = PCINPUT_LAYOUT_SHARED;
 static volatile LONG s_connected[FPADIO_MAX_DEVICES];	// by XInput pad index
 static DWORD s_lastProbe[FPADIO_MAX_DEVICES];
 static const DWORD XINPUT_REPROBE_MS = 250;
@@ -18,6 +20,7 @@ static volatile LONG s_lookAllowed;		// the keyboard port is in gameplay (set by
 static volatile LONG s_lookSwitchedOff;	// F1 turned automatic mouse look off
 static bool s_rawMouse;
 static float s_mouseDegrees = 0.1f;
+static bool s_mouseSensitivityOverride = false;
 static float s_frameYaw, s_framePitch;
 static PcAimAssistMode s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
 static volatile LONG s_mouseAiming;	// the keyboard port's most recent aiming came from the mouse
@@ -374,6 +377,30 @@ static PcPromptStyle LoadPromptStyleSetting() {
 	return style;
 }
 
+bool pcinput_ParseMouseSensitivity(const char *text, float *value) {
+	if (!text || !*text || !value) return false;
+	char *end;
+	const double parsed = strtod(text, &end);
+	if (end == text || *end || !(parsed >= 0.001 && parsed <= 10.0)) return false;
+	*value = (float)parsed;
+	return true;
+}
+
+float pcinput_MouseSensitivity() { return s_mouseDegrees; }
+bool pcinput_MouseSensitivityIsOverride() { return s_mouseSensitivityOverride; }
+bool pcinput_SetMouseSensitivity(float value) {
+	if (s_mouseSensitivityOverride || !(value >= 0.001f && value <= 10.0f)) return false;
+	s_mouseDegrees = value;
+	return true;
+}
+bool pcinput_SaveMouseSensitivity() {
+	if (s_mouseSensitivityOverride) return false;
+	char path[MAX_PATH + 64], value[32];
+	if (!PromptSettingsPath(path, sizeof(path))) return false;
+	_snprintf(value, sizeof(value), "%.6f", s_mouseDegrees);
+	return WritePrivateProfileStringA("Input", "MouseSensitivity", value, path) != FALSE;
+}
+
 static HMODULE LoadSystemXInput(const char *dll) {
 	HMODULE module = LoadLibraryExA(dll, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
 	if (module) return module;
@@ -424,12 +451,15 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 	memset(s_actionSampleReady, 0, sizeof(s_actionSampleReady));
 	memset(s_actionFrames, 0, sizeof(s_actionFrames));
 	LeaveCriticalSection(&s_actionLock);
-	char sensitivity[32];
+	char sensitivity[32], settingsPath[MAX_PATH + 64];
+	s_mouseSensitivityOverride = false;
+	if (PromptSettingsPath(settingsPath, sizeof(settingsPath))) {
+		GetPrivateProfileStringA("Input", "MouseSensitivity", "0.1", sensitivity, sizeof(sensitivity), settingsPath);
+		pcinput_ParseMouseSensitivity(sensitivity, &s_mouseDegrees);
+	}
 	DWORD length = GetEnvironmentVariableA("MA_PORT_MOUSE_SENSITIVITY", sensitivity, sizeof(sensitivity));
 	if (length && length < sizeof(sensitivity)) {
-		char *end;
-		const double value = strtod(sensitivity, &end);
-		if (*end == 0 && value >= 0.001 && value <= 10.0) s_mouseDegrees = (float)value;
+		s_mouseSensitivityOverride = pcinput_ParseMouseSensitivity(sensitivity, &s_mouseDegrees);
 	}
 	char assist[16];
 	s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
@@ -516,13 +546,17 @@ int pcinput_PadForPort(PcInputLayout layout, u32 port) {
 }
 
 bool pcinput_XInputConnected(u32 port) {
-	const int pad = pcinput_PadForPort(s_layout, port);
+	const int pad = pcinput_PadForPort(pcinput_Layout(), port);
 	return pad >= 0 && InterlockedCompareExchange(&s_connected[pad], 0, 0) != 0;
 }
 
 u32 pcinput_KeyboardPort() { return 0; }
 
-PcInputLayout pcinput_Layout() { return s_layout; }
+PcInputLayout pcinput_Layout() { return s_localCoopSession ? s_localCoopLayout : s_layout; }
+void pcinput_SetLocalCoopSession(bool active, PcInputLayout layout) {
+	s_localCoopLayout = layout == PCINPUT_LAYOUT_SEPARATE ? PCINPUT_LAYOUT_SEPARATE : PCINPUT_LAYOUT_SHARED;
+	s_localCoopSession = active;
+}
 
 bool pcinput_ParsePromptStyle(const char *text, PcPromptStyle *style) {
 	if (!text) return false;
@@ -589,7 +623,7 @@ bool pcinput_UsePlayStationPromptsForPort(u32 port) {
 
 void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info) {
 	memset(info, 0, sizeof(*info));
-	const int pad = pcinput_PadForPort(s_layout, index);
+	const int pad = pcinput_PadForPort(pcinput_Layout(), index);
 	const bool keyboard = index == pcinput_KeyboardPort();
 	if (index >= FPADIO_MAX_DEVICES || (!keyboard && (pad < 0 || !pcinput_XInputConnected(index)))) return;
 	if (keyboard && pad >= 0 && pcinput_XInputConnected(index)) sprintf(info->szName, "Keyboard/mouse + XInput controller %d", pad + 1);
@@ -603,7 +637,7 @@ void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info) {
 void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 	PcInputState state = {};
 	if (index >= FPADIO_MAX_DEVICES) { memset(sample, 0, sizeof(*sample)); return; }
-	const int pad = pcinput_PadForPort(s_layout, index);
+	const int pad = pcinput_PadForPort(pcinput_Layout(), index);
 	const bool keyboard = index == pcinput_KeyboardPort();
 	const DWORD now = GetTickCount();
 	if (pad >= 0 && s_getState &&
@@ -645,8 +679,17 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 			}
 		}
 		if (s_testKeyCount) {
+			bool scriptedKeyHeld = false;
 			for (u32 i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) {
-				if (TestKeyHeld(keys[i])) state.keys[keys[i]] = true;
+				if (TestKeyHeld(keys[i])) {
+					state.keys[keys[i]] = true;
+					scriptedKeyHeld = true;
+				}
+			}
+			if (scriptedKeyHeld && !state.focused) {
+				// Only injected keys bypass focus. A connected physical pad must remain neutral.
+				memset(&state.pad, 0, sizeof(state.pad));
+				state.focused = true;
 			}
 		}
 		// A menu with its own pointer takes the buttons as clicks, not as the triggers (on the launch

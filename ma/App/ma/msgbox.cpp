@@ -49,6 +49,12 @@
 #define _BUTTONSPACE		( 0.000f )
 #define _BUTTON_TEXT_STYLE	( L"~f8~w0~aL~C99999999~s0.80~b0%ls" )
 #define _BUTTON_Y_ADJ		( 0.01f )
+#if defined(MA_PC_INPUT)
+// PC ftext retains the retail 0..0.75 vertical range at every display aspect.
+#define _MSGBOX_TEXT_Y_SCALE ( 0.75f )
+#else
+#define _MSGBOX_TEXT_Y_SCALE ( FViewport_pDefaultOrtho->fAspectHOW )
+#endif
 
 
 BOOL				CMsgBox::m_bSystemInitialized	= FALSE;
@@ -598,11 +604,11 @@ void CMsgBox::_Draw( void ) {
 	ftext_ClearAllPending();
 
 	if( m_pwszTitle ) {
-		ftext_Printf( m_Data.vTitlePos.x, m_Data.vTitlePos.y * FViewport_pDefaultOrtho->fAspectHOW, m_Data.pwszTitleFormatStr, m_pwszTitle );
+		ftext_Printf( m_Data.vTitlePos.x, m_Data.vTitlePos.y * _MSGBOX_TEXT_Y_SCALE, m_Data.pwszTitleFormatStr, m_pwszTitle );
 	}
 	
 	if( m_pwszBody ) {
-		ftext_Printf( m_Data.vBodyPos.x, m_Data.vBodyPos.y * FViewport_pDefaultOrtho->fAspectHOW, m_Data.pwszBodyFormatStr, m_pwszBody );
+		ftext_Printf( m_Data.vBodyPos.x, m_Data.vBodyPos.y * _MSGBOX_TEXT_Y_SCALE, m_Data.pwszBodyFormatStr, m_pwszBody );
 	}
 
 	_DrawButtons();
@@ -618,22 +624,40 @@ void CMsgBox::_Draw( void ) {
 // Replace the retail A/B/Y prompt art with the selected PC theme. The vertices have already been
 // converted to viewport pixels by the caller; generated prompts draw in viewport space.
 static BOOL _DrawPcMessageButton( FDrawVtx_t *pVertices, u32 nButton, CFTexInst *pButtonTexture ) {
-	if( !pcinput_UseKeyboardPrompts() && !pcinput_UsePlayStationPrompts() ) {
-		return FALSE;
-	}
 	const f32 fCenterX = 0.5f * (pVertices[0].Pos_MS.x + pVertices[2].Pos_MS.x);
-	const f32 fCenterY = 0.5f * (pVertices[0].Pos_MS.y + pVertices[1].Pos_MS.y);
+	f32 fCenterY = 0.5f * (pVertices[0].Pos_MS.y + pVertices[1].Pos_MS.y);
 	const f32 fWidth = FMATH_FABS( pVertices[2].Pos_MS.x - pVertices[0].Pos_MS.x );
 	const f32 fHeight = FMATH_FABS( pVertices[1].Pos_MS.y - pVertices[0].Pos_MS.y );
+	f32 fPromptRight = fCenterX + 0.5f * fWidth;
+	f32 fRadius = 0.40f * FMATH_MIN( fWidth, fHeight );
+	f32 fLeft, fTop, fRight, fBottom;
+	if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) && fBottom > fTop ) {
+		fCenterY = 0.5f * (fTop + fBottom) * FViewport_pDefaultOrtho->Res.y;
+		fPromptRight = (fLeft - 0.008f) * FViewport_pDefaultOrtho->Res.x;
+		fRadius = 0.5f * (fBottom - fTop) * FViewport_pDefaultOrtho->Res.y;
+	}
+	if( !pcinput_UseKeyboardPrompts() && !pcinput_UsePlayStationPrompts() ) {
+		// Keep the retail Xbox art, with the same visible size/center as generated glyphs.
+		// The atlas cell has padding; its visible button fills about 70 percent.
+		const f32 fHalfArt = fRadius / 0.70f;
+		const f32 fX = fPromptRight - fRadius;
+		pVertices[0].Pos_MS.Set( fX - fHalfArt, fCenterY - fHalfArt, 1.0f );
+		pVertices[1].Pos_MS.Set( fX - fHalfArt, fCenterY + fHalfArt, 1.0f );
+		pVertices[2].Pos_MS.Set( fX + fHalfArt, fCenterY - fHalfArt, 1.0f );
+		pVertices[3].Pos_MS.Set( fX + fHalfArt, fCenterY + fHalfArt, 1.0f );
+		return FALSE;
+	}
 	if( pcinput_UsePlayStationPrompts() ) {
-		wpr_drawutils_DrawPlayStationGlyph( nButton, fCenterX - FViewport_pDefaultOrtho->HalfRes.x,
-			FViewport_pDefaultOrtho->HalfRes.y - fCenterY, 0.40f * FMATH_MIN( fWidth, fHeight ) );
+		wpr_drawutils_DrawPlayStationGlyph( nButton, fPromptRight - fRadius, fCenterY,
+			fRadius, TRUE );
 	} else {
 		static cwchar *apwszKeyLabels[] = { L"Space", L"Esc", L"E" };
-		wpr_drawutils_DrawKeyCapCentered( apwszKeyLabels[nButton], fCenterX / FViewport_pDefaultOrtho->Res.x,
-			fCenterY / FViewport_pDefaultOrtho->Res.y, L'C',
-			fHeight / ( FViewport_pDefaultOrtho->Res.y * 0.041f ), 0.0f,
-			FViewport_pDefaultOrtho->HalfRes.x, FViewport_pDefaultOrtho->HalfRes.y, NULL, NULL, NULL, NULL );
+		// A word such as Space is wider than the retail A glyph. Anchor its right edge
+		// before the measured action label and cap the scale so the two cannot overlap.
+		wpr_drawutils_DrawKeyCapCentered( apwszKeyLabels[nButton], fPromptRight / FViewport_pDefaultOrtho->Res.x,
+			fCenterY / FViewport_pDefaultOrtho->Res.y, L'R',
+			FMATH_MIN( 0.60f, fHeight / ( FViewport_pDefaultOrtho->Res.y * 0.041f ) ), 0.0f,
+			FViewport_pDefaultOrtho->HalfRes.x, FViewport_pDefaultOrtho->HalfRes.y, NULL, NULL, NULL, NULL, TRUE );
 	}
 	fdraw_SetTexture( pButtonTexture );
 	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
@@ -672,14 +696,16 @@ void CMsgBox::_DrawButtons( void ) {
 			pVtxPool[i].Pos_MS.y *= FViewport_pDefaultOrtho->Res.y;
 		}
 
+		// Measure the action label before drawing a PC prompt beside it.
+		ftext_Printf( m_Data.vAButtonPos.x + fButtonSizeX + _BUTTONSPACE, m_Data.vAButtonPos.y * _MSGBOX_TEXT_Y_SCALE + _BUTTON_Y_ADJ, _BUTTON_TEXT_STYLE, m_pwszAButton );
+
 #if defined(MA_PC_INPUT)
 		if( !_DrawPcMessageButton( pVtxPool, 0, &m_ButtonTex ) )
 #endif
 			fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, pVtxPool, 4 );
 
 
-		// draw the text
-		ftext_Printf( m_Data.vAButtonPos.x + fButtonSizeX + _BUTTONSPACE, m_Data.vAButtonPos.y * FViewport_pDefaultOrtho->fAspectHOW + _BUTTON_Y_ADJ, _BUTTON_TEXT_STYLE, m_pwszAButton );
+
 	}
 
 	// draw B button if required
@@ -702,13 +728,15 @@ void CMsgBox::_DrawButtons( void ) {
 			pVtxPool[i].Pos_MS.y *= FViewport_pDefaultOrtho->Res.y;
 		}
 
+		// Measure the action label before drawing a PC prompt beside it.
+		ftext_Printf( m_Data.vBButtonPos.x + fButtonSizeX + _BUTTONSPACE, m_Data.vBButtonPos.y * _MSGBOX_TEXT_Y_SCALE + _BUTTON_Y_ADJ, _BUTTON_TEXT_STYLE, m_pwszBButton );
+
 #if defined(MA_PC_INPUT)
 		if( !_DrawPcMessageButton( pVtxPool, 1, &m_ButtonTex ) )
 #endif
 			fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, pVtxPool, 4 );
 
-		// draw the text
-		ftext_Printf( m_Data.vBButtonPos.x + fButtonSizeX + _BUTTONSPACE, m_Data.vBButtonPos.y * FViewport_pDefaultOrtho->fAspectHOW + _BUTTON_Y_ADJ, _BUTTON_TEXT_STYLE, m_pwszBButton );
+
 
 	}
 
@@ -732,13 +760,15 @@ void CMsgBox::_DrawButtons( void ) {
 			pVtxPool[i].Pos_MS.y *= FViewport_pDefaultOrtho->Res.y;
 		}
 
+		// Measure the action label before drawing a PC prompt beside it.
+		ftext_Printf( m_Data.vCButtonPos.x + fButtonSizeX + _BUTTONSPACE, m_Data.vCButtonPos.y * _MSGBOX_TEXT_Y_SCALE + _BUTTON_Y_ADJ, _BUTTON_TEXT_STYLE, m_pwszCButton );
+
 #if defined(MA_PC_INPUT)
 		if( !_DrawPcMessageButton( pVtxPool, 2, &m_ButtonTex ) )
 #endif
 			fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, pVtxPool, 4 );
 
-		// draw the text
-		ftext_Printf( m_Data.vCButtonPos.x + fButtonSizeX + _BUTTONSPACE, m_Data.vCButtonPos.y * FViewport_pDefaultOrtho->fAspectHOW + _BUTTON_Y_ADJ, _BUTTON_TEXT_STYLE, m_pwszCButton );
+
 
 	}
 

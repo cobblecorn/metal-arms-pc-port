@@ -1,9 +1,9 @@
 """Drive the game's menus without touching the real mouse or keyboard.
 
 Posts mouse messages to a running ma_port.exe window. The port's menu pointer reads its position and
-clicks from these window messages, so this works while the window is in the background and never moves
-the desktop cursor. Keys cannot be posted this way (the game reads them with GetAsyncKeyState, which also
-needs focus); use the game's -test-keys option for keys instead.
+clicks from these window messages without moving the desktop cursor. The game window must have focus:
+its menu pointer intentionally discards background input. For unattended background navigation, use
+the game's -test-keys option instead.
 
 Coordinates are client pixels of the game window (1280x960 by default); the *f commands take fractions
 of the client area (0..1) instead.
@@ -31,6 +31,8 @@ import time
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32")
+user32.GetForegroundWindow.restype = wt.HWND
+user32.IsIconic.argtypes = [wt.HWND]
 WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP = 0x0200, 0x0201, 0x0202
 WM_RBUTTONDOWN, WM_RBUTTONUP, WM_MOUSEWHEEL = 0x0204, 0x0205, 0x020A
 
@@ -124,6 +126,11 @@ def main(argv):
     hwnd = find_window(pid)
     if not hwnd:
         print("no ma_port window" + (" for pid %d" % pid if pid else ""))
+        return 1
+    pointer_commands = {"move", "click", "rclick", "fastclicks", "wheel", "fx", "clickf", "rclickf"}
+    if command in pointer_commands and (user32.GetForegroundWindow() != hwnd or user32.IsIconic(hwnd)):
+        print("target game window is not focused; pointer input would be ignored. "
+              "Use -test-keys for background navigation.")
         return 1
     width, height = client_size(hwnd)
     if command in ("fx", "clickf", "rclickf"):

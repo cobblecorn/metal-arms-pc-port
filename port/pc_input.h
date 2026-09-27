@@ -32,6 +32,8 @@ int pcinput_PadForPort(PcInputLayout layout, u32 port);
 u32 pcinput_KeyboardPort();
 // The layout chosen at install.
 PcInputLayout pcinput_Layout();
+// Temporary menu-launched co-op routing; does not change the configured layout.
+void pcinput_SetLocalCoopSession(bool active, PcInputLayout layout = PCINPUT_LAYOUT_SHARED);
 bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform);
 void pcinput_Uninstall();
 void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info);
@@ -57,6 +59,14 @@ void pcinput_HideMenuPointer();
 // Called each frame by a menu that draws its own pointer: the system cursor is hidden over the
 // client area while that continues.
 void pcinput_DrawsMenuPointer();
+
+// Mouse sensitivity in degrees per raw count, before the profile look multiplier.
+// Saved in the PC settings file; a valid launch/environment override locks editing and saving.
+bool pcinput_ParseMouseSensitivity(const char *text, float *value);
+float pcinput_MouseSensitivity();
+bool pcinput_MouseSensitivityIsOverride();
+bool pcinput_SetMouseSensitivity(float value);
+bool pcinput_SaveMouseSensitivity();
 
 // The game's target assistance (reticle snapping, aim biasing, shot focusing) is tuned for
 // sticks. AUTO applies it unless the controller's most recent aiming came from the mouse;

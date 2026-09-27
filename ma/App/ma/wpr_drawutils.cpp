@@ -228,7 +228,7 @@ void wpr_drawutils_MeasureFontLine( f32 fPrintY, f32 fScale ) {
 
 // A keyboard key cap: the key's name on a raised key (see wpr_drawutils.h).
 BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
-							   f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom ) {
+							   f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom, BOOL bScreenPixels ) {
 	const f32 fPadX = 0.006f, fPadY = 0.003f;
 
 	ftext_Printf( cAlign == L'C' ? fTextX : ( cAlign == L'R' ? fTextX - fPadX : fTextX + fPadX ), fTextY, L"~f1~C%ls~w0~a%lc~s%.2f%ls",
@@ -254,14 +254,16 @@ BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar 
 		}
 	}
 
-	// screen fractions -> the caller's space (y up, origin at the center)
-	#define _CAP_X( f )		( ( (f) * 2.0f - 1.0f ) * fXScale )
-	#define _CAP_Y( f )		( ( 1.0f - (f) * 2.0f ) * fYScale )
+	// Screen fractions -> centered y-up wrapper space, or top-left y-down dialog pixels.
+	#define _CAP_X( f )		( bScreenPixels ? (f) * 2.0f * fXScale : ( (f) * 2.0f - 1.0f ) * fXScale )
+	#define _CAP_Y( f )		( bScreenPixels ? (f) * 2.0f * fYScale : ( 1.0f - (f) * 2.0f ) * fYScale )
 	fdraw_Depth_EnableWriting( FALSE );
 	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
 	fdraw_SetTexture( NULL );
 	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
 	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+	const FDrawCullDir_e nOldCull = fdraw_GetCullDir();
+	fdraw_SetCullDir( FDRAW_CULLDIR_NONE );
 	const f32 fDepth = 0.005f;	// the key's lower lip, in screen fractions of height
 	CFVec3 a( _CAP_X( fLeft ), _CAP_Y( fTop ), 1.0f ), b( _CAP_X( fRight ), _CAP_Y( fTop ), 1.0f );
 	CFVec3 c( _CAP_X( fRight ), _CAP_Y( fBottom + fDepth ), 1.0f ), d( _CAP_X( fLeft ), _CAP_Y( fBottom + fDepth ), 1.0f );
@@ -273,6 +275,7 @@ BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar 
 	CFColorRGBA Edge( 0.55f, 0.72f, 0.95f, 1.0f );
 	fdraw_SolidLine( &a, &b, &Edge ); fdraw_SolidLine( &b, &c, &Edge );
 	fdraw_SolidLine( &c, &d, &Edge ); fdraw_SolidLine( &d, &a, &Edge );
+	fdraw_SetCullDir( nOldCull );
 	#undef _CAP_X
 	#undef _CAP_Y
 
@@ -284,10 +287,10 @@ BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar 
 }
 
 BOOL wpr_drawutils_DrawKeyCapCentered( cwchar *pwszLabel, f32 fTextX, f32 fCenterY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
-									   f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom ) {
+									   f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom, BOOL bScreenPixels ) {
 	const f32 fTextY = (fCenterY - (0.5f * _fPromptLineHeightPerScale + _fPromptLineTopPerScale) * fFontScale) * 0.75f;
 	return wpr_drawutils_DrawKeyCap( pwszLabel, fTextX, fTextY, cAlign, fFontScale, fMinWidth, fXScale, fYScale,
-									 pfLeft, pfTop, pfRight, pfBottom );
+									 pfLeft, pfTop, pfRight, pfBottom, bScreenPixels );
 }
 
 // A thick stroke from a to b, fWidth across.
@@ -424,7 +427,7 @@ void wpr_drawutils_DrawMouseGlyph( u32 nButton, f32 fX, f32 fY, f32 fHeight, f32
 
 // The retail data only contains Xbox button art. These generated glyphs keep the PlayStation
 // presentation self-contained: A/B/Y/X map to Cross/Circle/Triangle/Square respectively.
-void wpr_drawutils_DrawPlayStationGlyph( u32 i, f32 fX, f32 fY, f32 fRadius ) {
+void wpr_drawutils_DrawPlayStationGlyph( u32 i, f32 fX, f32 fY, f32 fRadius, BOOL bYDown ) {
 	CFColorRGBA Color;
 	if( i == 0 ) Color.Set( 0.45f, 0.68f, 1.00f, 1.0f );		// Cross
 	else if( i == 1 ) Color.Set( 1.00f, 0.38f, 0.38f, 1.0f );	// Circle
@@ -473,7 +476,8 @@ void wpr_drawutils_DrawPlayStationGlyph( u32 i, f32 fX, f32 fY, f32 fRadius ) {
 		_GlyphPolygon( fX, fY, fSymbol, 20, 0.0f, fWidth, &Color );
 	} else if( i == 2 ) {
 		// the triangle's centroid a little below the center, so it looks centered
-		_GlyphPolygon( fX, fY - fSymbol * 0.12f, fSymbol * 1.1f, 3, FMATH_HALF_PI, fWidth, &Color );
+		const f32 fUp = bYDown ? -1.0f : 1.0f;
+		_GlyphPolygon( fX, fY - fUp * fSymbol * 0.12f, fSymbol * 1.1f, 3, fUp * FMATH_HALF_PI, fWidth, &Color );
 	} else {
 		_GlyphPolygon( fX, fY, fSymbol * 1.1f, 4, FMATH_PI * 0.25f, fWidth, &Color );
 	}

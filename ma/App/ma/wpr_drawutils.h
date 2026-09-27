@@ -51,13 +51,15 @@ typedef struct {
 extern Wpr_DrawUtils_TickBar_t Wpr_DrawUtils_LastTickBar;
 // Draw a generated Cross/Circle/Triangle/Square glyph (0..3) or the Options button (4) in the
 // caller's current fdraw coordinate system: a dark round button of fRadius with the symbol on it.
-extern void wpr_drawutils_DrawPlayStationGlyph( u32 nGlyph, f32 fCenterX, f32 fCenterY, f32 fRadius );
+// bYDown supports the screen-pixel coordinates used by message boxes.
+extern void wpr_drawutils_DrawPlayStationGlyph( u32 nGlyph, f32 fCenterX, f32 fCenterY, f32 fRadius, BOOL bYDown = FALSE );
 // Draw a keyboard key cap: pwszLabel printed at (fTextX, fTextY) (screen fractions, the text's top;
 // cAlign L'L' puts the key's left there, L'C' its center, L'R' its right) on a raised key sized to the text and at
 // least fMinWidth wide. The key is drawn in the caller's current fdraw space, where screen fraction f
 // maps to ((f*2-1)*fXScale, (1-f*2)*fYScale). Returns the key's bounds in screen fractions.
+// bScreenPixels selects top-left y-down pixels for message dialogs; default is centered y-up.
 extern BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
-									  f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom );
+									  f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom, BOOL bScreenPixels = FALSE );
 // A pad face button, nFace 0..3 = the bottom, right, top and left buttons (Xbox A, B, Y, X; PlayStation
 // Cross, Circle, Triangle, Square), centered at (fX, fY) in screen fractions, fRadius a fraction of the
 // screen's height. Drawn in the wrapper's ortho space (pixels, origin at the center, y up).
@@ -71,7 +73,7 @@ extern void wpr_drawutils_MeasureFontLine( f32 fPrintY, f32 fScale );
 // The same, with the label's line centered on fCenterY (a screen fraction down) using the prompt font's
 // measured line metrics.
 extern BOOL wpr_drawutils_DrawKeyCapCentered( cwchar *pwszLabel, f32 fTextX, f32 fCenterY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
-											  f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom );
+											  f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom, BOOL bScreenPixels = FALSE );
 #endif
 
 

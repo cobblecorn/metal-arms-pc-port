@@ -25,7 +25,7 @@
 //   -debug-info     draw the game's debug overlays: on-screen script messages and errors (errors
 //                   pause the game), frame rate, checkpoint and AI debug drawing. Scripts always log.
 //   -mission <name> load a registered single-player world with its mission data
-//   -coop <2-4>     experimental local campaign co-op player slots; requires -mission and separate inputs
+//   -coop <2-4>     experimental local campaign co-op player slots; requires -mission; shared or separate inputs
 //   -level <name>    launch a world directly as a generic debug level
 //   -world-only <name> load a world resource, then exit before game/audio setup
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
@@ -88,8 +88,6 @@ static bool _bNoAudio = false;
 static bool _bMute = false;
 extern BOOL FAudio_bPortMuteOutput;	// Fang2/dx/fdx8audio.cpp
 static int _nCampaignCoopPlayers = 1;
-static bool _bInputLayoutSpecified = false;
-static PcInputLayout _nRequestedInputLayout = PCINPUT_LAYOUT_SHARED;
 static bool _bDebugInfo = false;
 static bool _bConsole = false;
 static bool _bPortDiag = false;
@@ -628,8 +626,6 @@ static bool _ParseArgs( int argc, char **argv )
 				_Log( "-input-layout must be shared or separate.\n" );
 				return false;
 			}
-			_bInputLayoutSpecified = true;
-			_nRequestedInputLayout = nLayout;
 			SetEnvironmentVariableA( "MA_PORT_INPUT_LAYOUT", argv[++i] );
 		}
 		else if( !_stricmp( pszArg, "-button-prompts" ) && bHasValue ) {
@@ -669,13 +665,6 @@ static bool _ParseArgs( int argc, char **argv )
 		if( !_szMission[0] ) {
 			_Log( "-coop requires -mission <registered campaign world>.\n" );
 			return false;
-		}
-		if( _bInputLayoutSpecified && _nRequestedInputLayout != PCINPUT_LAYOUT_SEPARATE ) {
-			_Log( "-coop requires -input-layout separate when an input layout is specified.\n" );
-			return false;
-		}
-		if( !_bInputLayoutSpecified ) {
-			SetEnvironmentVariableA( "MA_PORT_INPUT_LAYOUT", "separate" );
 		}
 	}
 	_szDiscordAppId[sizeof(_szDiscordAppId) - 1] = 0;

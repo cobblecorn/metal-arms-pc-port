@@ -2,7 +2,8 @@
 
 Status (2026-09-27): `-mission WORLD -coop 2..4` (PC) starts a campaign level with 2-4 local players
 (`launcher.cpp` builds the `GameInitInfo_t`: `bSinglePlayer=TRUE`, `nNumPlayers=N`, no profiles; the
-input layout defaults to `separate`: keyboard/mouse player 1, pads players 2-4). Verified by runs: the
+input layout uses normal configuration: `shared` by default, pads 1-4 for players
+1-4 with keyboard optional for player 1; `separate` reserves keyboard/mouse P1). Verified by runs: the
 split screen, HUDs and radars draw per player; no asserts or crashes in a town run. Done from the list
 below:
 
@@ -18,7 +19,12 @@ below:
   control for every player (`_ScriptSetPlayersControl`).
 - Pause (5) was already per player: whoever presses Start pauses, with their own inventory.
 
-Still open: no front-end entry (command line only), no profiles or progress saving (3), barter (6),
+Menu follow-up: a PC Co-op entry now offers 2-4 players and either input layout with virtual
+profiles. The two-player controller-layout menu launch rendered split screen;
+physical multi-controller gameplay remains unverified. See `coop-network-plan.md`. CLI co-op now
+uses the configured input layout (`shared` by default), with `separate` available for keyboard P1.
+
+Still open: no progress saving (3), barter (6),
 collectables (7), AI targeting (8), minigames and bosses (9); other players' cameras keep their own view
 during scripted cutscenes (only player 1's view shows the cutscene camera).
 
