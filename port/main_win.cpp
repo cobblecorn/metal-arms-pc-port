@@ -33,7 +33,8 @@
 //                   separate: keyboard/mouse alone on port 0, pads 1-3 on ports 1-3 (local co-op)
 //   -button-prompts <auto|keyboard|xbox|playstation> choose prompt glyphs and wording (default auto)
 //   -test-keys <s:vk,...> press these virtual keys (e.g. 40:0x1B) that many seconds after start, for
-//                   unattended tests with -shots; they work without the window having focus
+//                   unattended tests with -shots; they work without the window having focus. "g8:0x1B"
+//                   counts from the first gameplay frame instead (pauses a mission 8 s into play)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 //   -save-dir <dir> where player profiles are saved (default: %APPDATA%\Metal Arms PC Port\Saves)
 
@@ -866,7 +867,8 @@ int main( int argc, char **argv )
 	Win.nIconIDI = IDI_MA_PORT;	// port/res/ma_port.rc
 	Win.bAllowPowerSuspend = TRUE;
 	Win.pFcnSuspend = NULL;
-	strcpy( Win.szWindowTitle, "Metal Arms: Glitch in the System" );
+	// a muted run is a test run (tools/port_run.py): say so, so it isn't mistaken for missing audio
+	strcpy( Win.szWindowTitle, _bNoAudio ? "Metal Arms: Glitch in the System  [TEST RUN - NO AUDIO]" : "Metal Arms: Glitch in the System" );
 
 	//////////////////////////////////////////////////////////////////////
 	// Go. gameloop_Start() creates the window on this thread and runs the game on another.

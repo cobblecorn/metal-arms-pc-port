@@ -46,15 +46,23 @@ static int s_menuFrameWheel, s_menuWheelRemainder;
 // Scripted key taps for unattended tests and screenshots (MA_PORT_TEST_KEYS / -test-keys
 // "seconds:vk,..."): each key reads as held for a quarter second from that many seconds after install,
 // whichever window has focus, so a test never has to take the keyboard from the desktop.
-struct TestKey { DWORD at; int key; };
+// A "g" before the seconds ("g8:0x1B") counts from the first gameplay frame instead (the first frame
+// with the gameplay control map and the game not paused), so a test can pause a level at a set point
+// in its play however long it took to load.
+struct TestKey { DWORD at; int key; bool fromGameplay; };
 static TestKey s_testKeys[32];
 static int s_testKeyCount;
 static DWORD s_installTick;
+static volatile LONG s_gameplayTick;	// GetTickCount() of the first gameplay frame, 0 until then
 
 static bool TestKeyHeld(int key) {
-	const DWORD elapsed = GetTickCount() - s_installTick;
+	const DWORD now = GetTickCount();
+	const DWORD gameplayTick = (DWORD)InterlockedCompareExchange(&s_gameplayTick, 0, 0);
 	for (int i = 0; i < s_testKeyCount; i++) {
-		if (s_testKeys[i].key == key && elapsed >= s_testKeys[i].at && elapsed < s_testKeys[i].at + 250) return true;
+		if (s_testKeys[i].key != key) continue;
+		if (s_testKeys[i].fromGameplay && !gameplayTick) continue;
+		const DWORD elapsed = now - (s_testKeys[i].fromGameplay ? gameplayTick : s_installTick);
+		if (elapsed >= s_testKeys[i].at && elapsed < s_testKeys[i].at + 250) return true;
 	}
 	return false;
 }
@@ -63,6 +71,8 @@ static void ParseTestKeys(const char *text) {
 	s_testKeyCount = 0;
 	while (text && *text && s_testKeyCount < (int)(sizeof(s_testKeys) / sizeof(s_testKeys[0]))) {
 		char *end;
+		const bool fromGameplay = (*text == 'g' || *text == 'G');
+		if (fromGameplay) text++;
 		const double seconds = strtod(text, &end);
 		if (end == text || *end != ':') break;
 		text = end + 1;
@@ -70,6 +80,7 @@ static void ParseTestKeys(const char *text) {
 		if (end == text || key <= 0 || key > 255) break;
 		s_testKeys[s_testKeyCount].at = (DWORD)(seconds * 1000.0);
 		s_testKeys[s_testKeyCount].key = (int)key;
+		s_testKeys[s_testKeyCount].fromGameplay = fromGameplay;
 		s_testKeyCount++;
 		text = *end == ',' ? end + 1 : end;
 	}
@@ -575,6 +586,7 @@ void pcinput_BeginFrame(bool allowLook) {
 	const LONG dx = InterlockedExchange(&s_mouseDX, 0), dy = InterlockedExchange(&s_mouseDY, 0);
 	s_frameYaw = s_framePitch = 0;
 	InterlockedExchange(&s_lookAllowed, allowLook ? 1 : 0);
+	if (allowLook && !InterlockedCompareExchange(&s_gameplayTick, 0, 0)) InterlockedExchange(&s_gameplayTick, (LONG)(GetTickCount() | 1));
 	// Menus, and losing focus by any route the window messages missed, free the cursor.
 	if (!allowLook || GetForegroundWindow() != s_window) ReleaseMouse();
 	if (allowLook && MouseLook() && GetForegroundWindow() == s_window) {

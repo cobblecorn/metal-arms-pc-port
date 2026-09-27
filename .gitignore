@@ -18,3 +18,6 @@ ma_port_asset_log.txt
 
 # Python caches
 __pycache__/
+
+# The game's default log when run from the repo root without -log
+/ma_port.log
