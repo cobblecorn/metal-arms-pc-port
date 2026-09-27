@@ -52,6 +52,7 @@
 #include "level.h"
 #include "meshentity.h"
 #include "player.h"
+#include "MultiplayerMgr.h"
 #include "SplineActor.h"
 #include "spawnsys.h"
 #include "vehicle.h"
@@ -64,6 +65,28 @@
 #include "econsole.h"
 #include "difficulty.h"
 #include "fxshockwave.h"
+
+#if FANG_WINGC
+// Campaign co-op (PC): the level scripts' "the player" is the story's Glitch. CPlayer::m_pCurrent is
+// whichever player the game worked last (player 2 of 2 when scripts run), so with several players the
+// scripts use player 1. Single player is unchanged.
+static CPlayer *_ScriptPlayer( void ) {
+	return ( MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 ) ? &Player_aPlayer[0] : CPlayer::m_pCurrent;
+}
+// Cutscenes take control from every player, not just one.
+static void _ScriptSetPlayersControl( BOOL bEnable ) {
+	if( !( MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 ) ) {
+		if( bEnable ) CPlayer::m_pCurrent->EnableEntityControl(); else CPlayer::m_pCurrent->DisableEntityControl();
+		return;
+	}
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
+		if( bEnable ) Player_aPlayer[i].EnableEntityControl(); else Player_aPlayer[i].DisableEntityControl();
+	}
+}
+#else
+#define _ScriptPlayer()					( CPlayer::m_pCurrent )
+#define _ScriptSetPlayersControl( b )	( (b) ? CPlayer::m_pCurrent->EnableEntityControl() : CPlayer::m_pCurrent->DisableEntityControl() )
+#endif
 
 cell AMX_NATIVE_CALL Bot_SetBuddyCtrl(AMX *pAMX, cell *aParams);
 extern BOOL AIBrain_TalkModeCB( u32 uTalkModeCBControl, void *pvData1, void *pvData2 );
@@ -1753,7 +1776,7 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_IsDead(AMX *pAMX, cell *aParams)
 cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_GetPlayer(AMX *pAMX, cell *aParams)
 {
 	SCRIPT_CHECK_NUM_PARAMS( "Bot_GetPlayer", 0 );
-	CEntity *pE = CPlayer::m_pCurrent->m_pEntityCurrent;
+	CEntity *pE = _ScriptPlayer()->m_pEntityCurrent;
 	FASSERT(pE->TypeBits() & ENTITY_BIT_BOT);
 	CBot *pBot = (CBot *)(pE);
 	return((cell)(pE));
@@ -2645,7 +2668,7 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_GetAnimPos(AMX *pAMX, cell *aParams)
 cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_FreezePlayer(AMX *pAMX, cell *aParams)
 {
 	SCRIPT_CHECK_NUM_PARAMS( "Bot_FreezePlayer", 0 );
-	CBot *pPlayer = (CBot *)(CPlayer::m_pCurrent->m_pEntityCurrent);
+	CBot *pPlayer = (CBot *)(_ScriptPlayer()->m_pEntityCurrent);
 
 	m_pBotControls = pPlayer->Controls();
 	pPlayer->SetControls(NULL);
@@ -2656,7 +2679,7 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_FreezePlayer(AMX *pAMX, cell *aParams
 cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_UnfreezePlayer(AMX *pAMX, cell *aParams)
 {
 	SCRIPT_CHECK_NUM_PARAMS( "Bot_UnfreezePlayer", 0 );
-	CBot *pPlayer = (CBot *)(CPlayer::m_pCurrent->m_pEntityCurrent);
+	CBot *pPlayer = (CBot *)(_ScriptPlayer()->m_pEntityCurrent);
 	
 	FASSERT(m_pBotControls != NULL);
 	pPlayer->SetControls(m_pBotControls);
@@ -3242,7 +3265,7 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::BotGlitch_FallDown(AMX *pAMX, cell *aPara
 {
 	SCRIPT_CHECK_NUM_PARAMS( "BotGlitch_FallDown", 0 );
 	FASSERT(CPlayer::m_nCurrent < MAX_PLAYERS);
-	CEntity* pEntity = Player_aPlayer[CPlayer::m_nCurrent].m_pEntityOrig;
+	CEntity* pEntity = _ScriptPlayer()->m_pEntityOrig;
 	FASSERT(pEntity && (pEntity->TypeBits() & ENTITY_BIT_BOTGLITCH));
 	CBotGlitch* pGlitch = (CBotGlitch*)pEntity;
 	pGlitch->FallDown(1.0f);
@@ -3581,7 +3604,7 @@ cell AMX_NATIVE_CALL CMAST_CamWrapper::Cam_Deactivate(AMX *pAMX, cell *aParams)
 		return((cell)(0));
 	}
 
-	CEntity *pE = CPlayer::m_pCurrent->m_pEntityCurrent;
+	CEntity *pE = _ScriptPlayer()->m_pEntityCurrent;
 	FASSERT(pE->TypeBits() & ENTITY_BIT_BOT);
 	CBot *pBot = (CBot *)(pE);
 	gamecam_SwitchPlayerTo3rdPersonCamera(GAME_CAM_PLAYER_1, pBot);
@@ -3741,7 +3764,7 @@ void CMAST_CamAnimWrapper::CamAnim_Start( CFCamAnimInst* pCamAnimInst, BOOL bLet
 	gamecam_SwitchPlayerToCutsceneCamera(GAME_CAM_PLAYER_1, m_pCamInfo);
 
 	//go into letterbox mode... (same code as game begin cutscene)
-	CPlayer::m_pCurrent->DisableEntityControl();
+	_ScriptSetPlayersControl( FALSE );
 	CAIBrain* pBrain = Player_aPlayer[0].m_pEntityCurrent->AIBrain();
 	if (Player_aPlayer[0].m_pEntityCurrent ->TypeBits() & ENTITY_BIT_BOT)
 	{
@@ -3778,14 +3801,14 @@ void CMAST_CamAnimWrapper::CamAnim_EndCutscene( void ) {
 	if( m_pCamInfo->GetCamAnimInst() ) { //a cutscene is currently active...
 		
 		m_pCamInfo->SetCamAnimInst( NULL );
-		CEntity *pE = CPlayer::m_pCurrent->m_pEntityCurrent;
+		CEntity *pE = _ScriptPlayer()->m_pEntityCurrent;
 		FASSERT(pE->TypeBits() & ENTITY_BIT_BOT);
 		CBot *pBot = (CBot *)(pE);
 		gamecam_SwitchPlayerTo3rdPersonCamera(GAME_CAM_PLAYER_1, pBot);
 
 		//disable the letterbox mode...
 		aibrainman_Deactivate(Player_aPlayer[0].m_pEntityCurrent->AIBrain());
-		CPlayer::m_pCurrent->EnableEntityControl();
+		_ScriptSetPlayersControl( TRUE );
 		aibrainman_ConfigurePlayerBotBrain(Player_aPlayer[0].m_pEntityCurrent->AIBrain(), 0);
 		ai_NotifyCutSceneEnd();
 		if (Player_aPlayer[0].m_pEntityCurrent ->TypeBits() & ENTITY_BIT_BOT)

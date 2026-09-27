@@ -2584,6 +2584,25 @@ void CStartPtMgr::InitLevel( void )
 
 	// If we are multiplayer and there are less than four start points, hack
 	// in a few extras so we don't start on top of each other.
+#if FANG_WINGC
+	// Campaign co-op (PC): a campaign level has one start point, and 10 units off it is often inside a
+	// wall or a pipe. Put players 2-4 just beside and behind player 1 instead.
+	if ( m_nStartPtCount == 1 && MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 ) {
+		static const f32 afSide[3] = { 3.0f, -3.0f, 0.0f }, afBack[3] = { -1.5f, -1.5f, -4.0f };
+		for ( u32 i = 1; i < 4; i++ ) {
+			CFVec3A vSide = m_aStartPoints[0].m_vRight, vBack = m_aStartPoints[0].m_vFront;
+			vSide.Mul( afSide[i - 1] );
+			vBack.Mul( afBack[i - 1] );
+			m_aStartPoints[i] = m_aStartPoints[0];
+			m_aStartPoints[i].m_vPos.Add( vSide );
+			m_aStartPoints[i].m_vPos.Add( vBack );
+			m_anStartIndex[i] = i;
+		}
+		m_nStartPtCount = 4;
+		m_nNextPoint = 0;
+		return;	// in order: player 1 on the level's start
+	}
+#endif
 	if (m_nStartPtCount < 4) {
 		CFVec3A v;
 		switch (m_nStartPtCount) {

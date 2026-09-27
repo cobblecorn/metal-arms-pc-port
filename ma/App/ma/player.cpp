@@ -734,6 +734,60 @@ void CPlayer::DrawText( void ) {
 	}
 }
 
+#if FANG_WINGC
+// Campaign co-op (PC): single-player rules restore the level's checkpoint when the player dies or falls
+// out of the world, which with several players would roll everyone back. A player who goes down while a
+// partner is still standing comes back beside that partner instead, keeping their inventory; only when
+// nobody is left standing does the checkpoint restore run (then it brings everyone back).
+static BOOL _CoopRespawnNearPartner( CPlayer *pPlayer ) {
+	if( !MultiplayerMgr.IsSinglePlayer() || CPlayer::m_nPlayerCount < 2 ) {
+		return FALSE;
+	}
+	CEntity *pEntity = pPlayer->m_pEntityCurrent;
+	if( !pEntity || !(pEntity->TypeBits() & ENTITY_BIT_BOT) ) {
+		return FALSE;
+	}
+	CBot *pBot = (CBot *)pEntity;
+
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
+		CPlayer *pPartner = &Player_aPlayer[i];
+		if( pPartner == pPlayer || !pPartner->m_pEntityCurrent || !(pPartner->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) ) {
+			continue;
+		}
+		CBot *pPartnerBot = (CBot *)pPartner->m_pEntityCurrent;
+		if( pPartnerBot->IsDeadOrDying() || !pPartnerBot->IsInWorld() || pPartnerBot->IsInAir() || !pPartnerBot->m_pWorldMesh ) {
+			continue;
+		}
+
+		// Beside and a little behind the partner, facing the way the partner faces, a little above the
+		// ground so the bot settles onto it.
+		CFMtx43A Mtx;
+		Mtx.Identity();
+		CFVec3A vFront = pPartnerBot->MtxToWorld()->m_vFront;
+		vFront.y = 0.0f;
+		if( vFront.MagSq() < 0.0001f ) {
+			vFront.Set( 0.0f, 0.0f, 1.0f );
+		}
+		vFront.Unitize();
+		Mtx.m_vFront = vFront;
+		Mtx.m_vUp.Set( 0.0f, 1.0f, 0.0f );
+		Mtx.m_vRight.Cross( Mtx.m_vUp, Mtx.m_vFront );
+		const f32 fSide = (pPlayer->m_nPlayerIndex & 1) ? -3.0f : 3.0f;
+		CFVec3A vOffset, vBack;
+		vOffset.Mul( Mtx.m_vRight, fSide );
+		vBack.Mul( Mtx.m_vFront, -2.0f );
+		Mtx.m_vPos = pPartnerBot->MtxToWorld()->m_vPos;
+		Mtx.m_vPos.Add( vOffset );
+		Mtx.m_vPos.Add( vBack );
+		Mtx.m_vPos.y += 1.0f;
+		pBot->Relocate_RotXlatFromUnitMtx_WS( &Mtx );
+		DEVPRINTF( "Co-op: player %d back beside player %d.\n", pPlayer->m_nPlayerIndex + 1, i + 1 );
+		return TRUE;
+	}
+	return FALSE;
+}
+#endif
+
 void CPlayer::Work( void ) {
 
 	m_SkyBox.Work();
@@ -819,6 +873,11 @@ void CPlayer::Work( void ) {
 					// If this is a multiplayer game, we just respawn this player
 					// at a new spawn point. If it is single player, we restore
 					// the last checkpoint.
+#if FANG_WINGC
+					if( _CoopRespawnNearPartner( this ) ) {
+						// co-op with a partner standing: back beside them
+					} else
+#endif
 					if( !MultiplayerMgr.RespawnBot( (CBot*)m_pEntityCurrent ) && !gamecam_GetCameraBeingDebugged() ) {
 						if( checkpoint_Saved( 1 ) ) {
 							// player has passed a checkpoint on this level,
@@ -898,6 +957,12 @@ void CPlayer::Work( void ) {
 						m_fRestoreCheckpointTimer += FLoop_fPreviousLoopSecs;
 
 						if ( m_fRestoreCheckpointTimer > 3.f ) {
+#if FANG_WINGC
+							if( _CoopRespawnNearPartner( this ) ) {
+								m_bRestoreTimerRunning = FALSE;
+								m_fRestoreCheckpointTimer = 0.f;
+							} else
+#endif
 							if( !MultiplayerMgr.RespawnBot( pPlayerBot ) ) {
 								if( checkpoint_Saved( 1 ) ) {
 									// player has passed a checkpoint on this level, so restore to that.
@@ -936,6 +1001,12 @@ void CPlayer::Work( void ) {
 							m_vPosWhenLeavingGround = pPlayerBot->MtxToWorld()->m_vPos.v3;
 							m_fRestoreCheckpointTimer = 0.f;
 						} else if ( m_fRestoreCheckpointTimer > 10.f ) {
+#if FANG_WINGC
+							if( _CoopRespawnNearPartner( this ) ) {
+								m_bRestoreTimerRunning = FALSE;
+								m_fRestoreCheckpointTimer = 0.f;
+							} else
+#endif
 							if( !MultiplayerMgr.RespawnBot( pPlayerBot ) ) {
 								if( checkpoint_Saved( 1 ) ) {
 									// player has passed a checkpoint on this level, so restore to that.

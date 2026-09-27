@@ -1,11 +1,26 @@
 # Co-op audit: single-player assumptions
 
-Status: a basic Windows-only `-coop 2` to `-coop 4` launch prototype now creates multiple campaign
-player slots for registered `-mission` launches while keeping `bSinglePlayer=TRUE`. It has no
-profile-backed persistence or bot selector. Smoke loads reached end-of-loading, but the captures were
-black because the muted Bink soundtrack clock froze intro playback; that issue is fixed by muting Bink
-tracks by volume. Co-op visuals and gameplay behavior still need a fresh check. Keep work at this
-initialization level unless the user asks to continue the co-op feature.
+Status (2026-09-27): `-mission WORLD -coop 2..4` (PC) starts a campaign level with 2-4 local players
+(`launcher.cpp` builds the `GameInitInfo_t`: `bSinglePlayer=TRUE`, `nNumPlayers=N`, no profiles; the
+input layout defaults to `separate`: keyboard/mouse player 1, pads players 2-4). Verified by runs: the
+split screen, HUDs and radars draw per player; no asserts or crashes in a town run. Done from the list
+below:
+
+- Start points (4): with a campaign level's single start point, players 2-4 start 3 units beside or
+  4 behind player 1 (`CStartPtMgr::InitLevel`), instead of the multiplayer hack's 10 units, which put
+  player 2 inside a wall or pipe.
+- Death and checkpoints (2): a player who dies (or falls out of the world, or is stuck in the air)
+  while a partner is standing comes back beside that partner with their inventory
+  (`_CoopRespawnNearPartner` in `player.cpp`); the level-wide checkpoint restore runs only when nobody is
+  standing. Not yet exercised in a run (needs a player death).
+- Scripts' player (1): `Bot_GetPlayer`, freeze/unfreeze, `BotGlitch_FallDown` and the camera-animation
+  cutscenes use player 1 (`_ScriptPlayer()` in `MAScriptTypes.cpp`); cutscenes disable and re-enable
+  control for every player (`_ScriptSetPlayersControl`).
+- Pause (5) was already per player: whoever presses Start pauses, with their own inventory.
+
+Still open: no front-end entry (command line only), no profiles or progress saving (3), barter (6),
+collectables (7), AI targeting (8), minigames and bosses (9); other players' cameras keep their own view
+during scripted cutscenes (only player 1's view shows the cutscene camera).
 
 Goal: campaign levels with 2-4 local players. This lists what already works per player, and every
 place found that assumes a single player, with a suggested change. It was written from source only
