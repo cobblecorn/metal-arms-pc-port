@@ -12,9 +12,12 @@ The original source lives under `ma/` and is kept as close to untouched as possi
 Requires Visual Studio 2022 (C++ workload, x86 tools), CMake 3.20+, Python 3.
 
     cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
-    cmake --build build --config Debug --target ma_port
+    cmake --build build --config Release --target ma_port
 
-Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see below).
+Output: `build/Release/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see below). Release is the one
+to play (about a third of Debug's CPU time per frame); it keeps symbols and frame pointers, so crash logs
+and the stall sampler below work in it too. `--config Debug` builds `build/Debug/ma_port.exe` with the
+engine's asserts.
 
 ## Running
 
@@ -30,6 +33,13 @@ file (`-log`, default `ma_port.log` in the working directory) always has everyth
 first plays of each sound, `PORT-MIX` a snapshot of every playing sound's level every 2 seconds,
 `PORT-TALK` bot dialog and `PORT-DUCK` audio ducking. They are off by default because writing them
 every few seconds caused visible hitches.
+
+Measuring: `-no-vsync` presents immediately. Under `-port-diag` a `PORT-PERF` line every 10 s gives the
+frame rate, the worst frame and the time spent before Present, and a watchdog logs the game thread's call
+stack (`PORT-STALL`) whenever a frame runs past 100 ms (`MA_PORT_STALL_MS` changes that). It found the
+hitches fixed so far: the log being written on the game thread (it is written by a background thread
+now), music/speech streams being opened and their buffers made on the game thread (a worker does the
+whole load now), and movies waiting on Bink's file reads (Bink gets a 16 MB read-ahead now).
 
 `-test-keys "62:0x1B,70:0x51"` presses those virtual keys (Escape, Q) that many seconds after start,
 for unattended tests with `-shots`: they reach the game without its window having focus, so a test
@@ -173,6 +183,12 @@ sized to the prompt's text line, centered on it and sits flush left of the text;
 flow left to right without overlapping. The font's line metrics are measured from the prompts as they
 print (`_fPromptLineHeightPerScale`); `_PROMPT_ICON_SIZE`, `_PROMPT_ICON_CENTER` and `_PROMPT_ART_FILL`
 tune the icon.
+
+Settings screens take clicks: the arrows beside the selected setting, On/Off (and 2-way/4-way) values
+and the level bars (a click sets the level at that tick). Leaving Audio Levels or Advanced Settings with
+Back (Escape, right click) keeps the changes, as on PC; on the consoles Back cancelled them. The
+Controller Map shows a chart of the keys and mouse buttons (or the chosen pad style's buttons) beside
+each action instead of the retail controller picture.
 
 Profile-name entry accepts typed characters that the on-screen keyboard has (either case), spaces
 (not first) and Backspace while the name screen is open; Enter is Done. Those keystrokes do not

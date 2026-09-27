@@ -104,6 +104,42 @@ Working (verified by runs or by the user, see `PORTING.md` for detail):
 - Pause menu with the pointer (user confirmed 2026-09-27), Discord Rich Presence (connects under the
   port's own application by default), typed profile names, keyboard/Xbox/PlayStation prompts.
 
+## Session of 2026-09-27 (later): settings clicks, controller chart, hitches, Release
+
+All committed and pushed (last code commit `9f56059`). Newest first:
+
+1. **Back keeps settings** (`_PcSettingsBackKeeps` in `wpr_system.cpp`): leaving Audio Levels or
+   Advanced Settings with Back (Esc, right click) used to cancel (console convention); the user lost a
+   volume change that way. Now Back = Accept there, front end and in game.
+2. **Movies**: the frame loop waited on Bink's file reads mid-movie (600+ ms; the intro's stutter when
+   the disk is busy). PC Bink now has a 16 MB read-ahead (`_FMOVIE2_PC_IO_BYTES`, `BINKIOSIZE`) and heap
+   allocations (`_MovieAlloc`) instead of the consoles' 2 MB pool. One ~1 s pause remains *between* the
+   front end's logo movies (opening the next one); not chased.
+3. **Hitches** (`b2793a8`): the log was written/flushed on the game thread per line (1+ s stalls on a
+   busy disk) -> background writer in `main_win.cpp` (`_LogAppend`/`_LogFlush`/`_LogWriter`, crash and
+   exit paths flush synchronously). Streams (`CFAudioStream::Create`) read the header and made a
+   track-sized DirectSound buffer on the game thread -> the whole load runs on a worker
+   (`_StreamJob_t`, `_LoadStream`, reference counted; destroy-while-loading abandons the job to its
+   worker; `faudio_Uninstall` waits via `_WaitForStreamLoads`). Result on `wedmmines01`: no stalls
+   except one driver `Present` on a level's first frames; worst frames 14-30 ms.
+4. **Measuring tools** (keep using them): `-no-vsync`; under `-port-diag` a `PORT-PERF` line every 10 s
+   (fps, worst frame, work before Present) and the **stall sampler** (`_StallWatchdog` in
+   `main_win.cpp`): when a frame passes 100 ms (`MA_PORT_STALL_MS` to change) it suspends the game
+   thread, copies its frame-pointer chain and logs it symbolized as `PORT-STALL`. Needs frame pointers:
+   Debug, and Release now builds with `/Zi /Oy-` and links `/DEBUG` (`CMakeLists.txt`).
+5. **Release build** works (front end and a mission tested): ~1.5 ms of frame work vs ~5 ms in Debug.
+   `cmake --build build --config Release --target ma_port` -> `build/Release/ma_port.exe`. The user
+   should play Release from now on (it's what was launched for them last).
+6. **Controller map** is a generated chart (`_PcControllerMap`/`_PcMapIcons` in `wpr_system.cpp`):
+   each label's input comes from its position key (`"A"`, `"LeftY"`, `"Black"`; this build loads the
+   Xbox layout, B = right face button). Keys + mouse glyph for keyboard, Xbox/PS glyphs for pads.
+   `wpr_drawutils_DrawMouseGlyph`, `wpr_drawutils_DrawFaceButton`.
+7. **Settings take clicks**: selection arrows, On/Off and 2-way/4-way values, and level bars are click
+   zones that carry their row (`_MouseAddZone`, `_MouseAddToggle`, `_MouseAddTickBar`,
+   `_MouseAddSelectionArrows`; a bar click walks the value to the clicked tick one step a frame).
+8. Key caps/glyphs center on text using the prompt font's measured line (`_MeasurePromptFont`,
+   defaults 0.041 / 0.0115 per unit of scale); if icons sit off-center, check those.
+
 ## Session of 2026-09-27: another model's commits, reviewed and continued
 
 An intervening session added:
@@ -196,7 +232,12 @@ All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newes
 ## How to work with this user (important)
 
 - The user plays the game windows you launch, **while you work**, and reports by ear/eye; they cannot
-  read logs. For subjective issues launch a logged session in the background:
+  read logs. **Run your own test/benchmark instances with `-no-audio`** (they otherwise blast full-volume
+  default-profile audio over the user's session) and `-discord-app-id off`.
+- To reach a screen without the user's keyboard: `-test-keys "62:0x1B"` pauses the first mission
+  (after its intro), the scratchpad scripts `waitpause.py <shots dir>` (waits for the pause menu in
+  `-shots` output) and `drive.py move/click X Y` (client pixels at 1280x960; Controller Map is at
+  570,438, Advanced Settings at 630,296 in the pause menu). Only one Esc: extra ones back out. For subjective issues launch a logged session in the background:
   `./build/Debug/ma_port.exe -data gamedata/files -mission wedmmines01 -port-diag -log build/logs/<name>.log`
   (or no `-mission` for the front end) and read its `PORT-*` lines afterwards.
 - A running game locks `build/Debug/ma_port.exe`. **Close it yourself** (taskkill by PID, from
@@ -215,17 +256,18 @@ All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newes
 
 ## Open work, roughly in priority order
 
-1. **Confirm with the user**: the pointer in settings opened from the pause menu; the flush-left prompt
-   layout (tune `_PROMPT_ICON_SIZE`/`_PROMPT_ART_FILL` from a `-shots` capture if icons look off);
-   music vs dialog balance after the 2D fix; movie micro-stutter and cutscene audio clipping (#4).
+1. **Confirm with the user**: settings clicks (arrows, On/Off, bars) and the controller chart; the
+   flush-left prompt layout; movie stutter with the 16 MB read-ahead (#4); that Esc out of Audio Levels
+   now keeps the volume. The user reported audio "super loud" — their profile's lower volume had been
+   lost to Back-cancels (fixed); the front end before a profile loads plays at default volume (retail).
 2. Pause menu hit boxes for its page tabs and bottom prompts are fixed fractions (`CPauseScreen::Work`);
    derive them from `m_avtxButton` and the text areas if the layout ever changes.
 3. PlayStation prompts are chosen with `-button-prompts playstation`; there is no in-game option and
    no pad-type detection (XInput can't tell). An options entry would help.
 4. D3D9Ex: default-pool resources survive device resets on Ex, but alt-tab / fullscreen switching and
    window resizing have not been retested since `4d13270`.
-5. Performance: the user plays the **Debug** build; a Release/RelWithDebInfo configuration has not been
-   tried. Worth trying for smoother play.
+5. Performance: done for now (see the later 2026-09-27 section). Remaining: the ~1 s pause between
+   logo movies; a Bink movie open still reads on the game thread (short, before playback).
 6. Discord: optional Rich Presence image (needs an asset uploaded to the application).
 7. Pause-menu page flips with a pad's shoulders work as before; check they still do with the keyboard
    map change (Q no longer CROSS_LEFT in menus).
