@@ -22,6 +22,7 @@
 #include "fclib.h"
 #include "frenderer.h"
 #include "wpr_system.h"
+#include "wpr_drawutils.h"
 #include "msgbox.h"
 #if defined(MA_PC_INPUT)
 #include "pc_input.h"
@@ -1756,12 +1757,26 @@ void CPauseScreen::DrawFrame()
 					}
 				}
 
+				#if defined(MA_PC_INPUT)
+				if( pcinput_UsePlayStationPrompts() ) {
+					const FDrawVtx_t *pButton = &(m_avtxButton[6 * nButtonIndex]);
+					const f32 fCenterX = 0.5f * (pButton[0].Pos_MS.x + pButton[5].Pos_MS.x);
+					const f32 fCenterY = 0.5f * (pButton[0].Pos_MS.y + pButton[5].Pos_MS.y);
+					const f32 fRadius = FMATH_MIN( FMATH_FABS( pButton[1].Pos_MS.x - pButton[0].Pos_MS.x ),
+						FMATH_FABS( pButton[0].Pos_MS.y - pButton[2].Pos_MS.y ) ) * 0.34f;
+					wpr_drawutils_DrawPlayStationGlyph( nButtonIndex == 0 ? 0 : (nButtonIndex == 1 ? 1 : 4), fCenterX, fCenterY, fRadius );
+				} else {
+					fdraw_PrimList( FDRAW_PRIMTYPE_TRILIST, &(m_avtxButton[6 * nButtonIndex]), 6 );
+				}
+				#else
 				fdraw_PrimList( FDRAW_PRIMTYPE_TRILIST, &(m_avtxButton[6 * nButtonIndex]), 6 );
+				#endif
 			}
 		}
 
 		if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
 			if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL ) {
+				fdraw_SetTexture(&m_texControls);
 				u32 i;
 				f32 fAlpha;
 

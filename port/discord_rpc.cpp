@@ -15,6 +15,7 @@ static HANDLE s_thread, s_wake;
 static volatile LONG s_quit;
 static char s_appId[32];
 static char s_details[128], s_state[128];
+static char s_largeImage[128], s_largeText[128];
 static __int64 s_startTime;
 static bool s_dirty;
 
@@ -86,7 +87,7 @@ static DWORD WINAPI Worker(void *) {
 			LeaveCriticalSection(&s_lock);
 		}
 
-		char details[300], state[300];
+		char details[900], state[900], largeImage[900], largeText[900];
 		__int64 start;
 		bool send;
 		EnterCriticalSection(&s_lock);
@@ -94,15 +95,24 @@ static DWORD WINAPI Worker(void *) {
 		s_dirty = false;
 		JsonString(details, sizeof(details), s_details);
 		JsonString(state, sizeof(state), s_state);
+		JsonString(largeImage, sizeof(largeImage), s_largeImage);
+		JsonString(largeText, sizeof(largeText), s_largeText);
 		start = s_startTime;
 		LeaveCriticalSection(&s_lock);
 
 		if (send && details[1] != '"') {
-			char json[1024];
-			sprintf(json, "{\"cmd\":\"SET_ACTIVITY\",\"args\":{\"pid\":%lu,\"activity\":{\"details\":%s%s%s,"
+			char assets[1900], json[4096];
+			assets[0] = 0;
+			if (largeImage[1] != '"') {
+				_snprintf(assets, sizeof(assets) - 1, ",\"assets\":{\"large_image\":%s%s%s}", largeImage,
+					largeText[1] != '"' ? ",\"large_text\":" : "", largeText[1] != '"' ? largeText : "");
+				assets[sizeof(assets) - 1] = 0;
+			}
+			_snprintf(json, sizeof(json) - 1, "{\"cmd\":\"SET_ACTIVITY\",\"args\":{\"pid\":%lu,\"activity\":{\"details\":%s%s%s%s,"
 				"\"timestamps\":{\"start\":%lld}}},\"nonce\":\"%u\"}",
 				GetCurrentProcessId(), details, state[1] != '"' ? ",\"state\":" : "", state[1] != '"' ? state : "",
-				start, ++nonce);
+				assets, start, ++nonce);
+			json[sizeof(json) - 1] = 0;
 			if (!WriteFrame(pipe, 1, json) || !ReadFrame(pipe)) {
 				CloseHandle(pipe);
 				pipe = INVALID_HANDLE_VALUE;
@@ -118,12 +128,16 @@ static DWORD WINAPI Worker(void *) {
 	return 0;
 }
 
-bool discord_Start(const char *appId) {
+bool discord_Start(const char *appId, const char *largeImage, const char *largeText) {
 	if (s_thread || !appId || !appId[0] || strlen(appId) >= sizeof(s_appId)) return false;
 	for (const char *p = appId; *p; p++) {
 		if (*p < '0' || *p > '9') return false;	// application IDs are numeric snowflakes
 	}
 	strcpy(s_appId, appId);
+	strncpy(s_largeImage, largeImage ? largeImage : "", sizeof(s_largeImage) - 1);
+	s_largeImage[sizeof(s_largeImage) - 1] = 0;
+	strncpy(s_largeText, largeText ? largeText : "", sizeof(s_largeText) - 1);
+	s_largeText[sizeof(s_largeText) - 1] = 0;
 	InitializeCriticalSection(&s_lock);
 	s_wake = CreateEventA(NULL, FALSE, FALSE, NULL);
 	s_startTime = (__int64)time(NULL);
@@ -136,7 +150,9 @@ void discord_SetActivity(const char *details, const char *state, bool resetTimer
 	if (!s_thread) return;
 	EnterCriticalSection(&s_lock);
 	strncpy(s_details, details ? details : "", sizeof(s_details) - 1);
+	s_details[sizeof(s_details) - 1] = 0;
 	strncpy(s_state, state ? state : "", sizeof(s_state) - 1);
+	s_state[sizeof(s_state) - 1] = 0;
 	if (resetTimer) s_startTime = (__int64)time(NULL);
 	s_dirty = true;
 	LeaveCriticalSection(&s_lock);

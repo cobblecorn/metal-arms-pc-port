@@ -743,20 +743,29 @@ static BOOL _bMouseOverlayInstalled;
 static BOOL _bMouseDrawPointer;			// the menus drew this frame; draw the pointer over their text
 static BOOL _bMouseDebug;				// MA_PORT_POINTER_DEBUG: outline the hit boxes and log clicks
 
-// The menu's "Press A ..." phrases with the key named instead, for the keyboard/mouse port while it
-// is not using its pad.
-static cwchar *_PromptPhrase( u32 nPhrase, s32 nPort ) {
-	if( (nPort >= 0 && (u32)nPort != pcinput_KeyboardPort()) || pcinput_PromptsForPad() ) {
-		return _apwszPhrases[nPhrase];
+// The menu's button phrases follow the configured presentation rather than the retail Xbox wording.
+static cwchar *_PromptPhrase( u32 nPhrase, s32 /*nPort*/ ) {
+	if( pcinput_UsePlayStationPrompts() ) {
+		switch( nPhrase ) {
+		case WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN:		return L"Press Cross to join";
+		case WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED:	return L"Press Cross to proceed";
+		case WPR_DATATYPES_PHRASES_PRESS_A_TO_ACCEPT:	return L"Press Cross to accept";
+		case WPR_DATATYPES_PHRASES_PRESS_A_TO_CONTINUE:	return L"Press Cross to continue";
+		case WPR_DATATYPES_PHRASES_PRESS_START:			return L"Press OPTIONS";
+		default:										return _apwszPhrases[nPhrase];
+		}
 	}
-	switch( nPhrase ) {
-	case WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN:		return L"Press Space to join";
-	case WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED:	return L"Press Space to proceed";
-	case WPR_DATATYPES_PHRASES_PRESS_A_TO_ACCEPT:	return L"Press Space to accept";
-	case WPR_DATATYPES_PHRASES_PRESS_A_TO_CONTINUE:	return L"Press Space to continue";
-	case WPR_DATATYPES_PHRASES_PRESS_START:			return L"Press Enter";
-	default:										return _apwszPhrases[nPhrase];
+	if( pcinput_UseKeyboardPrompts() ) {
+		switch( nPhrase ) {
+		case WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN:		return L"Press Space to join";
+		case WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED:	return L"Press Space to proceed";
+		case WPR_DATATYPES_PHRASES_PRESS_A_TO_ACCEPT:	return L"Press Space to accept";
+		case WPR_DATATYPES_PHRASES_PRESS_A_TO_CONTINUE:	return L"Press Space to continue";
+		case WPR_DATATYPES_PHRASES_PRESS_START:			return L"Press Enter";
+		default:										return _apwszPhrases[nPhrase];
+		}
 	}
+	return _apwszPhrases[nPhrase];
 }
 
 static BOOL _MousePort( u32 nControllerID ) {
@@ -2922,6 +2931,11 @@ static BOOL _Work( void ) {
 
 	BOOL bNewControllerPluggedIn = FALSE;
 	u32 nOldPortMask = Gamepad_nPortOnlineMask;
+#if defined(MA_PC_INPUT)
+	// Set this before sampling: the profile editor receives WM_CHAR text while its normal gamepad
+	// sample leaves printable keyboard bindings neutral.
+	pcinput_SetTextInput( _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_EDIT_PROFILE_NAME );
+#endif
 	gamepad_Sample();
 #if defined(MA_PC_INPUT)
 	_MouseFrame();
@@ -3339,6 +3353,7 @@ BOOL wpr_system_IG_Work( void ) {
 	}
 
 #if defined(MA_PC_INPUT)
+	pcinput_SetTextInput( FALSE );
 	_MouseFrame();
 #endif
 
@@ -5448,6 +5463,40 @@ static void _ProfileSettings_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode 
 
 static Wpr_DataTypes_NavCode_e _ProfileName_Work( void ) {
 	Wpr_DataTypes_ScreenData_t *pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_EDIT_PROFILE_NAME];
+
+#if defined(MA_PC_INPUT)
+	// The on-screen keyboard remains available for pads and mouse users. Native character input is
+	// accepted here as well, with the same length and leading-space rules as that keyboard.
+	BOOL bTextChanged = FALSE, bTextRejected = FALSE;
+	wchar character;
+	while( pcinput_TakeTextInput( &character ) ) {
+		s32 nLenOfString = fclib_wcslen( _MenuState.wszPNCurProfileName );
+		if( character == L'\b' ) {
+			if( nLenOfString ) {
+				_MenuState.wszPNCurProfileName[nLenOfString-1] = 0;
+				bTextChanged = TRUE;
+			}
+			continue;
+		}
+		const BOOL bNameCharacter = (character >= L'A' && character <= L'Z') ||
+			(character >= L'a' && character <= L'z') || (character >= L'0' && character <= L'9') ||
+			character == L' ' || character == L'-' || character == L'_' || character == L'\'';
+		if( !bNameCharacter || nLenOfString >= PROFILE_NAME_MAX_LENGTH ||
+			(character == L' ' && nLenOfString == 0) ) {
+			bTextRejected = TRUE;
+			continue;
+		}
+		_MenuState.wszPNCurProfileName[nLenOfString] = character;
+		_MenuState.wszPNCurProfileName[nLenOfString+1] = 0;
+		bTextChanged = TRUE;
+	}
+	if( bTextChanged ) {
+		ftext_ResetBlinkTimers();
+		fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
+	} else if( bTextRejected ) {
+		fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_NO_CAN_DO] );
+	}
+#endif
 
 	// check for the B button
 	if( _CheckBackButtons( _MenuState.nControllerIndex ) ) {

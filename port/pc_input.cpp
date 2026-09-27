@@ -21,6 +21,8 @@ static float s_frameYaw, s_framePitch;
 static PcAimAssistMode s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
 static volatile LONG s_mouseAiming;	// the keyboard port's most recent aiming came from the mouse
 static volatile LONG s_promptsForPad;	// the keyboard port's most recent input came from its pad
+static PcPromptStyle s_promptStyle = PCINPUT_PROMPT_STYLE_AUTO;
+static volatile LONG s_textInput;
 // Menu pointer: the window thread counts presses and wheel motion; the game thread samples the
 // position and takes the counts once per frame.
 // The position comes from the window's mouse messages (client pixels, packed y << 16 | x), so it also
@@ -40,6 +42,12 @@ static LONG s_menuLastMoves;
 static POINT s_menuLastCursor;
 static float s_menuX, s_menuY;
 static int s_menuFrameWheel, s_menuWheelRemainder;
+
+#define TEXT_INPUT_QUEUE 64
+struct TextInputQueue { wchar_t characters[TEXT_INPUT_QUEUE]; int count; };
+static CRITICAL_SECTION s_textLock;
+static bool s_textLockReady;
+static TextInputQueue s_textPosted, s_textCharacters;
 
 static float Clamp(float value, float low, float high) {
 	return value < low ? low : value > high ? high : value;
@@ -96,7 +104,8 @@ void pcinput_MapSample(const PcInputState &state, bool primary,
 	}
 	if (!primary) return;
 	const bool *k = state.keys;
-	float x = float(k['D']) - float(k['A']), y = float(k['W']) - float(k['S']);
+	float x = state.textInput ? 0.0f : float(k['D']) - float(k['A']);
+	float y = state.textInput ? 0.0f : float(k['W']) - float(k['S']);
 	if (x && y) { x *= 0.70710678f; y *= 0.70710678f; }
 	v[FPADIO_INPUT_STICK_LEFT_X-1] = Stronger(v[FPADIO_INPUT_STICK_LEFT_X-1], x);
 	v[FPADIO_INPUT_STICK_LEFT_Y-1] = Stronger(v[FPADIO_INPUT_STICK_LEFT_Y-1], y);
@@ -108,12 +117,14 @@ void pcinput_MapSample(const PcInputState &state, bool primary,
 	y = float(k[VK_UP]) - float(k[VK_DOWN]);
 	v[FPADIO_INPUT_STICK_RIGHT_X-1] = Stronger(v[FPADIO_INPUT_STICK_RIGHT_X-1], x);
 	v[FPADIO_INPUT_STICK_RIGHT_Y-1] = Stronger(v[FPADIO_INPUT_STICK_RIGHT_Y-1], y);
-	if (k[VK_SPACE]) v[FPADIO_INPUT_CROSS_BOTTOM-1] = 1.0f;
-	if (k['E']) v[FPADIO_INPUT_CROSS_TOP-1] = 1.0f;
-	// GAMEPAD_MAP_MAIN1: CROSS_LEFT selects the secondary (throwables) list, CROSS_RIGHT the primary
-	// (guns); a tap of the primary button reloads. Q = throwables, R = guns/reload (user choice).
-	if (k['Q']) v[FPADIO_INPUT_CROSS_LEFT-1] = 1.0f;
-	if (k['R']) v[FPADIO_INPUT_CROSS_RIGHT-1] = 1.0f;
+	if (!state.textInput) {
+		if (k[VK_SPACE]) v[FPADIO_INPUT_CROSS_BOTTOM-1] = 1.0f;
+		if (k['E']) v[FPADIO_INPUT_CROSS_TOP-1] = 1.0f;
+		// GAMEPAD_MAP_MAIN1: CROSS_LEFT selects the secondary (throwables) list, CROSS_RIGHT the primary
+		// (guns); a tap of the primary button reloads. Q = throwables, R = guns/reload (user choice).
+		if (k['Q']) v[FPADIO_INPUT_CROSS_LEFT-1] = 1.0f;
+		if (k['R']) v[FPADIO_INPUT_CROSS_RIGHT-1] = 1.0f;
+	}
 	// Enter is START (menus accept it); Escape pauses in gameplay and is Back in menus, which is B on
 	// the Xbox layout and the left face button on the GameCube's.
 	if (k[VK_RETURN] || (k[VK_ESCAPE] && !state.menus)) v[FPADIO_INPUT_START-1] = 1.0f;
@@ -121,8 +132,10 @@ void pcinput_MapSample(const PcInputState &state, bool primary,
 		v[(platform == FPADIO_INPUT_EMULATION_PLATFORM_GC ? FPADIO_INPUT_CROSS_LEFT : FPADIO_INPUT_CROSS_RIGHT)-1] = 1.0f;
 	if (k[VK_LBUTTON]) v[FPADIO_INPUT_TRIGGER_RIGHT-1] = 1.0f;
 	if (k[VK_RBUTTON]) v[FPADIO_INPUT_TRIGGER_LEFT-1] = 1.0f;
-	if (k['F']) v[(platform == FPADIO_INPUT_EMULATION_PLATFORM_GC ? FPADIO_INPUT_GC_DBUTTON_TRIGGER_Z : FPADIO_INPUT_XB_DBUTTON_STICK_RIGHT)-1] = 1.0f;
-	x = float(k['2']) - float(k['4']); y = float(k['1']) - float(k['3']);
+	if (!state.textInput)
+		if (k['F']) v[(platform == FPADIO_INPUT_EMULATION_PLATFORM_GC ? FPADIO_INPUT_GC_DBUTTON_TRIGGER_Z : FPADIO_INPUT_XB_DBUTTON_STICK_RIGHT)-1] = 1.0f;
+	x = state.textInput ? 0.0f : float(k['2']) - float(k['4']);
+	y = state.textInput ? 0.0f : float(k['1']) - float(k['3']);
 	v[FPADIO_INPUT_DPAD_X-1] = Stronger(v[FPADIO_INPUT_DPAD_X-1], x);
 	v[FPADIO_INPUT_DPAD_Y-1] = Stronger(v[FPADIO_INPUT_DPAD_Y-1], y);
 	if (platform == FPADIO_INPUT_EMULATION_PLATFORM_GC) {
@@ -192,9 +205,16 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 	memset(s_menuPosted, 0, sizeof(s_menuPosted));
 	memset(s_menuClicks, 0, sizeof(s_menuClicks));
 	s_menuFrameWheel = s_menuWheelRemainder = 0;
+	s_textInput = 0;
+	memset(&s_textPosted, 0, sizeof(s_textPosted));
+	memset(&s_textCharacters, 0, sizeof(s_textCharacters));
 	if (!s_menuLockReady) {
 		InitializeCriticalSection(&s_menuLock);
 		s_menuLockReady = true;
+	}
+	if (!s_textLockReady) {
+		InitializeCriticalSection(&s_textLock);
+		s_textLockReady = true;
 	}
 	char sensitivity[32];
 	DWORD length = GetEnvironmentVariableA("MA_PORT_MOUSE_SENSITIVITY", sensitivity, sizeof(sensitivity));
@@ -212,6 +232,11 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 	s_layout = PCINPUT_LAYOUT_SHARED;
 	length = GetEnvironmentVariableA("MA_PORT_INPUT_LAYOUT", layout, sizeof(layout));
 	if (length && length < sizeof(layout)) pcinput_ParseLayout(layout, &s_layout);
+	char prompts[16];
+	s_promptStyle = PCINPUT_PROMPT_STYLE_AUTO;
+	s_promptsForPad = 0;
+	length = GetEnvironmentVariableA("MA_PORT_BUTTON_PROMPTS", prompts, sizeof(prompts));
+	if (length && length < sizeof(prompts)) pcinput_ParsePromptStyle(prompts, &s_promptStyle);
 	RAWINPUTDEVICE mouse = {0x01, 0x02, 0, s_window};
 	s_rawMouse = RegisterRawInputDevices(&mouse, 1, sizeof(mouse)) != FALSE;
 	memset(s_connected, 0, sizeof(s_connected));
@@ -237,6 +262,7 @@ void pcinput_Uninstall() {
 	s_rawMouse = false;
 	if (s_xinput) FreeLibrary(s_xinput);
 	s_xinput = NULL; s_getState = NULL; s_window = NULL;
+	pcinput_SetTextInput(false);
 	memset(s_connected, 0, sizeof(s_connected));
 }
 
@@ -257,6 +283,25 @@ int pcinput_PadForPort(PcInputLayout layout, u32 port) {
 u32 pcinput_KeyboardPort() { return 0; }
 
 PcInputLayout pcinput_Layout() { return s_layout; }
+
+bool pcinput_ParsePromptStyle(const char *text, PcPromptStyle *style) {
+	if (!text) return false;
+	if (!_stricmp(text, "auto")) *style = PCINPUT_PROMPT_STYLE_AUTO;
+	else if (!_stricmp(text, "keyboard")) *style = PCINPUT_PROMPT_STYLE_KEYBOARD;
+	else if (!_stricmp(text, "xbox")) *style = PCINPUT_PROMPT_STYLE_XBOX;
+	else if (!_stricmp(text, "playstation") || !_stricmp(text, "ps")) *style = PCINPUT_PROMPT_STYLE_PLAYSTATION;
+	else return false;
+	return true;
+}
+
+PcPromptStyle pcinput_ResolvedPromptStyle() {
+	if (s_promptStyle != PCINPUT_PROMPT_STYLE_AUTO) return s_promptStyle;
+	return InterlockedCompareExchange(&s_promptsForPad, 0, 0) ? PCINPUT_PROMPT_STYLE_XBOX : PCINPUT_PROMPT_STYLE_KEYBOARD;
+}
+
+bool pcinput_UseKeyboardPrompts() { return pcinput_ResolvedPromptStyle() == PCINPUT_PROMPT_STYLE_KEYBOARD; }
+
+bool pcinput_UsePlayStationPrompts() { return pcinput_ResolvedPromptStyle() == PCINPUT_PROMPT_STYLE_PLAYSTATION; }
 
 void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info) {
 	memset(info, 0, sizeof(*info));
@@ -290,6 +335,7 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 		InterlockedExchange(&s_mouseAiming, 0);
 	state.focused = s_window && GetForegroundWindow() == s_window && !IsIconic(s_window);
 	state.menus = keyboard && !InterlockedCompareExchange(&s_lookAllowed, 0, 0);
+	state.textInput = keyboard && InterlockedCompareExchange(&s_textInput, 0, 0) != 0;
 	if (keyboard && state.connected && state.focused) {
 		const XINPUT_GAMEPAD &p = state.pad;
 		if (p.wButtons || p.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD || p.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ||
@@ -316,6 +362,15 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 
 bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 	if (!s_window) return false;
+	if (message == WM_CHAR && InterlockedCompareExchange(&s_textInput, 0, 0) && s_textLockReady) {
+		const wchar_t character = (wchar_t)wParam;
+		if (character == L'\b' || (character >= L' ' && character <= L'~')) {
+			EnterCriticalSection(&s_textLock);
+			if (s_textPosted.count < TEXT_INPUT_QUEUE) s_textPosted.characters[s_textPosted.count++] = character;
+			LeaveCriticalSection(&s_textLock);
+		}
+		return true;
+	}
 	if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && !wParam) || message == WM_DESTROY) ReleaseMouse();
 	if (message == WM_KEYDOWN && !(lParam & (1L << 30))) {
 		if (wParam == VK_ESCAPE) ReleaseMouse();
@@ -477,7 +532,35 @@ bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode) {
 	return true;
 }
 
-bool pcinput_PromptsForPad() { return InterlockedCompareExchange(&s_promptsForPad, 0, 0) != 0; }
+bool pcinput_PromptsForPad() { return !pcinput_UseKeyboardPrompts(); }
+
+void pcinput_SetTextInput(bool active) {
+	const LONG wanted = active ? 1 : 0;
+	if (InterlockedExchange(&s_textInput, wanted) == wanted) return;
+	if (s_textLockReady) {
+		EnterCriticalSection(&s_textLock);
+		s_textPosted.count = s_textCharacters.count = 0;
+		LeaveCriticalSection(&s_textLock);
+	}
+}
+
+bool pcinput_TakeTextInput(wchar_t *character) {
+	if (!character || !s_textLockReady) return false;
+	if (!s_textCharacters.count) {
+		EnterCriticalSection(&s_textLock);
+		memcpy(&s_textCharacters, &s_textPosted, sizeof(s_textCharacters));
+		s_textPosted.count = 0;
+		LeaveCriticalSection(&s_textLock);
+	}
+	if (!s_textCharacters.count) return false;
+	*character = s_textCharacters.characters[0];
+	s_textCharacters.count--;
+	memmove(s_textCharacters.characters, s_textCharacters.characters + 1,
+		s_textCharacters.count * sizeof(s_textCharacters.characters[0]));
+	return true;
+}
+
+bool pcinput_IsTextInput() { return InterlockedCompareExchange(&s_textInput, 0, 0) != 0; }
 
 bool pcinput_IsMouseAiming(u32 controller) {
 	return controller == pcinput_KeyboardPort() && MouseLook() && InterlockedCompareExchange(&s_mouseAiming, 0, 0);

@@ -1072,7 +1072,7 @@ void CMenuMgr::GetControls()
 	if((Gamepad_aapSample[nControllerPort][GAMEPAD_MENU_RIGHT_SHOULDER]->uLatches & FPAD_LATCH_ON) == FPAD_LATCH_ON)
 		m_uButtons |= MMINPUT_RIGHTSHOULDER;
 #if defined(MA_PC_INPUT)
-	if( nControllerPort == pcinput_KeyboardPort() )
+	if( nControllerPort == pcinput_KeyboardPort() && !pcinput_IsTextInput() )
 	{
 		if( (GetAsyncKeyState('Q') & 0x8000) != 0 )
 			m_uButtons |= MMINPUT_LEFTSHOULDER;

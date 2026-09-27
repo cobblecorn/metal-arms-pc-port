@@ -21,7 +21,7 @@ Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see belo
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-no-audio] [-debug-info] [-save-dir <dir>] [-console] [-port-diag] [-discord-app-id <id>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-no-audio] [-debug-info] [-save-dir <dir>] [-console] [-port-diag] [-discord-app-id <id>]
 
 `ma_port.exe` is a windowed app with no console window; `-console` opens one showing the log (engine
 output and the level scripts' own print messages, such as "NONETRIPWIRE ENTER EVENT"). The log
@@ -33,9 +33,13 @@ every few seconds caused visible hitches.
 
 `-discord-app-id <id>` (or `MA_PORT_DISCORD_APP_ID`) turns on Discord Rich Presence: "In the menus",
 or the level ("Level 4: Clean Up") with "Campaign" / "Multiplayer: <game type> (N players)" and the
-elapsed time. It needs an application created at discord.com/developers (the application's name is
-what Discord shows as "Playing ..."); the port talks to the local Discord client's pipe directly, so
-nothing else is installed, and it does nothing when Discord isn't running.
+elapsed time. It needs an application created at discord.com/developers; Discord's generic
+registered-game detection cannot supply that ID or a Rich Presence icon. Set the application's icon
+in the Developer Portal, then upload an image on its Rich Presence assets page and launch with
+`-discord-large-image <asset-key>` (or `MA_PORT_DISCORD_LARGE_IMAGE`).
+`-discord-large-text <tooltip>` / `MA_PORT_DISCORD_LARGE_TEXT` is optional. The port talks to the
+local Discord client's pipe directly, so nothing else is installed, and it does nothing when Discord
+isn't running.
 
 `-level <world>` starts the generic debug level path using `Level01` configuration.
 `-mission <world>` resolves a registered single-player mission and uses its own configuration,
@@ -140,13 +144,19 @@ on the name keyboard all land. While a menu draws its own pointer the mouse butt
 the triggers (a held right trigger starts the launch screen's level-unlock code and blocks input).
 `MA_PORT_POINTER_DEBUG=1` outlines every hit box and logs each click's target.
 
-The in-game pause menu does not take the mouse yet (it uses the system cursor).
+The in-game pause menu uses the same in-engine pointer. Hovering a row selects it; left click
+selects it, the bottom prompts accept or resume, and right click resumes. Click the upper left or
+right tab regions to change pause pages; the wheel moves the current selection. Q/E and Tab/Shift+Tab
+also change pause pages from the keyboard.
 
-With the keyboard and mouse in use, the menus' button prompts are drawn as key caps naming the key
-(Enter, Esc, E, R) instead of controller buttons, and in-game prompts name the key ("Press E to drive
-vehicle"). Using the controller switches both to the Xbox-style buttons (the retail Xbox prompt art
-and wording, which the PC build uses). Storage text talks about the save folder instead of memory
-cards (`wpr_datatypes_PcText()`; format becomes reset, blocks become space).
+`-button-prompts auto` (the default) switches between keyboard key caps and retail Xbox art with the
+most recently used input device. `keyboard` and `xbox` lock that choice. `playstation` uses generated
+Cross, Circle, Triangle, and Square glyphs in front-end and pause prompts and PlayStation wording in
+menu and in-world instructions; it needs no additional assets. `MA_PORT_BUTTON_PROMPTS` accepts the same
+values. Profile-name entry accepts typed letters, digits, spaces, hyphens, underscores, apostrophes,
+and Backspace while the name screen is open; those keystrokes do not trigger gameplay bindings.
+Storage text talks about the save folder instead of memory cards (`wpr_datatypes_PcText()`; format
+becomes reset, blocks become space).
 
 XInput controllers can connect after launch. `-input-layout shared` (default) puts the keyboard/mouse
 and controller 1 on port 1 and controllers 2-4 on ports 2-4. `-input-layout separate` keeps the

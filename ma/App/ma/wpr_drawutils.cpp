@@ -253,6 +253,52 @@ static f32 _DrawKeyCap( u32 i, const Wpr_DataTypes_ButtonLayout_t *pButton, f32 
 	*pfLeft = fLeft; *pfTop = fTop; *pfRight = fRight; *pfBottom = fBottom + fDepth;
 	return fRight + 0.008f;
 }
+
+// The retail data only contains Xbox button art. These outline glyphs keep the PlayStation
+// presentation self-contained: A/B/Y/X map to Cross/Circle/Triangle/Square respectively.
+void wpr_drawutils_DrawPlayStationGlyph( u32 i, f32 fX, f32 fY, f32 fRadius ) {
+	CFColorRGBA Color;
+	if( i == 0 ) Color.Set( 0.25f, 0.55f, 1.00f, 1.0f );		// Cross
+	else if( i == 1 ) Color.Set( 1.00f, 0.25f, 0.22f, 1.0f );	// Circle
+	else if( i == 2 ) Color.Set( 0.18f, 0.90f, 0.38f, 1.0f );	// Triangle
+	else if( i == 3 ) Color.Set( 0.95f, 0.35f, 0.72f, 1.0f );	// Square
+	else Color.Set( 0.85f, 0.85f, 0.95f, 1.0f );						// Options
+
+	fdraw_Depth_EnableWriting( FALSE );
+	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
+	fdraw_SetTexture( NULL );
+	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
+	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+	CFVec3 a( fX - fRadius, fY - fRadius, 1.0f ), b( fX + fRadius, fY + fRadius, 1.0f );
+	if( i == 0 ) {
+		fdraw_SolidLine( &a, &b, &Color );
+		a.Set( fX - fRadius, fY + fRadius, 1.0f ); b.Set( fX + fRadius, fY - fRadius, 1.0f );
+		fdraw_SolidLine( &a, &b, &Color );
+	} else if( i == 1 ) {
+		static const f32 aFacets[][2] = { { 1.0f, 0.0f }, { 0.7071f, 0.7071f }, { 0.0f, 1.0f }, { -0.7071f, 0.7071f },
+			{ -1.0f, 0.0f }, { -0.7071f, -0.7071f }, { 0.0f, -1.0f }, { 0.7071f, -0.7071f }, { 1.0f, 0.0f } };
+		for( u32 n=0; n < sizeof(aFacets)/sizeof(aFacets[0])-1; n++ ) {
+			a.Set( fX + aFacets[n][0] * fRadius, fY + aFacets[n][1] * fRadius, 1.0f );
+			b.Set( fX + aFacets[n+1][0] * fRadius, fY + aFacets[n+1][1] * fRadius, 1.0f );
+			fdraw_SolidLine( &a, &b, &Color );
+		}
+	} else if( i == 2 ) {
+		a.Set( fX, fY + fRadius, 1.0f ); b.Set( fX - fRadius, fY - fRadius, 1.0f );
+		CFVec3 c( fX + fRadius, fY - fRadius, 1.0f );
+		fdraw_SolidLine( &a, &b, &Color ); fdraw_SolidLine( &b, &c, &Color ); fdraw_SolidLine( &c, &a, &Color );
+	} else if( i == 3 ) {
+		a.Set( fX - fRadius, fY + fRadius, 1.0f ); b.Set( fX + fRadius, fY + fRadius, 1.0f );
+		CFVec3 c( fX + fRadius, fY - fRadius, 1.0f ), d( fX - fRadius, fY - fRadius, 1.0f );
+		fdraw_SolidLine( &a, &b, &Color ); fdraw_SolidLine( &b, &c, &Color );
+		fdraw_SolidLine( &c, &d, &Color ); fdraw_SolidLine( &d, &a, &Color );
+	} else {
+		const f32 fHalfWidth = fRadius * 1.45f, fHalfHeight = fRadius * 0.45f;
+		a.Set( fX - fHalfWidth, fY + fHalfHeight, 1.0f ); b.Set( fX + fHalfWidth, fY + fHalfHeight, 1.0f );
+		CFVec3 c( fX + fHalfWidth, fY - fHalfHeight, 1.0f ), d( fX - fHalfWidth, fY - fHalfHeight, 1.0f );
+		fdraw_SolidLine( &a, &b, &Color ); fdraw_SolidLine( &b, &c, &Color );
+		fdraw_SolidLine( &c, &d, &Color ); fdraw_SolidLine( &d, &a, &Color );
+	}
+}
 #endif
 
 void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
@@ -275,10 +321,14 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 #if defined(MA_PC_INPUT)
 			// keyboard and mouse: a key cap naming the key, instead of the pad's button icon
 			f32 fCapLeft = 0.0f, fCapTop = 0.0f, fCapRight = 0.0f, fCapBottom = 0.0f;
-			const BOOL bKeyCap = i < sizeof( _apwszKeyCapLabels ) / sizeof( _apwszKeyCapLabels[0] ) && !pcinput_PromptsForPad();
+			const BOOL bKeyCap = i < sizeof( _apwszKeyCapLabels ) / sizeof( _apwszKeyCapLabels[0] ) && pcinput_UseKeyboardPrompts();
+			const BOOL bPlayStationGlyph = i < sizeof( _apwszKeyCapLabels ) / sizeof( _apwszKeyCapLabels[0] ) && pcinput_UsePlayStationPrompts();
 			if( bKeyCap ) {
 				const f32 fMinLeft = ( fRowUnitY >= 0.0f && FMATH_FABS( fRowUnitY - fTextUnitY ) < 0.02f ) ? fRowNextLeft : 0.0f;
 				fTextUnitX = _DrawKeyCap( i, pButton, fUnitHeight, fTextUnitY, fMinLeft, fHalfXRes, fHalfYRes, &fCapLeft, &fCapTop, &fCapRight, &fCapBottom );
+			} else if( bPlayStationGlyph ) {
+				wpr_drawutils_DrawPlayStationGlyph( i, pButton->fBiPolarUnitX * fHalfXRes,
+					pButton->fBiPolarUnitY * fHalfYRes, fUnitHeight * fHalfYRes * 0.32f );
 			} else
 #endif
 			wpr_drawutils_DrawTextureToScreen( TRUE,

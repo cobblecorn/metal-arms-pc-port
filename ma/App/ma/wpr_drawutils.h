@@ -36,6 +36,9 @@ typedef struct {
 } Wpr_DrawUtils_ButtonHit_t;
 extern Wpr_DrawUtils_ButtonHit_t Wpr_DrawUtils_aButtonHits[WPR_DRAWUTILS_BUTTON_HITS];
 extern void wpr_drawutils_ClearButtonHits( void );
+// Draw a generated Cross/Circle/Triangle/Square glyph (0..3) or the Options button (4) in the
+// caller's current fdraw coordinate system.
+extern void wpr_drawutils_DrawPlayStationGlyph( u32 nGlyph, f32 fCenterX, f32 fCenterY, f32 fRadius );
 #endif
 
 

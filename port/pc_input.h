@@ -12,6 +12,7 @@ struct PcInputState {
 	bool connected;
 	bool focused;
 	bool menus;		// the port is in a menu (not the gameplay control map): Escape is Back, not START
+	bool textInput;	// a native text field owns printable keyboard input
 	bool keys[256];
 };
 
@@ -65,3 +66,22 @@ bool pcinput_IsMouseAiming(u32 controller);
 // True when the keyboard/mouse port's most recent input came from its XInput pad (shared layout), so
 // on-screen prompts should name pad buttons rather than keys.
 bool pcinput_PromptsForPad();
+
+// Prompt presentation can follow the most recently used device (AUTO), or be held to a chosen
+// keyboard, Xbox, or PlayStation layout. Set it with -button-prompts or MA_PORT_BUTTON_PROMPTS.
+enum PcPromptStyle {
+	PCINPUT_PROMPT_STYLE_AUTO,
+	PCINPUT_PROMPT_STYLE_KEYBOARD,
+	PCINPUT_PROMPT_STYLE_XBOX,
+	PCINPUT_PROMPT_STYLE_PLAYSTATION
+};
+bool pcinput_ParsePromptStyle(const char *text, PcPromptStyle *style);
+PcPromptStyle pcinput_ResolvedPromptStyle();
+bool pcinput_UseKeyboardPrompts();
+bool pcinput_UsePlayStationPrompts();
+
+// Native text fields call SetTextInput while active. Printable WM_CHAR input is queued separately
+// from the controller sample so typed characters never fire gameplay bindings.
+void pcinput_SetTextInput(bool active);
+bool pcinput_TakeTextInput(wchar_t *character);
+bool pcinput_IsTextInput();

@@ -18,6 +18,8 @@
 //   -port-diag      log the port's periodic PORT-* diagnostics (also MA_PORT_DIAG=1)
 //   -discord-app-id <id> show Discord Rich Presence under this Discord application (also
 //                   MA_PORT_DISCORD_APP_ID)
+//   -discord-large-image <asset-key-or-url> rich-presence image from that application's assets
+//                   (also MA_PORT_DISCORD_LARGE_IMAGE)
 //   -debug-info     draw the game's debug overlays: on-screen script messages and errors (errors
 //                   pause the game), frame rate, checkpoint and AI debug drawing. Scripts always log.
 //   -mission <name> load a registered single-player world with its mission data
@@ -28,6 +30,7 @@
 //   -aim-assist <auto|on|off> target assistance: auto = controller aiming only (default)
 //   -input-layout <shared|separate> shared: keyboard/mouse and pad 1 drive port 0 (default);
 //                   separate: keyboard/mouse alone on port 0, pads 1-3 on ports 1-3 (local co-op)
+//   -button-prompts <auto|keyboard|xbox|playstation> choose prompt glyphs and wording (default auto)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 //   -save-dir <dir> where player profiles are saved (default: %APPDATA%\Metal Arms PC Port\Saves)
 
@@ -74,6 +77,8 @@ static bool _bDebugInfo = false;
 static bool _bConsole = false;
 static bool _bPortDiag = false;
 static char _szDiscordAppId[32];
+static char _szDiscordLargeImage[128];
+static char _szDiscordLargeText[128];
 static bool _bDevMenu = false;
 
 static FILE *_pLog = NULL;
@@ -340,7 +345,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id>] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-save-dir <dir>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id> [-discord-large-image <asset-key-or-url>] [-discord-large-text <tooltip>]] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-save-dir <dir>]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -369,6 +374,8 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-console" ) )					_bConsole = true;
 		else if( !_stricmp( pszArg, "-port-diag" ) )				_bPortDiag = true;
 		else if( !_stricmp( pszArg, "-discord-app-id" ) && bHasValue )	strncpy( _szDiscordAppId, argv[++i], sizeof(_szDiscordAppId) - 1 );
+		else if( !_stricmp( pszArg, "-discord-large-image" ) && bHasValue ) strncpy( _szDiscordLargeImage, argv[++i], sizeof(_szDiscordLargeImage) - 1 );
+		else if( !_stricmp( pszArg, "-discord-large-text" ) && bHasValue ) strncpy( _szDiscordLargeText, argv[++i], sizeof(_szDiscordLargeText) - 1 );
 		else if( !_stricmp( pszArg, "-dev-menu" ) )					_bDevMenu = true;
 		else if( !_stricmp( pszArg, "-mouse-sensitivity" ) && bHasValue ) {
 			char *pEnd;
@@ -396,6 +403,14 @@ static bool _ParseArgs( int argc, char **argv )
 			}
 			SetEnvironmentVariableA( "MA_PORT_INPUT_LAYOUT", argv[++i] );
 		}
+		else if( !_stricmp( pszArg, "-button-prompts" ) && bHasValue ) {
+			PcPromptStyle nStyle;
+			if( !pcinput_ParsePromptStyle( argv[i + 1], &nStyle ) ) {
+				_Log( "-button-prompts must be auto, keyboard, xbox, or playstation.\n" );
+				return false;
+			}
+			SetEnvironmentVariableA( "MA_PORT_BUTTON_PROMPTS", argv[++i] );
+		}
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );
 		else if( !_stricmp( pszArg, "-save-dir" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SAVE_DIR", argv[++i] );	// read by Fang2/dx/fdx8storage.cpp
@@ -420,6 +435,9 @@ static bool _ParseArgs( int argc, char **argv )
 		_Usage();
 		return false;
 	}
+	_szDiscordAppId[sizeof(_szDiscordAppId) - 1] = 0;
+	_szDiscordLargeImage[sizeof(_szDiscordLargeImage) - 1] = 0;
+	_szDiscordLargeText[sizeof(_szDiscordLargeText) - 1] = 0;
 
 	// Normalize the data directory to end in a backslash and derive the other paths from it.
 	strncpy( _szGameRoot, _szDataDir, MAX_PATH );
@@ -523,9 +541,17 @@ int main( int argc, char **argv )
 	{
 		GetEnvironmentVariableA( "MA_PORT_DISCORD_APP_ID", _szDiscordAppId, sizeof(_szDiscordAppId) );
 	}
+	if( !_szDiscordLargeImage[0] )
+	{
+		GetEnvironmentVariableA( "MA_PORT_DISCORD_LARGE_IMAGE", _szDiscordLargeImage, sizeof(_szDiscordLargeImage) );
+	}
+	if( !_szDiscordLargeText[0] )
+	{
+		GetEnvironmentVariableA( "MA_PORT_DISCORD_LARGE_TEXT", _szDiscordLargeText, sizeof(_szDiscordLargeText) );
+	}
 	if( _szDiscordAppId[0] )
 	{
-		if( discord_Start( _szDiscordAppId ) )
+		if( discord_Start( _szDiscordAppId, _szDiscordLargeImage, _szDiscordLargeText ) )
 		{
 			discord_SetActivity( "Starting up", "", true );
 		}

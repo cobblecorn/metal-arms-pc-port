@@ -354,13 +354,13 @@ static const u16 _anRetailGamePhraseField[GAMEPHRASE_COUNT] = {
 };
 #endif
 #if defined(MA_PC_INPUT)
-// PC wording. Prompts name the key (E is the action button, Space is A, Enter is START) or, after the
-// keyboard/mouse port last used its controller, the Xbox-style button; game_PcPromptWork() switches
-// them. Storage messages describe the save folder rather than a memory card.
+// PC wording. Prompts can name keyboard keys, Xbox buttons, or the corresponding PlayStation
+// symbols; game_PcPromptWork() switches them. Storage messages describe the save folder rather
+// than a memory card.
 typedef struct {
 	u32 nPhrase;
 	cwchar *pwszKeyboard;
-	cwchar *pwszPad;		// NULL: pwszKeyboard for both
+	cwchar *pwszXbox;		// NULL: pwszKeyboard for controller styles
 } _PcPhrase_t;
 static const _PcPhrase_t _aPcPhrases[] = {
 	{ GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER,	L"Press E\nto flip vehicle over",		L"Press Y\nto flip vehicle over" },
@@ -384,8 +384,26 @@ static const _PcPhrase_t _aPcPhrases[] = {
 	{ GAMEPHRASE_DONTTOUCHMU,					L"Saving to\n%ls\n\nPlease do not close the game.", NULL },
 };
 #define _PC_PHRASE_COUNT	( sizeof( _aPcPhrases ) / sizeof( _aPcPhrases[0] ) )
-static cwchar *_apwszPcPhraseKeyboard[_PC_PHRASE_COUNT], *_apwszPcPhrasePad[_PC_PHRASE_COUNT];
-static BOOL _bPcPromptsForPad;
+static cwchar *_apwszPcPhraseKeyboard[_PC_PHRASE_COUNT], *_apwszPcPhraseXbox[_PC_PHRASE_COUNT], *_apwszPcPhrasePlayStation[_PC_PHRASE_COUNT];
+static s32 _nPcPromptStyle = -1;
+
+static cwchar *_PcPlayStationPhrase( u32 nPhrase ) {
+	switch( nPhrase ) {
+	case GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER: return L"Press Triangle\nto flip vehicle over";
+	case GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE: return L"Press Triangle\nto drive vehicle";
+	case GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN: return L"Press Triangle\nto operate gun";
+	case GAMEPHRASE_PRESS_Y_TO_RECRUIT_BUDDY: return L"Press Triangle to recruit";
+	case GAMEPHRASE_PRESS_Y_TO_DISCHARGE_BUDDY: return L"Press Triangle to discharge";
+	case GAMEPHRASE_PRESS_Y_TO_USE_SWITCH: return L"Press Triangle to use switch";
+	case GAMEPHRASE_PRESS_Y_TO_USE_DET_PACK: return L"Press Triangle to place Det-Pack";
+	case GAMEPHRASE_PRESS_A_TO_CONTINUE: return L"Press Cross to continue";
+	case GAMEPHRASE_PRESS_START_TO_CONTINUE: return L"Press OPTIONS%cto continue";
+	case GAMEPHRASE_PRESS_Y_TO_SHOP: return L"Press Triangle to shop";
+	case GAMEPHRASE_PRESS_Y_TO_INSERT_CHIP: return L"Press Triangle to insert a chip";
+	case GAMEPHRASE_PRESS_Y_TO_USE_CONSOLE: return L"Press Triangle\nto use console";
+	default: return NULL;
+	}
+}
 #endif
 static cchar *_pszGlobalSettingsTableName = "global_settings";
 static cchar *_pszGlobalSettingsCSVFilename = "ma";
@@ -2397,13 +2415,14 @@ _EXIT_WITH_ERROR:
 
 #if defined(MA_PC_INPUT)
 void game_PcPromptWork( void ) {
-	BOOL bPad = pcinput_PromptsForPad();
-	if( bPad == _bPcPromptsForPad || !_apwszPcPhraseKeyboard[0] ) {
+	PcPromptStyle nStyle = pcinput_ResolvedPromptStyle();
+	if( (s32)nStyle == _nPcPromptStyle || !_apwszPcPhraseKeyboard[0] ) {
 		return;
 	}
-	_bPcPromptsForPad = bPad;
+	_nPcPromptStyle = (s32)nStyle;
 	for( u32 i=0; i < _PC_PHRASE_COUNT; i++ ) {
-		Game_apwszPhrases[_aPcPhrases[i].nPhrase] = bPad ? _apwszPcPhrasePad[i] : _apwszPcPhraseKeyboard[i];
+		Game_apwszPhrases[_aPcPhrases[i].nPhrase] = nStyle == PCINPUT_PROMPT_STYLE_KEYBOARD ? _apwszPcPhraseKeyboard[i] :
+			(nStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION ? _apwszPcPhrasePlayStation[i] : _apwszPcPhraseXbox[i]);
 	}
 }
 #endif
@@ -2506,9 +2525,11 @@ BOOL _LoadPhraseTable( void ) {
 #if defined(MA_PC_INPUT)
 	for( i=0; i < (int)_PC_PHRASE_COUNT; i++ ) {
 		_apwszPcPhraseKeyboard[i] = gstring_Main.AddString( _aPcPhrases[i].pwszKeyboard );
-		_apwszPcPhrasePad[i] = _aPcPhrases[i].pwszPad ? gstring_Main.AddString( _aPcPhrases[i].pwszPad ) : _apwszPcPhraseKeyboard[i];
+		_apwszPcPhraseXbox[i] = _aPcPhrases[i].pwszXbox ? gstring_Main.AddString( _aPcPhrases[i].pwszXbox ) : _apwszPcPhraseKeyboard[i];
+		cwchar *pwszPlayStation = _PcPlayStationPhrase( _aPcPhrases[i].nPhrase );
+		_apwszPcPhrasePlayStation[i] = pwszPlayStation ? gstring_Main.AddString( pwszPlayStation ) : _apwszPcPhraseKeyboard[i];
 	}
-	_bPcPromptsForPad = !pcinput_PromptsForPad();	// force the first game_PcPromptWork() to apply
+	_nPcPromptStyle = -1;	// force the first game_PcPromptWork() to apply
 	game_PcPromptWork();
 #endif
 
