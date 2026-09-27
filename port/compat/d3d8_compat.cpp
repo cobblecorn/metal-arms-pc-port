@@ -161,11 +161,20 @@ struct IDirect3DDevice8::_PShader
 #define _VSHANDLE_FLAG		0x80000000u
 
 IDirect3DDevice8::IDirect3DDevice8( IDirect3DDevice9 *pDev9 ) :
-	m_pDev( pDev9 ), m_nRefs( 1 ), m_nBaseVertexIndex( 0 ),
+	m_pDev( pDev9 ), m_bIsEx( false ), m_nRefs( 1 ), m_nBaseVertexIndex( 0 ),
 	m_paVShaders( NULL ), m_nVShaderCount( 0 ), m_nVShaderCap( 0 ),
 	m_paPShaders( NULL ), m_nPShaderCount( 0 ), m_nPShaderCap( 0 )
 {
 	memset( &m_LastPP, 0, sizeof(m_LastPP) );
+	if( m_pDev )
+	{
+		IDirect3DDevice9Ex *pDevEx = NULL;
+		if( SUCCEEDED( m_pDev->QueryInterface( __uuidof(IDirect3DDevice9Ex), (void**)&pDevEx ) ) && pDevEx )
+		{
+			m_bIsEx = true;
+			pDevEx->Release();
+		}
+	}
 }
 
 IDirect3DDevice8::~IDirect3DDevice8()
@@ -305,21 +314,39 @@ void IDirect3DDevice8::SetCursorPosition( int x, int y, DWORD nFlags )			{ m_pDe
 
 HRESULT IDirect3DDevice8::CreateTexture( UINT w, UINT h, UINT nLevels, DWORD nUsage, D3DFORMAT fmt, D3DPOOL pool, IDirect3DTexture8 **pp )
 {
+	if( m_bIsEx && pool == D3DPOOL_MANAGED )
+	{
+		pool = D3DPOOL_DEFAULT;
+		nUsage |= D3DUSAGE_DYNAMIC;
+	}
 	return m_pDev->CreateTexture( w, h, nLevels, nUsage, fmt, pool, pp, NULL );
 }
 
 HRESULT IDirect3DDevice8::CreateCubeTexture( UINT nEdge, UINT nLevels, DWORD nUsage, D3DFORMAT fmt, D3DPOOL pool, IDirect3DCubeTexture8 **pp )
 {
+	if( m_bIsEx && pool == D3DPOOL_MANAGED )
+	{
+		pool = D3DPOOL_DEFAULT;
+		nUsage |= D3DUSAGE_DYNAMIC;
+	}
 	return m_pDev->CreateCubeTexture( nEdge, nLevels, nUsage, fmt, pool, pp, NULL );
 }
 
 HRESULT IDirect3DDevice8::CreateVertexBuffer( UINT nLen, DWORD nUsage, DWORD nFVF, D3DPOOL pool, IDirect3DVertexBuffer8 **pp )
 {
+	if( m_bIsEx && pool == D3DPOOL_MANAGED )
+	{
+		pool = D3DPOOL_DEFAULT;
+	}
 	return m_pDev->CreateVertexBuffer( nLen, nUsage, nFVF, pool, pp, NULL );
 }
 
 HRESULT IDirect3DDevice8::CreateIndexBuffer( UINT nLen, DWORD nUsage, D3DFORMAT fmt, D3DPOOL pool, IDirect3DIndexBuffer8 **pp )
 {
+	if( m_bIsEx && pool == D3DPOOL_MANAGED )
+	{
+		pool = D3DPOOL_DEFAULT;
+	}
 	return m_pDev->CreateIndexBuffer( nLen, nUsage, fmt, pool, pp, NULL );
 }
 
@@ -734,7 +761,22 @@ HRESULT IDirect3D8::EnumAdapterModes( UINT nAdapter, UINT nMode, D3DDISPLAYMODE 
 HRESULT IDirect3D8::CreateDevice( UINT nAdapter, D3DDEVTYPE nType, HWND hFocus, DWORD nBehavior, D3DPRESENT_PARAMETERS *pPP, IDirect3DDevice8 **ppDev )
 {
 	IDirect3DDevice9 *pDev9 = NULL;
-	HRESULT hr = m_pD3D->CreateDevice( nAdapter, nType, hFocus, nBehavior, pPP, &pDev9 );
+	HRESULT hr = E_FAIL;
+	IDirect3D9Ex *pD3DEx = NULL;
+	if( SUCCEEDED( m_pD3D->QueryInterface( __uuidof(IDirect3D9Ex), (void**)&pD3DEx ) ) && pD3DEx )
+	{
+		IDirect3DDevice9Ex *pDevEx = NULL;
+		hr = pD3DEx->CreateDeviceEx( nAdapter, nType, hFocus, nBehavior, pPP, NULL, &pDevEx );
+		pD3DEx->Release();
+		if( SUCCEEDED( hr ) )
+		{
+			pDev9 = pDevEx;
+		}
+	}
+	if( !pDev9 )
+	{
+		hr = m_pD3D->CreateDevice( nAdapter, nType, hFocus, nBehavior, pPP, &pDev9 );
+	}
 	if( FAILED( hr ) )
 	{
 		*ppDev = NULL;

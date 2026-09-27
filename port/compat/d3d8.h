@@ -236,6 +236,7 @@ private:
 	struct _PShader;
 
 	IDirect3DDevice9		*m_pDev;
+	bool					m_bIsEx;
 	ULONG					m_nRefs;
 	UINT					m_nBaseVertexIndex;		// D3D8 kept this in SetIndices(); D3D9 wants it per draw call
 	D3DPRESENT_PARAMETERS	m_LastPP;

@@ -1885,7 +1885,7 @@ FTexDef_t *ftex_CreateTexture( const FTexInfo_t *pTexInfo, const void *pSrcImage
 	{
 		// Resource handle not provided...
 
-		pTexData = (FTexData_t *)fres_CreateAndAlloc( FTEX_RESNAME, pTexInfo->szName, _ResLoadDestroy, sizeof(FTexData_t), &hRes );
+		pTexData = (FTexData_t *)fres_CreateAndAllocAndZero( FTEX_RESNAME, pTexInfo->szName, _ResLoadDestroy, sizeof(FTexData_t), &hRes );
 		if( pTexData == NULL ) 
 		{
 			// Could not create resource...
@@ -1896,7 +1896,7 @@ FTexDef_t *ftex_CreateTexture( const FTexInfo_t *pTexInfo, const void *pSrcImage
 	{
 		// Resource handle provided...
 
-		pTexData = (FTexData_t *)fres_Alloc( sizeof(FTexData_t) );
+		pTexData = (FTexData_t *)fres_AllocAndZero( sizeof(FTexData_t) );
 		if( pTexData == NULL ) 
 		{
 			goto _CreateTextureFailure;
@@ -1920,6 +1920,7 @@ FTexDef_t *ftex_CreateTexture( const FTexInfo_t *pTexInfo, const void *pSrcImage
 	pTexData->nD3DFormatColor = _aTexelInfoTable[pTexDef->TexInfo.nTexFmt].nD3DFormat;
 	pTexData->nD3DFormatDepth = D3DFMT_UNKNOWN;
 	pTexData->pD3DDepthStencil = NULL;
+	pTexData->pD3DTexture = NULL;
 	pTexData->nFlags = 0;
 
 	if( (pTexData->nD3DFormatColor == D3DFMT_DXT1)
@@ -3495,11 +3496,13 @@ static void _ResLoadDestroy( void *pBase )
 		}
 		else if ( !(pTexData->TexDef.TexInfo.nFlags & FTEX_FLAG_STREAMING) )
 #endif // FANG_PLATFORM_XB
+		if ( pTexData->pD3DTexture )
 		{
 			do
 			{
 				nRelease = pTexData->pD3DTexture->Release();
 			} while (nRelease);
+			pTexData->pD3DTexture = NULL;
 		}
 	}
 
@@ -3515,7 +3518,10 @@ static void _ResLoadDestroy( void *pBase )
 	fheap_UnTrackTexMem( &pTexData->TexDef.TexInfo );
 #endif
 	
-	flinklist_Remove( &_RootList, pTexData );
+	if( flinklist_IsLinkInList( &_RootList, &pTexData->Link ) )
+	{
+		flinklist_Remove( &_RootList, pTexData );
+	}
 
 	//ftex_ClearRenderTargets();
 }
@@ -4343,7 +4349,7 @@ static BOOL _CopyTextureImageToD3D( FTexData_t *pTexData, const void *pSrcImage 
 //
 static BOOL _CreateD3DTextureAndCopyImage( FTexData_t *pTexData, const void *pSrcImage ) 
 {
-	if( FAILED( FDX8_pDev->CreateTexture(
+	HRESULT hr = FDX8_pDev->CreateTexture(
 								pTexData->nD3DWidth,
 								pTexData->nD3DHeight,
 								pTexData->nD3DLodCount,
@@ -4351,9 +4357,13 @@ static BOOL _CreateD3DTextureAndCopyImage( FTexData_t *pTexData, const void *pSr
 								pTexData->nD3DFormatColor,
 								D3DPOOL_MANAGED,
 								&pTexData->pD3DTexture
-							) ) ) 
+							);
+	if( FAILED( hr ) ) 
 	{
 		// Could not create texture...
+		DEVPRINTF( "PORT-TEX create failed '%s' fmt=%08x %ux%u lods=%u hr=%08x\n",
+			pTexData->TexDef.TexInfo.szName, (u32)pTexData->nD3DFormatColor,
+			pTexData->nD3DWidth, pTexData->nD3DHeight, pTexData->nD3DLodCount, (u32)hr );
 		return FALSE;
 	}
 
@@ -4363,6 +4373,7 @@ static BOOL _CreateD3DTextureAndCopyImage( FTexData_t *pTexData, const void *pSr
 	{
 		// Could not copy data into texture surface...
 		pTexData->pD3DTexture->Release();
+		pTexData->pD3DTexture = NULL;
 		return FALSE;
 	}
 
@@ -4550,6 +4561,7 @@ static void _CopyPitchedToImage32( const u32 *pnSrc, u32 *pnDst, u32 nPitch32, u
 //
 BOOL _CopyImageToTexture( FTexData_t *pTexData, const void *pSrcImage, FTexFmt_e nTexFmt, u32 nLod, u32 nWidth, u32 nHeight ) 
 {
+
 	D3DLOCKED_RECT LockedRect;
 
 	if ( FAILED( pTexData->pD3DTexture->LockRect( nLod, &LockedRect, NULL, _nD3DSysLockFlag ) ) ) 
