@@ -32,6 +32,13 @@
 
 #define _FMOVIE2_INTERNAL_MEMORY_BYTES ( 2*1024*1024 )
 
+#if FANG_WINGC
+// The PC port gives Bink a deep read-ahead: its background IO thread keeps this much of the movie ahead
+// of playback, so a busy disk no longer stalls a movie mid-play (the frame loop waited on Bink's reads,
+// hundreds of ms at a time). Bink's memory then comes from the heap rather than the consoles' 2 MB pool.
+#define _FMOVIE2_PC_IO_BYTES ( 16*1024*1024 )
+#endif
+
 #if FANG_PLATFORM_WIN
 #define _USE_STREAMING_MEMORY 0
 #elif FANG_PLATFORM_XB
@@ -302,6 +309,11 @@ void fmovie2_Play( cchar *pszFileName, f32 fVolume, cu32 uPlayFlags ) {
 		uFlags |= BINKSNDTRACK;
 	}
 
+#if FANG_WINGC
+	BinkSetIOSize( _FMOVIE2_PC_IO_BYTES );
+	uFlags |= BINKIOSIZE;
+#endif
+
 	_hBink = BinkOpen( szFullMoviePathName, uFlags );
 	if( !_hBink ) {
 		//there was an error loading the bink file.
@@ -518,6 +530,12 @@ BOOL fmovie2_TimeToDraw( void ) {
 
 void* RADLINK _MovieAlloc ( U32 uNumBytes ) {
 
+#if FANG_WINGC
+	// the heap (see _FMOVIE2_PC_IO_BYTES); -1 lets Bink fall back to its own allocator
+	void *pHeapMemory = malloc( uNumBytes );
+	return pHeapMemory ? pHeapMemory : (void *)-1;
+#endif
+
 #if !_USE_STREAMING_MEMORY
 	FASSERT( _nInternalMemoryBase != 0 );
 	FASSERT( _nCurrentMemoryHead != 0 );
@@ -547,6 +565,10 @@ void* RADLINK _MovieAlloc ( U32 uNumBytes ) {
 
 
 void RADLINK _MovieFree ( void* pMemToFree ) {
+#if FANG_WINGC
+	free( pMemToFree );
+	return;
+#endif
 #if !_USE_STREAMING_MEMORY
 	//this is a hack memory tracking system which just tracks the NUMBER of memory allocations
 	//made and then freed.  When the total number of allocations reaches zero, then

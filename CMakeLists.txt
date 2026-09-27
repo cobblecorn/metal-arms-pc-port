@@ -38,6 +38,9 @@ function(ma_common_settings tgt)
     )
     target_compile_options(${tgt} PRIVATE
         $<$<COMPILE_LANGUAGE:C,CXX>:/W3 /MP /permissive /Zc:strictStrings- /Zc:wchar_t->
+        # Release keeps symbols and frame pointers: crash logs and the -port-diag stall sampler
+        # (port/main_win.cpp) name functions and walk the stack there too.
+        $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/Zi /Oy->
         $<$<COMPILE_LANGUAGE:C,CXX>:/wd4996 /wd4244 /wd4267 /wd4305 /wd4018 /wd4101 /wd4102 /wd4800 /wd4390 /wd5208 /wd4091>
     )
     target_include_directories(${tgt} PRIVATE
@@ -103,7 +106,8 @@ target_link_libraries(ma_game PUBLIC fang2)
 add_executable(ma_port port/main_win.cpp port/screenshot_port.cpp port/res/ma_port.rc)
 ma_common_settings(ma_port)
 # A windowed app: no console window (main_win.cpp's -console opens one). main() stays the entry point.
-target_link_options(ma_port PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+target_link_options(ma_port PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup
+    $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
 target_include_directories(ma_port PRIVATE ${MA_ROOT}/App/ma ${MA_ROOT}/App/ma/win)
 target_link_libraries(ma_port PRIVATE
     ma_game fang2 smallamx

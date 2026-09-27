@@ -780,6 +780,18 @@ static cwchar *_PromptPhrase( u32 nPhrase, s32 nPort ) {
 	return _apwszPhrases[nPhrase];
 }
 
+// On the PC, leaving the audio or advanced settings by Back (Escape, a right click, the Back prompt)
+// keeps what was set, as PC games do. The console convention (Back cancels, only A saves) silently
+// threw away volume changes made with the mouse and then left with Escape.
+static Wpr_DataTypes_NavCode_e _PcSettingsBackKeeps( Wpr_DataTypes_NavCode_e nNavCode ) {
+	if( nNavCode == WPR_DATATYPES_NAV_CODE_BACK &&
+		( _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_SOUND_OPTIONS ||
+		  _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS ) ) {
+		return WPR_DATATYPES_NAV_CODE_FORWARD;
+	}
+	return nNavCode;
+}
+
 static BOOL _MousePort( u32 nControllerID ) {
 	return (!_bInGame || _MenuState.nCurrentScreen != WPR_DATATYPES_SCREENS_NONE) && nControllerID == pcinput_KeyboardPort();
 }
@@ -3415,6 +3427,9 @@ static BOOL _Work( void ) {
 	if( _aScreenFunctions[ _MenuState.nCurrentScreen ].pWork ) {
 		// call the work function
         nNavCode = _aScreenFunctions[ _MenuState.nCurrentScreen ].pWork();
+#if defined(MA_PC_INPUT)
+		nNavCode = _PcSettingsBackKeeps( nNavCode );
+#endif
 	
 		if( nNavCode != WPR_DATATYPES_NAV_CODE_NOTHING ) {
 			// do different things depending on what mode we are in
@@ -3608,6 +3623,9 @@ BOOL wpr_system_IG_Work( void ) {
 
 	if( _aScreenFunctions[ _MenuState.nCurrentScreen ].pWork ) {
         Wpr_DataTypes_NavCode_e nNavCode = _aScreenFunctions[ _MenuState.nCurrentScreen ].pWork();
+#if defined(MA_PC_INPUT)
+		nNavCode = _PcSettingsBackKeeps( nNavCode );
+#endif
 
 		switch( nNavCode ) {
 		
