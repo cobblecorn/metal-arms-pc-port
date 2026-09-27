@@ -25,6 +25,9 @@
 #include "fclib.h"
 #include "floop.h"
 #include "fresload.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 // =============================================================================================================
 
@@ -963,6 +966,44 @@ void CMenuMgr::SetCurrent(CMenuScreen *pNewCurMS)
 	m_vecCursorCurRect = pNewCurMS->m_pCurMI->m_vecBorderRect;
 }
 
+void CMenuMgr::ScrollLeft()
+{
+	if(m_eMCPState == MCPS_STATIONARY)
+	{
+		fsndfx_Play2D( CMenuMgr::m_hChangeScreensSnd );
+		--m_nScrollsPending;
+		if(m_nScrollsPending > 0)
+		{
+			ReverseScroll();
+		}
+	}
+}
+
+void CMenuMgr::ScrollRight()
+{
+	if(m_eMCPState == MCPS_STATIONARY)
+	{
+		fsndfx_Play2D( CMenuMgr::m_hChangeScreensSnd );
+		++m_nScrollsPending;
+		if(m_nScrollsPending < 0)
+		{
+			ReverseScroll();
+		}
+	}
+}
+
+void CMenuMgr::UpdateCursorToCurrent()
+{
+	if( m_pCurMS && m_pCurMS->m_pCurMI )
+	{
+		m_vecCursorCurPos = m_pCurMS->m_pCurMI->m_vecBorderUL;
+		m_vecCursorCurRect = m_pCurMS->m_pCurMI->m_vecBorderRect;
+		m_vecCursorStartPos = m_vecCursorCurPos;
+		m_vecCursorEndPos = m_vecCursorCurPos;
+		m_fCursorMoveTimer = 0.0f;
+	}
+}
+
 // =============================================================================================================
 
 void CMenuMgr::GetControls()
@@ -1030,6 +1071,22 @@ void CMenuMgr::GetControls()
 		m_uButtons |= MMINPUT_LEFTSHOULDER;
 	if((Gamepad_aapSample[nControllerPort][GAMEPAD_MENU_RIGHT_SHOULDER]->uLatches & FPAD_LATCH_ON) == FPAD_LATCH_ON)
 		m_uButtons |= MMINPUT_RIGHTSHOULDER;
+#if defined(MA_PC_INPUT)
+	if( nControllerPort == pcinput_KeyboardPort() )
+	{
+		if( (GetAsyncKeyState('Q') & 0x8000) != 0 )
+			m_uButtons |= MMINPUT_LEFTSHOULDER;
+		if( (GetAsyncKeyState('E') & 0x8000) != 0 )
+			m_uButtons |= MMINPUT_RIGHTSHOULDER;
+		if( (GetAsyncKeyState(VK_TAB) & 0x8000) != 0 )
+		{
+			if( (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 )
+				m_uButtons |= MMINPUT_LEFTSHOULDER;
+			else
+				m_uButtons |= MMINPUT_RIGHTSHOULDER;
+		}
+	}
+#endif
 
 	if((Gamepad_aapSample[nControllerPort][GAMEPAD_MENU_BUTTON_TOP]->uLatches & FPAD_LATCH_ON) == FPAD_LATCH_ON)
 		m_uButtons |= MMINPUT_TOPBUTTON;

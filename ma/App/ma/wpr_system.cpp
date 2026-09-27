@@ -760,7 +760,7 @@ static cwchar *_PromptPhrase( u32 nPhrase, s32 nPort ) {
 }
 
 static BOOL _MousePort( u32 nControllerID ) {
-	return !_bInGame && nControllerID == pcinput_KeyboardPort();
+	return (!_bInGame || _MenuState.nCurrentScreen != WPR_DATATYPES_SCREENS_NONE) && nControllerID == pcinput_KeyboardPort();
 }
 
 static void _MouseAddBox( s32 nItem, u32 nFlags, f32 fLeft, f32 fTop, f32 fRight, f32 fBottom ) {
@@ -2487,9 +2487,7 @@ static BOOL _Init( void ) {
 		goto _EXIT_WITH_ERROR;
 	}
 #if defined(MA_PC_INPUT)
-	if( bWrappers ) {
-		_MouseInstall();
-	}
+	_MouseInstall();
 #endif
 
 	/////////////////////////
@@ -3340,6 +3338,10 @@ BOOL wpr_system_IG_Work( void ) {
 		return FALSE;
 	}
 
+#if defined(MA_PC_INPUT)
+	_MouseFrame();
+#endif
+
 	f32 fUnitVal;
 	BOOL bScreenExited;
 
@@ -3451,6 +3453,12 @@ void wpr_system_IG_Draw( void ) {
 
 	// push the fdraw renderer off 
 	frenderer_Pop();
+
+#if defined(MA_PC_INPUT)
+	_bMouseDrawPointer = TRUE;
+	_MouseDrawOverlay();
+	pcinput_DrawsMenuPointer();
+#endif
 }
 
 BOOL wpr_system_IG_SaveGame( CPlayerProfile *pProfile0,

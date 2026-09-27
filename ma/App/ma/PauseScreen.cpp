@@ -23,6 +23,9 @@
 #include "frenderer.h"
 #include "wpr_system.h"
 #include "msgbox.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 #define _4_SCREEN_SETUP			FALSE// set to TRUE to have a 4 screen pause screen setup, otherwise only 2 (Options & Items)
 
@@ -251,6 +254,9 @@ BOOL CPauseScreen::m_bIgnoreControlsNextFrame = FALSE;
 BOOL CPauseScreen::m_bQuitNextFrame = FALSE;
 
 BOOL CPauseScreen::m_bPauseAudio=TRUE;
+#if defined(MA_PC_INPUT)
+CFTexInst CPauseScreen::m_MousePointerTex;
+#endif
 
 // =============================================================================================================
 
@@ -851,6 +857,10 @@ BOOL CPauseScreen::InitSystem()
 	_fUnitFlash = 0.0f;
 	_nActiveWrapperScreen = WPR_DATATYPES_SCREENS_NONE;
 
+#if defined(MA_PC_INPUT)
+	m_MousePointerTex.SetTexDef( (FTexDef_t *)fresload_Load( FTEX_RESNAME, "tfh_cross01" ) );
+#endif
+
 	m_eState = PSSTATE_INACTIVE;
 
 	return(TRUE);
@@ -874,6 +884,9 @@ void CPauseScreen::UninitSystem()
 		m_aMIYesNo[uMIIdx].Uninit();
 #endif
 	m_MIBlueBox.Uninit();
+#if defined(MA_PC_INPUT)
+	m_MousePointerTex.SetTexDef( NULL );
+#endif
 }
 
 // =============================================================================================================
@@ -1265,6 +1278,92 @@ void CPauseScreen::Work(CInventory *pInventory)
 	CMenuItem *pCurMI = pCurMS->m_pCurMI;
 	FASSERT(pCurMI != NULL);
 
+#if defined(MA_PC_INPUT)
+	f32 fPointerX, fPointerY;
+	if( pcinput_MenuPointer( &fPointerX, &fPointerY ) ) {
+		pcinput_DrawsMenuPointer();
+
+		f32 fClickX = 0.0f, fClickY = 0.0f;
+		BOOL bClick = pcinput_TakeMenuClick( FALSE, &fClickX, &fClickY );
+		BOOL bRightClick = pcinput_TakeMenuClick( TRUE, NULL, NULL );
+		s32 nWheel = pcinput_TakeMenuWheel();
+
+		if( bRightClick ) {
+			if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
+				ExitPause();
+				return;
+			}
+		}
+
+		if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
+			if( bClick ) {
+				// Tab L: X in [0.07f, 0.19f], Y in [0.04f, 0.18f]
+				if( fClickX >= 0.07f && fClickX <= 0.19f && fClickY >= 0.04f && fClickY <= 0.18f ) {
+					m_MenuMgr.ScrollLeft();
+					bClick = FALSE;
+				}
+				// Tab R: X in [0.81f, 0.93f], Y in [0.04f, 0.18f]
+				else if( fClickX >= 0.81f && fClickX <= 0.93f && fClickY >= 0.04f && fClickY <= 0.18f ) {
+					m_MenuMgr.ScrollRight();
+					bClick = FALSE;
+				}
+				// Bottom Prompt 1: Resume Game / Cancel
+				else if( fClickY >= 0.84f && fClickY <= 0.98f && fClickX >= 0.34f && fClickX <= 0.72f ) {
+					ExitPause();
+					return;
+				}
+				// Bottom Prompt 0: Select / Accept
+				else if( fClickY >= 0.84f && fClickY <= 0.98f && fClickX >= 0.08f && fClickX <= 0.33f ) {
+					if( m_MenuMgr.GetState() == MMSTATE_STATIC ) {
+						pCurMS->ButtonPressed( MMINPUT_BOTTOMBUTTON );
+						fsndfx_Play2D( CMenuMgr::m_hClickSnd );
+						bClick = FALSE;
+					}
+				}
+			}
+
+			// Item hit testing on current screen
+			if( m_MenuMgr.GetState() == MMSTATE_STATIC ) {
+				for( u32 idx = 0; idx < pCurMS->m_uNumMI; ++idx ) {
+					CMenuItem *pMI = pCurMS->m_apMI[idx];
+					if( !pMI ) continue;
+
+					// Bounding box in ortho coordinates (-1..1, -0.75..0.75)
+					f32 fL = (pMI->m_vecBorderUL.x + 1.0f) * 0.5f;
+					f32 fR = fL + pMI->m_vecBorderRect.x * 0.5f;
+					f32 fT = (0.75f - pMI->m_vecBorderUL.y) / 1.5f;
+					f32 fB = fT + pMI->m_vecBorderRect.y / 1.5f;
+
+					fL -= 0.008f; fR += 0.008f;
+					fT -= 0.008f; fB += 0.008f;
+
+					if( fPointerX >= fL && fPointerX <= fR && fPointerY >= fT && fPointerY <= fB ) {
+						if( pcinput_MenuPointerMoved() && pCurMS->m_pCurMI != pMI ) {
+							pCurMS->ForceCurrentItem( idx );
+							m_MenuMgr.UpdateCursorToCurrent();
+							fsndfx_Play2D( CMenuMgr::m_hSelectSnd );
+						}
+
+						if( bClick && fClickX >= fL && fClickX <= fR && fClickY >= fT && fClickY <= fB ) {
+							pCurMS->ForceCurrentItem( idx );
+							m_MenuMgr.UpdateCursorToCurrent();
+							pCurMS->ButtonPressed( MMINPUT_BOTTOMBUTTON );
+							fsndfx_Play2D( CMenuMgr::m_hClickSnd );
+							bClick = FALSE;
+							break;
+						}
+					}
+				}
+
+				if( nWheel != 0 ) {
+					pCurMS->Move( nWheel > 0 ? MIDIR_UP : MIDIR_DOWN );
+					m_MenuMgr.UpdateCursorToCurrent();
+				}
+			}
+		}
+	}
+#endif
+
 	if( m_eState == PSSTATE_NORMAL ) {
 		if( m_MenuMgr.GetState() != MMSTATE_SCROLLING ) {
 			m_fItemTheta += FLoop_fRealPreviousLoopSecs * CPauseScreen_fItemOmegaYaw;
@@ -1404,6 +1503,70 @@ void CPauseScreen::Draw(CInventory *pInventory)
 		}
 
 	frenderer_Pop();
+
+#if defined(MA_PC_INPUT)
+	f32 fMouseX, fMouseY;
+	if( pcinput_MenuPointer( &fMouseX, &fMouseY ) && m_MousePointerTex.GetTexDef() ) {
+		fviewport_SetActive( m_pviewOrtho3d );
+		frenderer_Push( FRENDERER_DRAW, NULL );
+
+		oCamera.Identity();
+		oCamera.InitStackWithView();
+
+		fdraw_Depth_EnableWriting( FALSE );
+		fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
+		fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+
+		CFXfm xfmCursor, xfmCursorScale;
+		xfmCursor.BuildTranslation( 0.0f, 0.0f, 1.0f );
+		xfmCursorScale.BuildScale( pviewPrevious->HalfRes.x );
+		xfmCursor.ReceiveProductOf( xfmCursor, xfmCursorScale );
+		xfmCursor.PushModel();
+
+		fdraw_SetTexture( &m_MousePointerTex );
+		fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
+
+		f32 fApexX = fMouseX * 2.0f - 1.0f;
+		f32 fApexY = 0.75f - fMouseY * 1.5f;
+		f32 fHalfY = 0.5f * (0.10f * 0.75f);
+		f32 fHalfX = fHalfY;
+		f32 fCenterY = fApexY - (0.5f - 0.07f) * (0.10f * 0.75f);
+		f32 fLowerX = fApexX - fHalfX, fUpperX = fApexX + fHalfX;
+		f32 fLowerY = fCenterY - fHalfY, fUpperY = fCenterY + fHalfY;
+
+		FDrawVtx_t aVtx[4];
+		aVtx[0].ST.Set( 0.0f, 1.0f );
+		aVtx[1].ST.Set( 0.0f, 0.0f );
+		aVtx[2].ST.Set( 1.0f, 1.0f );
+		aVtx[3].ST.Set( 1.0f, 0.0f );
+
+		f32 fPixelX = 1.5f / pviewPrevious->HalfRes.x;
+		f32 fPixelY = 1.5f / pviewPrevious->HalfRes.y;
+		CFColorRGBA shadowCol( 0.0f, 0.0f, 0.05f, 0.85f );
+		for( int pass = 0; pass < 5; ++pass ) {
+			f32 ox = 0.0f, oy = 0.0f;
+			CFColorRGBA col;
+			if( pass == 0 ) { ox = -fPixelX; col = shadowCol; }
+			else if( pass == 1 ) { ox = fPixelX; col = shadowCol; }
+			else if( pass == 2 ) { oy = -fPixelY; col = shadowCol; }
+			else if( pass == 3 ) { oy = fPixelY; col = shadowCol; }
+			else { col.Set( 1.0f, 1.0f, 1.0f, 1.0f ); }
+
+			aVtx[0].Pos_MS.Set( fLowerX + ox, fLowerY + oy, 0.0f );
+			aVtx[1].Pos_MS.Set( fLowerX + ox, fUpperY + oy, 0.0f );
+			aVtx[2].Pos_MS.Set( fUpperX + ox, fLowerY + oy, 0.0f );
+			aVtx[3].Pos_MS.Set( fUpperX + ox, fUpperY + oy, 0.0f );
+			for( int i = 0; i < 4; ++i ) aVtx[i].ColorRGBA = col;
+			fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, aVtx, 4 );
+		}
+
+		CFXfm::PopModel();
+		frenderer_Pop();
+		pcinput_DrawsMenuPointer();
+	}
+#endif
+
+	fviewport_SetActive( pviewPrevious );
 }
 
 // =============================================================================================================
@@ -1417,6 +1580,11 @@ void CPauseScreen::GetControls()
 	if( Gamepad_aapSample[ Player_aPlayer[CPlayer::m_nCurrent].m_nControllerIndex ][GAMEPAD_MAIN_PAUSE]->uLatches & FPAD_LATCH_ON ) {
 		m_uButtons |= PSINPUT_START;
 	}
+#if defined(MA_PC_INPUT)
+	if( (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0 ) {
+		m_uButtons |= PSINPUT_START;
+	}
+#endif
 
 	m_uButtonsLatched = m_uButtons & (~uLastButtons);
 }

@@ -166,6 +166,9 @@ private:
 	static BOOL m_bQuitNextFrame;
 	
 	static BOOL m_bPauseAudio;
+#if defined(MA_PC_INPUT)
+	static CFTexInst m_MousePointerTex;
+#endif
 };
 
 #endif

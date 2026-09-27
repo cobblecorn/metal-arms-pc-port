@@ -271,6 +271,10 @@ public:
 	void Disappear();
 	void GetControls();
 
+	void ScrollLeft();
+	void ScrollRight();
+	void UpdateCursorToCurrent();
+
 	// Out here temporarily so that I can hack at them.
 	CFVec3 m_vecCursorCurPos;
 	CFVec3 m_vecCursorStartPos;
