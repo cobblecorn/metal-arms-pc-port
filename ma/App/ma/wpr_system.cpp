@@ -702,14 +702,19 @@ static GameInitInfo_t _GameInitInfo;// filled in when we go to actually start a 
 enum {
 	_MOUSE_ITEM_ACCEPT = 0x01,		// a click on the item while it is selected is A
 	_MOUSE_ITEM_ADJUST = 0x02,		// a setting: the wheel over it while it is selected is left/right
+	_MOUSE_ITEM_TICKS = 0x04,		// a setting's tick bar: a click sets the value under the pointer
 };
 #define _MOUSE_ZONE_LEFT			(-2)	// item ids of click zones that act as left/right
 #define _MOUSE_ZONE_RIGHT			(-3)
+#define _MOUSE_TICK_FRAMES			40		// frames a tick-bar click may take to step the value there
 
 typedef struct {
 	f32 fLeft, fTop, fRight, fBottom;
 	s32 nItem;
 	u32 nFlags;
+	s32 nRow;						// zones and tick bars: the setting row they change (-1: the selected row)
+	f32 fTickLeft, fTickStep;		// tick bars: the first tick's left edge and the tick spacing
+	s32 nTicks, nMaxTicks;			// tick bars: the value drawn, and its maximum
 } _MouseItem_t;
 
 typedef enum {
@@ -737,6 +742,9 @@ static s32 _nMouseClickScreen = -1;		// the screen the live click was hit-tested
 static BOOL _bMouseRightClick;
 static s32 _nMouseWheelPending;			// notches not yet delivered, + = away from the user (up)
 static s32 _nMouseWheelStep;			// this frame's step, as _UpDown_e
+static s32 _nMouseTickRow = -1;			// a tick-bar click: the row, the value it asked for, frames left
+static s32 _nMouseTickTarget = -1;
+static s32 _nMouseTickFrames;
 static CFTexInst _MousePointerTex;
 static FVidDrawOverlayFcn_t *_pMousePrevOverlayFcn;
 static BOOL _bMouseOverlayInstalled;
@@ -792,6 +800,55 @@ static void _MouseAddBox( s32 nItem, u32 nFlags, f32 fLeft, f32 fTop, f32 fRight
 	pItem->fBottom = fBottom;
 	pItem->nItem = nItem;
 	pItem->nFlags = nFlags;
+	pItem->nRow = -1;
+	pItem->fTickLeft = pItem->fTickStep = 0.0f;
+	pItem->nTicks = pItem->nMaxTicks = 0;
+}
+
+// Draw side: a left/right click zone that changes setting row nRow (selecting it first).
+static void _MouseAddZone( s32 nZone, s32 nRow, f32 fLeft, f32 fTop, f32 fRight, f32 fBottom ) {
+	u32 nBefore = _nMouseItems;
+	_MouseAddBox( nZone, _MOUSE_ITEM_ADJUST, fLeft, fTop, fRight, fBottom );
+	if( _nMouseItems > nBefore ) {
+		_aMouseItems[nBefore].nRow = nRow;
+	}
+}
+
+// Draw side: the arrows wpr_drawutils_DrawSelectionArrows() just drew beside setting row nRow.
+static void _MouseAddSelectionArrows( s32 nRow ) {
+	const Wpr_DrawUtils_Box_t *pL = &Wpr_DrawUtils_aLastArrows[0], *pR = &Wpr_DrawUtils_aLastArrows[1];
+	const f32 fPad = 0.008f;
+	_MouseAddZone( _MOUSE_ZONE_LEFT, nRow, pL->fLeft - fPad, pL->fTop - fPad, pL->fRight + fPad, pL->fBottom + fPad );
+	_MouseAddZone( _MOUSE_ZONE_RIGHT, nRow, pR->fLeft - fPad, pR->fTop - fPad, pR->fRight + fPad, pR->fBottom + fPad );
+}
+
+// Draw side: an on/off (or two-way) value of setting row nRow was just printed; a click on it flips it.
+static void _MouseAddToggle( s32 nRow, BOOL bOn ) {
+	f32 fLeft, fTop, fRight, fBottom;
+	if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+		_MouseAddZone( bOn ? _MOUSE_ZONE_LEFT : _MOUSE_ZONE_RIGHT, nRow, fLeft - 0.02f, fTop, fRight + 0.02f, fBottom );
+	}
+}
+
+// Draw side: the tick bar wpr_drawutils_DrawTickMarks() just drew for setting row nRow. A click puts
+// the value at the tick under the pointer (left of the first tick: none).
+static void _MouseAddTickBar( s32 nRow ) {
+	const Wpr_DrawUtils_TickBar_t *pBar = &Wpr_DrawUtils_LastTickBar;
+	if( !pBar->nMaxTicks || pBar->fStep <= 0.0f ) {
+		return;
+	}
+	u32 nBefore = _nMouseItems;
+	_MouseAddBox( nRow, _MOUSE_ITEM_ADJUST | _MOUSE_ITEM_TICKS,
+				  pBar->fLeft - pBar->fStep, pBar->fTop,
+				  pBar->fLeft + (pBar->nMaxTicks - 1) * pBar->fStep + pBar->fTickWidth + 0.5f * pBar->fStep, pBar->fBottom );
+	if( _nMouseItems > nBefore ) {
+		_MouseItem_t *pItem = &_aMouseItems[nBefore];
+		pItem->nRow = nRow;
+		pItem->fTickLeft = pBar->fLeft;
+		pItem->fTickStep = pBar->fStep;
+		pItem->nTicks = (s32)pBar->nTicks;
+		pItem->nMaxTicks = (s32)pBar->nMaxTicks;
+	}
 }
 
 // Draw side: records the list item nItem, just printed by _DrawText() or ftext_Printf().
@@ -841,12 +898,16 @@ static u32 _MouseBasicScreenItemFlags( void ) {
 	}
 }
 
-// What is at (fX, fY): a prompt (*pnButton), an item (*pnItem, *pnFlags) or a left/right zone (*pnZone).
-static void _MouseHitTest( f32 fX, f32 fY, s32 *pnItem, u32 *pnFlags, s32 *pnZone, s32 *pnButton ) {
+// What is at (fX, fY): a prompt (*pnButton), an item (*pnItem, *pnFlags) or a left/right zone (*pnZone,
+// with the setting row it changes in *pnItem). On a tick bar, *pnTickTarget is the value there.
+static void _MouseHitTest( f32 fX, f32 fY, s32 *pnItem, u32 *pnFlags, s32 *pnZone, s32 *pnButton, s32 *pnTickTarget=NULL ) {
 	u32 i;
 	*pnItem = *pnButton = -1;
 	*pnFlags = 0;
 	*pnZone = 0;
+	if( pnTickTarget ) {
+		*pnTickTarget = -1;
+	}
 	if( _nMouseItemsScreen != _MenuState.nCurrentScreen ) {
 		return;
 	}
@@ -876,10 +937,32 @@ static void _MouseHitTest( f32 fX, f32 fY, s32 *pnItem, u32 *pnFlags, s32 *pnZon
 		if( pBest->nItem >= 0 ) {
 			*pnItem = pBest->nItem;
 			*pnFlags = pBest->nFlags;
+			if( (pBest->nFlags & _MOUSE_ITEM_TICKS) && pnTickTarget ) {
+				// ticks up to and including the one under the pointer
+				const f32 fTicks = (fX - pBest->fTickLeft) / pBest->fTickStep;
+				s32 nTarget = (s32)fTicks;
+				if( (f32)nTarget < fTicks ) {
+					nTarget++;
+				}
+				FMATH_CLAMP( nTarget, 0, pBest->nMaxTicks );
+				*pnTickTarget = nTarget;
+			}
 		} else {
 			*pnZone = pBest->nItem;
+			*pnItem = pBest->nRow;
+			*pnFlags = pBest->nRow >= 0 ? pBest->nFlags : 0;
 		}
 	}
+}
+
+// The value the tick bar of setting row nRow showed when last drawn, or -1.
+static s32 _MouseTickValue( s32 nRow ) {
+	for( u32 i=0; i < _nMouseItems; i++ ) {
+		if( (_aMouseItems[i].nFlags & _MOUSE_ITEM_TICKS) && _aMouseItems[i].nRow == nRow ) {
+			return _aMouseItems[i].nTicks;
+		}
+	}
+	return -1;
 }
 
 static void _MouseBeginDraw( void ) {
@@ -908,7 +991,13 @@ static void _MouseFrame( void ) {
 		if( pcinput_TakeMenuClick( FALSE, &fX, &fY ) ) {
 			_nMouseClickFrames = 2;
 			_nMouseClickScreen = _MenuState.nCurrentScreen;
-			_MouseHitTest( fX, fY, &_nMouseClickItem, &_nMouseClickFlags, &_nMouseClickZone, &_nMouseClickButton );
+			s32 nTickTarget;
+			_MouseHitTest( fX, fY, &_nMouseClickItem, &_nMouseClickFlags, &_nMouseClickZone, &_nMouseClickButton, &nTickTarget );
+			if( nTickTarget >= 0 ) {
+				_nMouseTickRow = _nMouseClickItem;
+				_nMouseTickTarget = nTickTarget;
+				_nMouseTickFrames = _MOUSE_TICK_FRAMES;
+			}
 			if( _bMouseDebug ) {
 				DEVPRINTF( "wpr mouse: click %.3f,%.3f screen %d -> item %d button %d zone %d (selected %d)\n", fX, fY,
 					_MenuState.nCurrentScreen, _nMouseClickItem, _nMouseClickButton, _nMouseClickZone, _MenuState.nCurItemIndex );
@@ -970,6 +1059,14 @@ static _UpDown_e _MouseUpDown( u32 nControllerID ) {
 static _LeftRight_e _MouseLeftRight( u32 nControllerID ) {
 	if( !_MousePort( nControllerID ) ) {
 		return _NOT_LEFT_OR_RIGHT;
+	}
+	if( _nMouseTickTarget >= 0 ) {
+		// a tick-bar click: step toward the value clicked, one step a frame, as the keys would
+		s32 nValue = _MouseTickValue( _nMouseTickRow );
+		if( _nMouseTickFrames-- > 0 && _MenuState.nCurItemIndex == _nMouseTickRow && nValue >= 0 && nValue != _nMouseTickTarget ) {
+			return (nValue < _nMouseTickTarget) ? _RIGHT : _LEFT;
+		}
+		_nMouseTickTarget = -1;
 	}
 	if( _nMouseClickFrames && _nMouseClickZone ) {
 		_bMouseClickUsed = TRUE;
@@ -2143,11 +2240,148 @@ BOOL wpr_system_InitControllerConfigData( FGameDataFileHandle_t hFile, WprSystem
 	return TRUE;	
 }
 
+#if defined(MA_PC_INPUT)
+// The PC controller map. The retail screen draws a small controller picture (a 256-texel-wide texture
+// stretched over half the screen) with lines out to its labels, for a GameCube or Xbox pad. The PC draws
+// a chart instead: each of the configuration's labels beside the keys and mouse buttons, or the chosen
+// pad style's buttons, that do it (the pads through pc_input's XInput mapping). Moving and looking
+// fill the left column, the buttons the right.
+// Each label names its input by the key of its screen position ("A", "LeftY", "Black", ...); the
+// positions' line masks only say which lines to draw, and some labels share another's line.
+typedef enum {
+	_PCMAP_LEFT_Y = 0, _PCMAP_LEFT_X, _PCMAP_RIGHT_Y, _PCMAP_RIGHT_X, _PCMAP_DPAD_Y, _PCMAP_DPAD_X, _PCMAP_START,	// left column
+	_PCMAP_RTRIGGER, _PCMAP_LTRIGGER, _PCMAP_FACE_BOTTOM, _PCMAP_FACE_RIGHT, _PCMAP_FACE_LEFT, _PCMAP_FACE_TOP,
+	_PCMAP_MELEE, _PCMAP_OTHER,
+	_PCMAP_COUNT,
+	_PCMAP_FIRST_RIGHT_COLUMN = _PCMAP_RTRIGGER
+} _PcMapInput_e;
+
+static _PcMapInput_e _PcMapInputFromKey( cchar *pszKey ) {
+	static const struct { cchar *pszKey; _PcMapInput_e nInput; } aKeys[] = {
+		{ "LeftY", _PCMAP_LEFT_Y }, { "LeftX", _PCMAP_LEFT_X }, { "RightY", _PCMAP_RIGHT_Y }, { "RightX", _PCMAP_RIGHT_X },
+		{ "DPadY", _PCMAP_DPAD_Y }, { "DPadX", _PCMAP_DPAD_X }, { "Start", _PCMAP_START },
+		{ "Rtrigger", _PCMAP_RTRIGGER }, { "Ltrigger", _PCMAP_LTRIGGER }, { "A", _PCMAP_FACE_BOTTOM }, { "Y", _PCMAP_FACE_TOP },
+#if WPR_DATATYPES_XBOX_GRAPHICS_ON
+		// the Xbox layout's labels (the ones this build loads): B is the right face button, X the left
+		{ "B", _PCMAP_FACE_RIGHT }, { "X", _PCMAP_FACE_LEFT },
+#else
+		// the GameCube's: B is left of A, X right
+		{ "B", _PCMAP_FACE_LEFT }, { "X", _PCMAP_FACE_RIGHT },
+#endif
+		// melee: the Xbox's black button, the GameCube's Z; F or the right bumper here (GameCube Z)
+		{ "Black", _PCMAP_MELEE }, { "Z", _PCMAP_MELEE },
+	};
+	for( u32 i=0; pszKey && i < sizeof( aKeys ) / sizeof( aKeys[0] ); i++ ) {
+		if( !fclib_stricmp( pszKey, aKeys[i].pszKey ) ) {
+			return aKeys[i].nInput;
+		}
+	}
+	return _PCMAP_OTHER;
+}
+
+#define _PCMAP_ICON_HEIGHT		0.042f	// screen fraction
+#define _PCMAP_CAP_SCALE		0.62f
+#define _PCMAP_TEXT_SCALE		0.66f
+
+// Draws what does nInput, right-aligned to fRight and centered on fCenterY (screen fractions): the keys
+// and mouse (pc_input's keyboard map), or the pad style's buttons (its XInput map; the face buttons
+// keep their places).
+static void _PcMapIcons( _PcMapInput_e nInput, PcPromptStyle nStyle, f32 fRight, f32 fCenterY, f32 fHalfXRes, f32 fHalfYRes ) {
+	const f32 fAspect = fHalfYRes / fHalfXRes, fGap = 0.006f;
+	const BOOL bKeys = (nStyle == PCINPUT_PROMPT_STYLE_KEYBOARD), bPS = (nStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION);
+	cwchar *apwszCaps[4];
+	u32 nCaps = 0;
+	s32 nFace = -1, nMouse = -1;
+
+	switch( nInput ) {
+	case _PCMAP_LEFT_Y:
+		if( bKeys ) { apwszCaps[nCaps++] = L"W"; apwszCaps[nCaps++] = L"S"; } else apwszCaps[nCaps++] = bPS ? L"L Stick" : L"LS";
+		break;
+	case _PCMAP_LEFT_X:
+		if( bKeys ) { apwszCaps[nCaps++] = L"A"; apwszCaps[nCaps++] = L"D"; } else apwszCaps[nCaps++] = bPS ? L"L Stick" : L"LS";
+		break;
+	case _PCMAP_RIGHT_Y:
+	case _PCMAP_RIGHT_X:
+		if( bKeys ) nMouse = 0; else apwszCaps[nCaps++] = bPS ? L"R Stick" : L"RS";
+		break;
+	case _PCMAP_DPAD_Y:
+	case _PCMAP_DPAD_X:
+		if( bKeys ) {
+			apwszCaps[nCaps++] = L"1"; apwszCaps[nCaps++] = L"2"; apwszCaps[nCaps++] = L"3"; apwszCaps[nCaps++] = L"4";
+		} else {
+			apwszCaps[nCaps++] = L"D-Pad";
+		}
+		break;
+	case _PCMAP_START:		apwszCaps[nCaps++] = bKeys ? L"Esc" : ( bPS ? L"Options" : L"Menu" ); break;
+	case _PCMAP_RTRIGGER:	if( bKeys ) nMouse = 1; else apwszCaps[nCaps++] = bPS ? L"R2" : L"RT"; break;
+	case _PCMAP_LTRIGGER:	if( bKeys ) nMouse = 2; else apwszCaps[nCaps++] = bPS ? L"L2" : L"LT"; break;
+	case _PCMAP_MELEE:		apwszCaps[nCaps++] = bKeys ? L"F" : ( bPS ? L"R1" : L"RB" ); break;
+	// Space/R/Q/E are the bottom/right/left/top face buttons (GameCube A/X/B/Y in pc_input)
+	case _PCMAP_FACE_BOTTOM:	if( bKeys ) apwszCaps[nCaps++] = L"Space"; else nFace = 0; break;
+	case _PCMAP_FACE_RIGHT:		if( bKeys ) apwszCaps[nCaps++] = L"R"; else nFace = 1; break;
+	case _PCMAP_FACE_TOP:		if( bKeys ) apwszCaps[nCaps++] = L"E"; else nFace = 2; break;
+	case _PCMAP_FACE_LEFT:		if( bKeys ) apwszCaps[nCaps++] = L"Q"; else nFace = 3; break;
+	default:
+		break;
+	}
+
+	// right to left: key caps, then the mouse or face button
+	f32 fX = fRight;
+	for( s32 i=(s32)nCaps-1; i >= 0; i-- ) {
+		f32 fL, fT, fR, fB;
+		if( wpr_drawutils_DrawKeyCapCentered( apwszCaps[i], fX, fCenterY, L'R', _PCMAP_CAP_SCALE, _PCMAP_ICON_HEIGHT * fAspect,
+											  fHalfXRes, fHalfYRes, &fL, &fT, &fR, &fB ) ) {
+			fX = fL - fGap;
+		}
+	}
+	if( nMouse >= 0 ) {
+		const f32 fHeight = _PCMAP_ICON_HEIGHT * 1.35f, fWidth = fHeight * 0.62f * fAspect;
+		wpr_drawutils_DrawMouseGlyph( (u32)nMouse, fX - 0.5f * fWidth, fCenterY, fHeight, fHalfXRes, fHalfYRes );
+		fX -= fWidth + fGap;
+	}
+	if( nFace >= 0 ) {
+		const f32 fRadius = 0.5f * _PCMAP_ICON_HEIGHT * 1.1f;
+		wpr_drawutils_DrawFaceButton( bPS, (u32)nFace, fX - fRadius * fAspect, fCenterY, fRadius, fHalfXRes, fHalfYRes );
+	}
+}
+
+static void _PcControllerMap( const Wpr_DataTypes_ControllerConfig_t *pConfig, f32 fHalfXRes, f32 fHalfYRes ) {
+	const PcPromptStyle nStyle = pcinput_PromptStyleForPort( _MenuState.nControllerIndex );
+	const f32 afIconsRight[2] = { 0.26f, 0.66f };	// each column: where its icons end; the labels follow
+	f32 afRowTop[2] = { 0.325f, 0.325f };			// where each column's next row starts
+
+	for( u32 nOrder=0; nOrder < _PCMAP_COUNT; nOrder++ ) {
+		for( u32 i=0; i < pConfig->nNumTextFields; i++ ) {
+			const Wpr_DataTypes_ControllerText_t *pText = &pConfig->paTextFields[i];
+			const _PcMapInput_e nInput = _PcMapInputFromKey( pText->pPosInfo ? pText->pPosInfo->pszKeyString : NULL );
+			if( (u32)nInput != nOrder || !pText->pwszStringToDisplay ) {
+				continue;
+			}
+
+			const u32 nColumn = (nInput < _PCMAP_FIRST_RIGHT_COLUMN) ? 0 : 1;
+			ftext_Printf( afIconsRight[nColumn] + 0.014f, afRowTop[nColumn] * 0.75f, L"~f1~C%ls~w0~aL~s%.2f%ls",
+						  WprDataTypes_pwszWhiteTextColor, _PCMAP_TEXT_SCALE, pText->pwszStringToDisplay );
+			f32 fL, fT = afRowTop[nColumn], fR, fB = afRowTop[nColumn] + _PCMAP_ICON_HEIGHT;
+			ftext_GetLastPrintBounds( &fL, &fT, &fR, &fB );
+			wpr_drawutils_MeasureFontLine( afRowTop[nColumn] * 0.75f, _PCMAP_TEXT_SCALE );
+			fB = FMATH_MAX( fB, fT + _PCMAP_ICON_HEIGHT );
+			_PcMapIcons( nInput, nStyle, afIconsRight[nColumn], 0.5f * (fT + fB), fHalfXRes, fHalfYRes );
+			afRowTop[nColumn] = fB + 0.016f;
+		}
+	}
+}
+#endif
+
 void wpr_system_ControllerConfig_DrawFDraw( Wpr_DataTypes_ControllerConfig_t *pConfig,
 										   CFTexInst *pTexInst,
 										   BOOL bDrawArrows,
 										   f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
 	CFVec2 Lower, Upper;
+
+#if defined(MA_PC_INPUT)
+	_PcControllerMap( pConfig, fHalfXRes, fHalfYRes );
+	return;
+#endif
 
 	// draw the controller
 	fdraw_Depth_EnableWriting( FALSE );
@@ -2349,6 +2583,10 @@ void wpr_system_ControllerConfig_DrawOrtho( Wpr_DataTypes_ScreenData_t *pScreen,
 	}
 
 	// draw the button/axis labels
+#if defined(MA_PC_INPUT)
+	// the PC's chart prints them (wpr_system_ControllerConfig_DrawFDraw)
+	return;
+#endif
 	for( i=0; i < pConfig->nNumTextFields; i++ ) {
 		pText = &pConfig->paTextFields[i];
 
@@ -4665,8 +4903,11 @@ static void _SoundSettings_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 f
 	
     // draw the arrows next to the selected text
 	wpr_drawutils_DrawSelectionArrows( &pScreen->pText[_MenuState.nCurItemIndex + _MENU_ITEMS_SS_START_OFFSET],
-						  &_paTexInsts[WPR_DATATYPES_TEXTURES_ARROW],	
+						  &_paTexInsts[WPR_DATATYPES_TEXTURES_ARROW],
 						  fScaleMultiplier, fHalfXRes, fHalfYRes );
+#if defined(MA_PC_INPUT)
+	_MouseAddSelectionArrows( _MenuState.nCurItemIndex );
+#endif
 
 	
 	// draw the tick marks for the 2 level boxes
@@ -4676,10 +4917,13 @@ static void _SoundSettings_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 f
 					-0.55802816f,
 					-0.0060718199238181114f,
 					0.19267919100821018f,
-					0.063015616498887539f, 
+					0.063015616498887539f,
  					fScaleMultiplier,
 					fHalfXRes,
 					fHalfYRes );
+#if defined(MA_PC_INPUT)
+	_MouseAddTickBar( _MENU_ITEMS_SS_SOUND );
+#endif
 
 	wpr_drawutils_DrawTickMarks( _MenuState.nSSNumMusicTicks,
 					(_MENU_ITEMS_SS_NUM_TICKS-1),
@@ -4687,10 +4931,13 @@ static void _SoundSettings_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 f
 					-0.55802816f,
 					-0.45566194737330079f,
 					0.19267919100821018f,
-					0.063015616498887539f, 
+					0.063015616498887539f,
  					fScaleMultiplier,
 					fHalfXRes,
 					fHalfYRes );
+#if defined(MA_PC_INPUT)
+	_MouseAddTickBar( _MENU_ITEMS_SS_MUSIC );
+#endif
 }
 
 static void _SoundSettings_ProfileToWorkingVars() {
@@ -5204,6 +5451,9 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 									bSelected,
 									pScreen->pText[i].fScale,
 									_MenuState.nASVibrationTicks );
+#if defined(MA_PC_INPUT)
+				_MouseAddToggle( nItem, _MenuState.nASVibrationTicks != 0 );
+#endif
 #endif
 				break;
 #if WPR_SYSTEM_ALLOW_AUTO_CENTER_CHANGES
@@ -5213,6 +5463,9 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 									bSelected,
 									pScreen->pText[i].fScale,
 									_MenuState.bASAutoCenter );
+#if defined(MA_PC_INPUT)
+				_MouseAddToggle( nItem, _MenuState.bASAutoCenter );
+#endif
 				break;
 #endif
 			case _MENU_ITEMS_AS_ASSISTED_TARGETING:
@@ -5221,6 +5474,9 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 									bSelected,
 									pScreen->pText[i].fScale,
 									_MenuState.bASAssistedTargeting );
+#if defined(MA_PC_INPUT)
+				_MouseAddToggle( nItem, _MenuState.bASAssistedTargeting );
+#endif
 				break;
 
 			case _MENU_ITEMS_AS_INVERT:
@@ -5228,7 +5484,10 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 									pScreen->pText[i].fUnitY,
 									bSelected,
 									pScreen->pText[i].fScale,
-									_MenuState.bASInvertAnalog );				
+									_MenuState.bASInvertAnalog );
+#if defined(MA_PC_INPUT)
+				_MouseAddToggle( nItem, _MenuState.bASInvertAnalog );
+#endif
 				break;
 							
 			case _MENU_ITEMS_AS_LOOK_SENSITIVITY:
@@ -5243,7 +5502,10 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 							L'C',
 							pScreen->pText[i].fScale, 
 							_MenuState.bASFourWayQuickSelect ? _apwszPhrases[WPR_DATATYPES_PHRASES_4WAY] : _apwszPhrases[WPR_DATATYPES_PHRASES_2WAY] );
-				break;		
+#if defined(MA_PC_INPUT)
+				_MouseAddToggle( nItem, _MenuState.bASFourWayQuickSelect );
+#endif
+				break;
 			}
 		}
 	}	
@@ -5256,6 +5518,9 @@ static void _AdvSettings_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 	wpr_drawutils_DrawSelectionArrows( &pScreen->pText[_MenuState.nCurItemIndex + _MENU_ITEMS_AS_START_OFFSET],
 						  &_paTexInsts[WPR_DATATYPES_TEXTURES_ARROW],
 						  fScaleMultiplier, fHalfXRes, fHalfYRes );
+#if defined(MA_PC_INPUT)
+	_MouseAddSelectionArrows( _MenuState.nCurItemIndex );
+#endif
 	
 	// draw the tick marks for the 2 boxes
 #if WPR_DATATYPES_XBOX_GRAPHICS_ON
@@ -5281,6 +5546,9 @@ static void _AdvSettings_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
  					fScaleMultiplier,
 					fHalfXRes,
 					fHalfYRes );
+#if defined(MA_PC_INPUT)
+	_MouseAddTickBar( _MENU_ITEMS_AS_LOOK_SENSITIVITY );
+#endif
 }
 
 static void _AdvSettings_ProfileToWorkingVars() {

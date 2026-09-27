@@ -36,6 +36,19 @@ typedef struct {
 } Wpr_DrawUtils_ButtonHit_t;
 extern Wpr_DrawUtils_ButtonHit_t Wpr_DrawUtils_aButtonHits[WPR_DRAWUTILS_BUTTON_HITS];
 extern void wpr_drawutils_ClearButtonHits( void );
+// Where wpr_drawutils_DrawSelectionArrows() last drew its left and right arrows, and where
+// wpr_drawutils_DrawTickMarks() last drew its bar (drawn or not, the bar's full extent), in screen
+// fractions, so the menus can make them clickable.
+typedef struct {
+	f32 fLeft, fTop, fRight, fBottom;
+} Wpr_DrawUtils_Box_t;
+extern Wpr_DrawUtils_Box_t Wpr_DrawUtils_aLastArrows[2];
+typedef struct {
+	f32 fLeft, fTop, fBottom;	// the first tick's left edge; the bar's top and bottom
+	f32 fStep, fTickWidth;		// from one tick to the next; one tick's width
+	u32 nTicks, nMaxTicks;		// the value shown, and the most it can be
+} Wpr_DrawUtils_TickBar_t;
+extern Wpr_DrawUtils_TickBar_t Wpr_DrawUtils_LastTickBar;
 // Draw a generated Cross/Circle/Triangle/Square glyph (0..3) or the Options button (4) in the
 // caller's current fdraw coordinate system: a dark round button of fRadius with the symbol on it.
 extern void wpr_drawutils_DrawPlayStationGlyph( u32 nGlyph, f32 fCenterX, f32 fCenterY, f32 fRadius );
@@ -45,6 +58,16 @@ extern void wpr_drawutils_DrawPlayStationGlyph( u32 nGlyph, f32 fCenterX, f32 fC
 // maps to ((f*2-1)*fXScale, (1-f*2)*fYScale). Returns the key's bounds in screen fractions.
 extern BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
 									  f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom );
+// A pad face button, nFace 0..3 = the bottom, right, top and left buttons (Xbox A, B, Y, X; PlayStation
+// Cross, Circle, Triangle, Square), centered at (fX, fY) in screen fractions, fRadius a fraction of the
+// screen's height. Drawn in the wrapper's ortho space (pixels, origin at the center, y up).
+extern void wpr_drawutils_DrawFaceButton( BOOL bPlayStation, u32 nFace, f32 fX, f32 fY, f32 fRadius, f32 fHalfXRes, f32 fHalfYRes );
+// A mouse fHeight tall (screen fraction) centered at (fX, fY): nButton 1 or 2 lights its left or right
+// button; 0 draws it plain (moving the mouse). Same space as above.
+extern void wpr_drawutils_DrawMouseGlyph( u32 nButton, f32 fX, f32 fY, f32 fHeight, f32 fHalfXRes, f32 fHalfYRes );
+// After an ftext_Printf() in the prompt font (~f1) at ftext y fPrintY and scale fScale: measure its line,
+// which the centered drawing here uses.
+extern void wpr_drawutils_MeasureFontLine( f32 fPrintY, f32 fScale );
 // The same, with the label's line centered on fCenterY (a screen fraction down) using the prompt font's
 // measured line metrics.
 extern BOOL wpr_drawutils_DrawKeyCapCentered( cwchar *pwszLabel, f32 fTextX, f32 fCenterY, wchar cAlign, f32 fFontScale, f32 fMinWidth,

@@ -207,9 +207,24 @@ void wpr_drawutils_DrawTextureToScreen( BOOL bColor,
 static cwchar *_apwszKeyCapLabels[] = { L"Enter", L"Esc", L"E", L"R" };
 
 // The prompt font's (~f1) line metrics per unit of font scale, in screen fractions of height: the line's
-// height, and how far its top sits below the print position. Measured from every prompt printed; the
-// first frame uses these estimates.
-static f32 _fPromptLineHeightPerScale = 0.035f, _fPromptLineTopPerScale = 0.0f;
+// height, and how far its top sits below the print position (as ftext_GetLastPrintBounds() reports
+// them). Measured from each prompt, key cap and chart label printed; these starting values are the
+// measured ones at 1280x960.
+static f32 _fPromptLineHeightPerScale = 0.041f, _fPromptLineTopPerScale = 0.0115f;
+
+static void _MeasurePromptFont( f32 fPrintY, f32 fScale, f32 fTop, f32 fBottom ) {
+	if( fScale > 0.0f && fBottom > fTop ) {
+		_fPromptLineHeightPerScale = (fBottom - fTop) / fScale;
+		_fPromptLineTopPerScale = (fTop - fPrintY / 0.75f) / fScale;
+	}
+}
+
+void wpr_drawutils_MeasureFontLine( f32 fPrintY, f32 fScale ) {
+	f32 fLeft, fTop, fRight, fBottom;
+	if( ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+		_MeasurePromptFont( fPrintY, fScale, fTop, fBottom );
+	}
+}
 
 // A keyboard key cap: the key's name on a raised key (see wpr_drawutils.h).
 BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
@@ -222,6 +237,7 @@ BOOL wpr_drawutils_DrawKeyCap( cwchar *pwszLabel, f32 fTextX, f32 fTextY, wchar 
 	if( !ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
 		return FALSE;
 	}
+	_MeasurePromptFont( fTextY, fFontScale, fTop, fBottom );
 	fLeft -= fPadX;
 	fRight += fPadX;
 	fTop -= fPadY;
@@ -305,6 +321,105 @@ static void _GlyphPolygon( f32 fX, f32 fY, f32 fRadius, u32 nCorners, f32 fStart
 		}
 		Prev = Next;
 	}
+}
+
+void wpr_drawutils_DrawFaceButton( BOOL bPlayStation, u32 nFace, f32 fX, f32 fY, f32 fRadius, f32 fHalfXRes, f32 fHalfYRes ) {
+	const f32 fCenterX = (fX * 2.0f - 1.0f) * fHalfXRes, fCenterY = (1.0f - fY * 2.0f) * fHalfYRes;
+	const f32 fRadiusPx = fRadius * 2.0f * fHalfYRes;
+	if( bPlayStation ) {
+		wpr_drawutils_DrawPlayStationGlyph( nFace, fCenterX, fCenterY, fRadiusPx );
+		return;
+	}
+
+	// Xbox: the button's color with its letter
+	static cwchar *apwszLetters[4] = { L"A", L"B", L"Y", L"X" };
+	CFColorRGBA Color, Rim( 0.02f, 0.03f, 0.06f, 0.95f );
+	if( nFace == 0 ) Color.Set( 0.30f, 0.72f, 0.22f, 1.0f );
+	else if( nFace == 1 ) Color.Set( 0.86f, 0.22f, 0.18f, 1.0f );
+	else if( nFace == 2 ) Color.Set( 0.95f, 0.72f, 0.12f, 1.0f );
+	else Color.Set( 0.18f, 0.45f, 0.92f, 1.0f );
+
+	fdraw_Depth_EnableWriting( FALSE );
+	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
+	fdraw_SetTexture( NULL );
+	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
+	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+	const FDrawCullDir_e nOldCull = fdraw_GetCullDir();
+	fdraw_SetCullDir( FDRAW_CULLDIR_NONE );
+	_GlyphPolygon( fCenterX, fCenterY, fRadiusPx, 24, 0.0f, 0.0f, &Color );
+	_GlyphPolygon( fCenterX, fCenterY, fRadiusPx, 24, 0.0f, fRadiusPx * 0.12f, &Rim );
+	fdraw_SetCullDir( nOldCull );
+
+	if( nFace < 4 && _fPromptLineHeightPerScale > 0.0f ) {
+		const f32 fScale = 1.5f * fRadius / _fPromptLineHeightPerScale;	// the letter a little taller than the radius
+		ftext_Printf( fX, (fY - (0.5f * _fPromptLineHeightPerScale + _fPromptLineTopPerScale) * fScale) * 0.75f,
+					  L"~f1~C%ls~w0~aC~s%.2f%ls", WprDataTypes_pwszSolidWhiteTextColor, fScale, apwszLetters[nFace] );
+	}
+}
+
+void wpr_drawutils_DrawMouseGlyph( u32 nButton, f32 fX, f32 fY, f32 fHeight, f32 fHalfXRes, f32 fHalfYRes ) {
+	const f32 fCenterX = (fX * 2.0f - 1.0f) * fHalfXRes, fCenterY = (1.0f - fY * 2.0f) * fHalfYRes;
+	const f32 fB = fHeight * fHalfYRes;		// half height, pixels
+	const f32 fA = fB * 0.62f;				// half width
+	const f32 fSplitY = fCenterY + 0.30f * fB;	// the buttons are the part above this
+	CFColorRGBA Body( 0.04f, 0.05f, 0.09f, 0.92f ), Rim( 0.55f, 0.72f, 0.95f, 1.0f ), Lit( 0.45f, 0.68f, 1.00f, 1.0f );
+
+	fdraw_Depth_EnableWriting( FALSE );
+	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
+	fdraw_SetTexture( NULL );
+	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
+	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+	const FDrawCullDir_e nOldCull = fdraw_GetCullDir();
+	fdraw_SetCullDir( FDRAW_CULLDIR_NONE );
+
+	// the body: an ellipse
+	const u32 nCorners = 28;
+	CFVec3 Center( fCenterX, fCenterY, 1.0f ), Prev, Next;
+	for( u32 n=0; n <= nCorners; n++ ) {
+		const f32 fAngle = FMATH_2PI * (f32)n / (f32)nCorners;
+		Next.Set( fCenterX + fmath_Cos( fAngle ) * fA, fCenterY + fmath_Sin( fAngle ) * fB, 1.0f );
+		if( n ) {
+			fdraw_SolidQuad( &Center, &Prev, &Next, &Center, &Body );
+		}
+		Prev = Next;
+	}
+
+	// the lit button: the ellipse above the split, on its side of the middle
+	if( nButton == 1 || nButton == 2 ) {
+		const f32 fSide = (nButton == 1) ? -1.0f : 1.0f;
+		const f32 fEndAngle = FMATH_PI - 0.30469265f;	// where the ellipse meets the split: sin = 0.30 (asin 0.30 = 0.3047)
+		CFVec3 Corner( fCenterX, fSplitY, 1.0f );
+		const u32 nSteps = 10;
+		for( u32 n=0; n <= nSteps; n++ ) {
+			// from the top (90 degrees) out to the split
+			const f32 fAngle = FMATH_HALF_PI + (fEndAngle - FMATH_HALF_PI) * (f32)n / (f32)nSteps;
+			Next.Set( fCenterX - fSide * fmath_Cos( fAngle ) * fA, fCenterY + fmath_Sin( fAngle ) * fB, 1.0f );
+			if( n ) {
+				fdraw_SolidQuad( &Corner, &Prev, &Next, &Corner, &Lit );
+			}
+			Prev = Next;
+		}
+	}
+
+	// the outline, the split and the wheel
+	const f32 fLine = FMATH_MAX( 1.5f, fB * 0.07f );
+	for( u32 n=0; n <= nCorners; n++ ) {
+		const f32 fAngle = FMATH_2PI * (f32)n / (f32)nCorners;
+		Next.Set( fCenterX + fmath_Cos( fAngle ) * fA, fCenterY + fmath_Sin( fAngle ) * fB, 1.0f );
+		if( n ) {
+			_GlyphStroke( Prev, Next, fLine, &Rim );
+		}
+		Prev = Next;
+	}
+	const f32 fHalfSplit = fA * fmath_Sqrt( 1.0f - 0.30f * 0.30f );
+	CFVec3 a( fCenterX - fHalfSplit, fSplitY, 1.0f ), b( fCenterX + fHalfSplit, fSplitY, 1.0f );
+	_GlyphStroke( a, b, fLine, &Rim );
+	a.Set( fCenterX, fSplitY, 1.0f ); b.Set( fCenterX, fCenterY + fB, 1.0f );
+	_GlyphStroke( a, b, fLine, &Rim );
+	a.Set( fCenterX, fSplitY + 0.22f * fB, 1.0f ); b.Set( fCenterX, fSplitY + 0.48f * fB, 1.0f );
+	_GlyphStroke( a, b, fLine * 2.2f, &Rim );
+
+	fdraw_SetCullDir( nOldCull );
 }
 
 // The retail data only contains Xbox button art. These generated glyphs keep the PlayStation
@@ -435,10 +550,7 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 			pButton->pwszInstructions );
 		f32 fTextL = fTextX, fTextT = fLineTop, fTextR = fTextX, fTextB = fLineTop + fLineHeight;
 		if( ftext_GetLastPrintBounds( &fTextL, &fTextT, &fTextR, &fTextB ) ) {
-			if( fScale > 0.0f && fTextB > fTextT ) {
-				_fPromptLineHeightPerScale = (fTextB - fTextT) / fScale;
-				_fPromptLineTopPerScale = (fTextT - fTextY / 0.75f) / fScale;
-			}
+			_MeasurePromptFont( fTextY, fScale, fTextT, fTextB );
 			fRowTextY = fTextY;
 			fRowNextLeft = fTextR + 0.02f;
 		}
@@ -553,6 +665,19 @@ void wpr_drawutils_SetupMtx( CFMeshInst *pMeshInst,
 	}
 }
 
+#if defined(MA_PC_INPUT)
+Wpr_DrawUtils_Box_t Wpr_DrawUtils_aLastArrows[2];
+Wpr_DrawUtils_TickBar_t Wpr_DrawUtils_LastTickBar;
+
+// ortho pixels (y up, origin at the center) -> screen fractions
+static void _RecordBox( Wpr_DrawUtils_Box_t *pBox, const CFVec2 &Lower, const CFVec2 &Upper, f32 fHalfXRes, f32 fHalfYRes ) {
+	pBox->fLeft = (Lower.x / fHalfXRes + 1.0f) * 0.5f;
+	pBox->fRight = (Upper.x / fHalfXRes + 1.0f) * 0.5f;
+	pBox->fTop = (1.0f - Upper.y / fHalfYRes) * 0.5f;
+	pBox->fBottom = (1.0f - Lower.y / fHalfYRes) * 0.5f;
+}
+#endif
+
 void wpr_drawutils_DrawSelectionArrows( Wpr_DataTypes_TextLayout_t *pText,
 									   CFTexInst *pTexInst,
 									   f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
@@ -594,6 +719,9 @@ void wpr_drawutils_DrawSelectionArrows( Wpr_DataTypes_TextLayout_t *pText,
 	Lower.Set( fX, fY );
 	Upper.Set( Lower.x + fWidth,
 			   Lower.y + fHeight );
+#if defined(MA_PC_INPUT)
+	_RecordBox( &Wpr_DrawUtils_aLastArrows[0], Lower, Upper, fHalfXRes, fHalfYRes );
+#endif
 
 	// draw the left arrow
 	Wpr_DrawUtils_aVtx[0].Pos_MS.Set( Lower.x, Lower.y, 1.0f ); 
@@ -617,6 +745,9 @@ void wpr_drawutils_DrawSelectionArrows( Wpr_DataTypes_TextLayout_t *pText,
 	// draw the right arrow
 	Lower.x += fLen - fWidth;
 	Upper.x += fLen - fWidth;
+#if defined(MA_PC_INPUT)
+	_RecordBox( &Wpr_DrawUtils_aLastArrows[1], Lower, Upper, fHalfXRes, fHalfYRes );
+#endif
 
 	Wpr_DrawUtils_aVtx[0].Pos_MS.Set( Lower.x, Lower.y, 1.0f ); 
 	Wpr_DrawUtils_aVtx[0].ST.Set( 0.0f, 0.0f );
@@ -642,6 +773,16 @@ void wpr_drawutils_DrawTickMarks( u32 nNumTicks, u32 nMaxTicks,
 	u32 i;
 	CFVec2 Lower, Upper;
 	f32 fDeltaX = fSpaceBetweenTicks * fHalfXRes;
+
+#if defined(MA_PC_INPUT)
+	Wpr_DrawUtils_LastTickBar.fLeft = (fLowerX + 1.0f) * 0.5f;
+	Wpr_DrawUtils_LastTickBar.fTop = (1.0f - (fLowerY + fHeight)) * 0.5f;
+	Wpr_DrawUtils_LastTickBar.fBottom = (1.0f - fLowerY) * 0.5f;
+	Wpr_DrawUtils_LastTickBar.fStep = fSpaceBetweenTicks * 0.5f;
+	Wpr_DrawUtils_LastTickBar.fTickWidth = fHeight * 0.25f * 0.5f;
+	Wpr_DrawUtils_LastTickBar.nTicks = nNumTicks;
+	Wpr_DrawUtils_LastTickBar.nMaxTicks = nMaxTicks;
+#endif
 
 	if( nNumTicks == 0 ) {
 		return;
