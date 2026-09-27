@@ -341,6 +341,11 @@ extern BOOL game_IsInitialized( void );
 // Call this as the first set of localized resources to load
 // This is a quick loading to get localized display capabilities ASAP
 extern BOOL game_LoadLocalizedPhraseTableAndFonts( void );
+#if defined(MA_PC_INPUT)
+// Switches the on-screen prompts between key names and pad buttons, following the device the
+// keyboard/mouse port used last. Called every input frame.
+extern void game_PcPromptWork( void );
+#endif
 // This loads the rest of the localized assets and systems... This call takes longer but
 // a localized loading screen is presented to the user at this time so it's not a big deal...
 extern BOOL game_InitLocalizedResources( void );

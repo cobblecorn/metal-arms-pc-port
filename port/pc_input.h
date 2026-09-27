@@ -61,3 +61,6 @@ bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode);
 bool pcinput_AimAssistAllowed(u32 controller);
 // True while the controller's port is aiming with captured mouse look (the mouse moved last).
 bool pcinput_IsMouseAiming(u32 controller);
+// True when the keyboard/mouse port's most recent input came from its XInput pad (shared layout), so
+// on-screen prompts should name pad buttons rather than keys.
+bool pcinput_PromptsForPad();

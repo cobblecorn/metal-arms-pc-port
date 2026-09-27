@@ -401,6 +401,7 @@ void gamepad_Sample( void )
 	Gamepad_nPortOnlineMask = fpad_UpdateSamples();
 #if defined(MA_PC_INPUT)
 	pcinput_BeginFrame( _anCurrentMap[pcinput_KeyboardPort()] == GAMEPAD_MAP_MAIN1 );
+	game_PcPromptWork();
 #endif
 
 	_HandleCheatCodes();

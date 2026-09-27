@@ -20,6 +20,7 @@ static float s_mouseDegrees = 0.1f;
 static float s_frameYaw, s_framePitch;
 static PcAimAssistMode s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
 static volatile LONG s_mouseAiming;	// the keyboard port's most recent aiming came from the mouse
+static volatile LONG s_promptsForPad;	// the keyboard port's most recent input came from its pad
 // Menu pointer: the window thread counts presses and wheel motion; the game thread samples the
 // position and takes the counts once per frame.
 // The position comes from the window's mouse messages (client pixels, packed y << 16 | x), so it also
@@ -284,12 +285,22 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 		(abs(state.pad.sThumbRX) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || abs(state.pad.sThumbRY) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE))
 		InterlockedExchange(&s_mouseAiming, 0);
 	state.focused = s_window && GetForegroundWindow() == s_window && !IsIconic(s_window);
+	if (keyboard && state.connected && state.focused) {
+		const XINPUT_GAMEPAD &p = state.pad;
+		if (p.wButtons || p.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD || p.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ||
+			abs(p.sThumbLX) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || abs(p.sThumbLY) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE ||
+			abs(p.sThumbRX) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || abs(p.sThumbRY) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
+			InterlockedExchange(&s_promptsForPad, 1);
+	}
 	if (keyboard) {
 		if (state.focused) {
 			// Only inspect gameplay keys, and only while the game owns focus.
 			const int keys[] = { 'W','A','S','D','E','Q','R','F','1','2','3','4', VK_SPACE,
 				VK_UP,VK_DOWN,VK_LEFT,VK_RIGHT,VK_RETURN,VK_ESCAPE,VK_LBUTTON,VK_RBUTTON };
-			for (u32 i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) state.keys[keys[i]] = (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
+			for (u32 i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) {
+				state.keys[keys[i]] = (GetAsyncKeyState(keys[i]) & 0x8000) != 0;
+				if (state.keys[keys[i]]) InterlockedExchange(&s_promptsForPad, 0);
+			}
 			// A menu with its own pointer takes the buttons as clicks, not as the triggers (on the launch
 			// screen a held right trigger starts the level-unlock code and blocks other input).
 			if (MenuDrawsPointer()) state.keys[VK_LBUTTON] = state.keys[VK_RBUTTON] = false;
@@ -335,6 +346,8 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 		if (message == WM_MOUSEWHEEL) InterlockedExchangeAdd(&s_menuWheel, (short)HIWORD(wParam));
 	}
 	if ((message == WM_MOVE || message == WM_SIZE) && MouseLook()) ClipToGame();
+	if (message == WM_MOUSEMOVE || message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MOUSEWHEEL)
+		InterlockedExchange(&s_promptsForPad, 0);
 	if (message == WM_INPUT && GetForegroundWindow() == s_window) {
 		RAWINPUT data;
 		UINT size = sizeof(data);
@@ -458,6 +471,8 @@ bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode) {
 	else return false;
 	return true;
 }
+
+bool pcinput_PromptsForPad() { return InterlockedCompareExchange(&s_promptsForPad, 0, 0) != 0; }
 
 bool pcinput_IsMouseAiming(u32 controller) {
 	return controller == pcinput_KeyboardPort() && MouseLook() && InterlockedCompareExchange(&s_mouseAiming, 0, 0);

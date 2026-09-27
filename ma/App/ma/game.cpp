@@ -19,6 +19,9 @@
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
 #include "game.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 #include "fviewport.h"
 #include "fworld.h"
@@ -159,6 +162,230 @@ static cchar *_pszGamePhrasesTableName = "common_phrases";
 	static cchar *_pszPlatformPhrasesTableName = "ps2_phrases";	
 #endif
 static cchar *_pszGamePhrasesCSVFilename = "gamephrase$";
+#if FANG_WINGC
+// The retail gamephrase$ tables were reordered after this source snapshot: the "Press Y ..." prompts
+// moved into the platform tables and retail-only phrases were inserted. When the tables have the retail
+// sizes, each phrase is read from the field listed here (_RETAIL_GAMEPHRASE_PLATFORM( n ) = platform
+// table field n).
+#define _RETAIL_GAMEPHRASE_COMMON_COUNT		186
+#define _RETAIL_GAMEPHRASE_PLATFORM_COUNT	27
+#define _RETAIL_GAMEPHRASE_PLATFORM( n )	( 0x100 | (n) )
+static const u16 _anRetailGamePhraseField[GAMEPHRASE_COUNT] = {
+	0,	// GAMEPHRASE_LOSING_SIGNAL
+	1,	// GAMEPHRASE_SIGNAL_LOST
+	_RETAIL_GAMEPHRASE_PLATFORM( 12 ),	// GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER
+	_RETAIL_GAMEPHRASE_PLATFORM( 13 ),	// GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE
+	_RETAIL_GAMEPHRASE_PLATFORM( 14 ),	// GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN
+	2,	// GAMEPHRASE_VEHICLE_IS_LOCKED
+	3,	// GAMEPHRASE_LAUNCH_CLEANER
+	_RETAIL_GAMEPHRASE_PLATFORM( 15 ),	// GAMEPHRASE_PRESS_Y_TO_RECRUIT_BUDDY
+	_RETAIL_GAMEPHRASE_PLATFORM( 16 ),	// GAMEPHRASE_PRESS_Y_TO_DISCHARGE_BUDDY
+	4,	// GAMEPHRASE_CHIP_REQUIRED
+	5,	// GAMEPHRASE_MIL_ONLY
+	_RETAIL_GAMEPHRASE_PLATFORM( 17 ),	// GAMEPHRASE_PRESS_Y_TO_USE_SWITCH
+	_RETAIL_GAMEPHRASE_PLATFORM( 18 ),	// GAMEPHRASE_PRESS_Y_TO_USE_DET_PACK
+	6,	// GAMEPHRASE_DETPACK_REQUIRED
+	7,	// GAMEPHRASE_SELECT_TARGETS
+	8,	// GAMEPHRASE_INCOMING_TRANSMISSION
+	9,	// GAMEPHRASE_COLONEL_ALLOY
+	10,	// GAMEPHRASE_AGENT_SHHH
+	11,	// GAMEPHRASE_KRUNK
+	12,	// GAMEPHRASE_AGENT_GOFF
+	13,	// GAMEPHRASE_DR_EXAVOLT
+	14,	// GAMEPHRASE_HOLD_TO_EXIT_BOT
+	15,	// GAMEPHRASE_EUK_LEVEL
+	16,	// GAMEPHRASE_PRIMARY
+	17,	// GAMEPHRASE_SECONDARY
+	18,	// GAMEPHRASE_WEAPON
+	19,	// GAMEPHRASE_DUAL
+	20,	// GAMEPHRASE_UPGRADABLE
+	23,	// GAMEPHRASE_BACK
+	24,	// GAMEPHRASE_RESUME_GAME
+	25,	// GAMEPHRASE_ACCEPT
+	26,	// GAMEPHRASE_CANCEL
+	27,	// GAMEPHRASE_RESTART_LEVEL
+	28,	// GAMEPHRASE_RESPAWN
+	29,	// GAMEPHRASE_SOUND_OPTIONS
+	30,	// GAMEPHRASE_EDIT_CONTROLLER
+	31,	// GAMEPHRASE_ADVANCED_CONTROLLER_SETUP
+	32,	// GAMEPHRASE_QUIT_GAME
+	33,	// GAMEPHRASE_MISSION_OBJECTIVE
+	34,	// GAMEPHRASE_PRIMARY_EQUIPMENT
+	35,	// GAMEPHRASE_SECONDARY_EQUIPMENT
+	36,	// GAMEPHRASE_INFORMATION
+	37,	// GAMEPHRASE_OPTIONS
+	38,	// GAMEPHRASE_YES
+	39,	// GAMEPHRASE_NO
+	40,	// GAMEPHRASE_UNINITIALIZED
+	41,	// GAMEPHRASE_CHECKPOINT_SAVED
+	42,	// GAMEPHRASE_RESTORED_TO_CHECKPOINT
+	43,	// GAMEPHRASE_TARGET_UNKNOWN
+	44,	// GAMEPHRASE_TARGET
+	45,	// GAMEPHRASE_GRUNT
+	46,	// GAMEPHRASE_GUARD
+	47,	// GAMEPHRASE_TROOPER
+	48,	// GAMEPHRASE_TITAN
+	49,	// GAMEPHRASE_SNIPER
+	50,	// GAMEPHRASE_SWARMER
+	51,	// GAMEPHRASE_PREDATOR
+	52,	// GAMEPHRASE_SENTRY
+	53,	// GAMEPHRASE_MORTAR
+	54,	// GAMEPHRASE_CORROSIVE
+	60,	// GAMEPHRASE_HEIGHT
+	61,	// GAMEPHRASE_HEIGHT_UNKNOWN
+	62,	// GAMEPHRASE_SPEED
+	63,	// GAMEPHRASE_SPEED_UNKNOWN
+	64,	// GAMEPHRASE_HEALTH
+	65,	// GAMEPHRASE_HEALTH_UNKNOWN
+	66,	// GAMEPHRASE_D_PORT_OPEN
+	67,	// GAMEPHRASE_D_PORT_CLOSED
+	68,	// GAMEPHRASE_D_PORT_NONE
+	69,	// GAMEPHRASE_RANGE
+	70,	// GAMEPHRASE_RANGE_UNKNOWN
+	71,	// GAMEPHRASE_SAVING
+	72,	// GAMEPHRASE_LOADING
+	73,	// GAMEPHRASE_BAD_GAME_DISK
+	74,	// GAMEPHRASE_WARNING
+	75,	// GAMEPHRASE_GAME_WONT_BE_SAVED
+	76,	// GAMEPHRASE_RETICLE_NO_AMMO
+	77,	// GAMEPHRASE_RETICLE_LOW_AMMO
+	78,	// GAMEPHRASE_RETICLE_RELOAD
+	79,	// GAMEPHRASE_SCOPE_INCOMPATIBLE
+	80,	// GAMEPHRASE_YOU_ARE_FREE
+	81,	// GAMEPHRASE_MULTIPLAYER_NAME_1
+	82,	// GAMEPHRASE_MULTIPLAYER_NAME_2
+	83,	// GAMEPHRASE_MULTIPLAYER_NAME_3
+	84,	// GAMEPHRASE_MULTIPLAYER_NAME_4
+	85,	// GAMEPHRASE_MULTIPLAYER_NAME_5
+	86,	// GAMEPHRASE_MULTIPLAYER_NAME_6
+	87,	// GAMEPHRASE_MULTIPLAYER_NAME_7
+	88,	// GAMEPHRASE_MULTIPLAYER_NAME_8
+	89,	// GAMEPHRASE_MULTIPLAYER_NAME_9
+	90,	// GAMEPHRASE_MULTIPLAYER_NAME_10
+	91,	// GAMEPHRASE_TIME_REMAINING
+	92,	// GAMEPHRASE_PLAYER_WINS
+	93,	// GAMEPHRASE_PLAYER_QUIT
+	94,	// GAMEPHRASE_RESUME_BUTTON
+	95,	// GAMEPHRASE_QUIT_BUTTON
+	96,	// GAMEPHRASE_RANKING
+	_RETAIL_GAMEPHRASE_PLATFORM( 19 ),	// GAMEPHRASE_PRESS_A_TO_CONTINUE
+	97,	// GAMEPHRASE_ENEMIES_DESTROYED
+	98,	// GAMEPHRASE_WASHERS_COLLECTED
+	99,	// GAMEPHRASE_TIME_TO_COMPETE
+	100,	// GAMEPHRASE_LEVEL_COMPLETE
+	101,	// GAMEPHRASE_PRESS_START_TO_CONTINUE
+	102,	// GAMEPHRASE_PLAYER_TIME
+	103,	// GAMEPHRASE_YOU_ARE_IT
+	104,	// GAMEPHRASE_TIME_FORMAT
+	105,	// GAMEPHRASE_HDR_PLAYER
+	106,	// GAMEPHRASE_HDR_KILLS
+	107,	// GAMEPHRASE_HDR_DEATHS
+	108,	// GAMEPHRASE_HDR_TIME
+	109,	// GAMEPHRASE_TEAMS_TIED
+	110,	// GAMEPHRASE_YOU_WON
+	111,	// GAMEPHRASE_SECOND_PLACE
+	112,	// GAMEPHRASE_THIRD_PLACE
+	113,	// GAMEPHRASE_YOU_LOST
+	114,	// GAMEPHRASE_TIED_FOR_FIRST
+	115,	// GAMEPHRASE_TIED_FOR_SECOND
+	116,	// GAMEPHRASE_TIED_FOR_LAST
+	117,	// GAMEPHRASE_YOUR_TEAM_WON
+	118,	// GAMEPHRASE_YOUR_TEAM_LOST
+	119,	// GAMEPHRASE_SUICIDE
+	120,	// GAMEPHRASE_TIME_BONUS
+	121,	// GAMEPHRASE_NO_IT_PLAYER
+	122,	// GAMEPHRASE_KILLING_SPREE_1
+	123,	// GAMEPHRASE_KILLING_SPREE_2
+	125,	// GAMEPHRASE_DM_BLU_AHEAD
+	126,	// GAMEPHRASE_DM_RED_AHEAD
+	127,	// GAMEPHRASE_TIME_BLU_AHEAD
+	128,	// GAMEPHRASE_TIME_RED_AHEAD
+	129,	// GAMEPHRASE_BLU_TEAM_WINS
+	130,	// GAMEPHRASE_RED_TEAM_WINS
+	131,	// GAMEPHRASE_KILL_1
+	132,	// GAMEPHRASE_KILL_2
+	133,	// GAMEPHRASE_KILL_3
+	134,	// GAMEPHRASE_KILLED_1
+	135,	// GAMEPHRASE_KILLED_2
+	136,	// GAMEPHRASE_MISSION_FAILED
+	_RETAIL_GAMEPHRASE_PLATFORM( 20 ),	// GAMEPHRASE_PRESS_Y_TO_SHOP
+	138,	// GAMEPHRASE_YOU_GOT_A
+	139,	// GAMEPHRASE_UPGRADE
+	140,	// GAMEPHRASE_N_ROUNDS_OF
+	141,	// GAMEPHRASE_AMMO
+	142,	// GAMEPHRASE_N_ROCKETS
+	143,	// GAMEPHRASE_N_CORING_CHARGES
+	144,	// GAMEPHRASE_N_CLEANERS
+	145,	// GAMEPHRASE_PURCHASE
+	146,	// GAMEPHRASE_NO_THANKS
+	147,	// GAMEPHRASE_LEVEL_1
+	148,	// GAMEPHRASE_LEVEL_2
+	149,	// GAMEPHRASE_LEVEL_3
+	150,	// GAMEPHRASE_BATTERY
+	151,	// GAMEPHRASE_ARM_SERVO
+	152,	// GAMEPHRASE_ENERGY
+	153,	// GAMEPHRASE_MEGAENERGY
+	154,	// GAMEPHRASE_ONE_CHIP_REQUIRED
+	155,	// GAMEPHRASE_CHIPS_REQUIRED
+	156,	// GAMEPHRASE_NO_CHIPS_TO_INSERT
+	_RETAIL_GAMEPHRASE_PLATFORM( 21 ),	// GAMEPHRASE_PRESS_Y_TO_INSERT_CHIP
+	_RETAIL_GAMEPHRASE_PLATFORM( 22 ),	// GAMEPHRASE_PRESS_Y_TO_USE_CONSOLE
+	157,	// GAMEPHRASE_CONSOLE_OUT_OF_ORDER
+	158,	// GAMEPHRASE_SELECTNEWLOC
+	159,	// GAMEPHRASE_ERRORSAVING
+	160,	// GAMEPHRASE_SELECTSAVELOCATION
+	161,	// GAMEPHRASE_PROFILEFOUND
+	162,	// GAMEPHRASE_OVERWRITE
+	163,	// GAMEPHRASE_SAVINGPROFILE
+	164,	// GAMEPHRASE_NOPROGRESS
+	165,	// GAMEPHRASE_INSERT_CONTROLLER
+	_RETAIL_GAMEPHRASE_PLATFORM( 0 ),	// GAMEPHRASE_LOST_CONTROLLER_FORMATSTRING
+	_RETAIL_GAMEPHRASE_PLATFORM( 1 ),	// GAMEPHRASE_CLOSE_DVD_COVER
+	_RETAIL_GAMEPHRASE_PLATFORM( 2 ),	// GAMEPHRASE_INSERT_GAME_DISK
+	_RETAIL_GAMEPHRASE_PLATFORM( 3 ),	// GAMEPHRASE_CLEAN_DISK
+	_RETAIL_GAMEPHRASE_PLATFORM( 4 ),	// GAMEPHRASE_FATAL_ERROR
+	_RETAIL_GAMEPHRASE_PLATFORM( 5 ),	// GAMEPHRASE_MU_REMOVED
+	_RETAIL_GAMEPHRASE_PLATFORM( 6 ),	// GAMEPHRASE_CARDNEEDSFORMATTING
+	_RETAIL_GAMEPHRASE_PLATFORM( 7 ),	// GAMEPHRASE_CONFIRMFORMAT
+	_RETAIL_GAMEPHRASE_PLATFORM( 8 ),	// GAMEPHRASE_MUSELECT_CARDNEEDSFORMATTING
+	_RETAIL_GAMEPHRASE_PLATFORM( 9 ),	// GAMEPHRASE_SELECTMU
+	_RETAIL_GAMEPHRASE_PLATFORM( 10 ),	// GAMEPHRASE_DONTTOUCHMU
+};
+#endif
+#if defined(MA_PC_INPUT)
+// PC wording. Prompts name the key (E is the action button, Space is A, Enter is START) or, after the
+// keyboard/mouse port last used its controller, the Xbox-style button; game_PcPromptWork() switches
+// them. Storage messages describe the save folder rather than a memory card.
+typedef struct {
+	u32 nPhrase;
+	cwchar *pwszKeyboard;
+	cwchar *pwszPad;		// NULL: pwszKeyboard for both
+} _PcPhrase_t;
+static const _PcPhrase_t _aPcPhrases[] = {
+	{ GAMEPHRASE_PRESS_Y_TO_FLIP_VEHICLE_OVER,	L"Press E\nto flip vehicle over",		L"Press Y\nto flip vehicle over" },
+	{ GAMEPHRASE_PRESS_Y_TO_DRIVE_VEHICLE,		L"Press E\nto drive vehicle",			L"Press Y\nto drive vehicle" },
+	{ GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN,		L"Press E\nto operate gun",				L"Press Y\nto operate gun" },
+	{ GAMEPHRASE_PRESS_Y_TO_RECRUIT_BUDDY,		L"Press E to recruit",					L"Press Y to recruit" },
+	{ GAMEPHRASE_PRESS_Y_TO_DISCHARGE_BUDDY,	L"Press E to discharge",				L"Press Y to discharge" },
+	{ GAMEPHRASE_PRESS_Y_TO_USE_SWITCH,			L"Press E to use switch",				L"Press Y to use switch" },
+	{ GAMEPHRASE_PRESS_Y_TO_USE_DET_PACK,		L"Press E to place Det-Pack",			L"Press Y to place Det-Pack" },
+	{ GAMEPHRASE_PRESS_A_TO_CONTINUE,			L"Press Space to continue",				L"Press A to continue" },
+	{ GAMEPHRASE_PRESS_START_TO_CONTINUE,		L"Press Enter%cto continue",			L"Press START%cto continue" },
+	{ GAMEPHRASE_PRESS_Y_TO_SHOP,				L"Press E to shop",						L"Press Y to shop" },
+	{ GAMEPHRASE_PRESS_Y_TO_INSERT_CHIP,		L"Press E to insert a chip",			L"Press Y to insert a chip" },
+	{ GAMEPHRASE_PRESS_Y_TO_USE_CONSOLE,		L"Press E\nto use console",				L"Press Y\nto use console" },
+	{ GAMEPHRASE_LOST_CONTROLLER_FORMATSTRING,	L"Please reconnect%cthe controller%cfor player %d", NULL },
+	{ GAMEPHRASE_MU_REMOVED,					L"\nThe save data for\nplayer profile %ls in\n%ls\ncan no longer be found.\nMake sure the save folder\nis still available.", NULL },
+	{ GAMEPHRASE_CARDNEEDSFORMATTING,			L"The save data in\n%ls\nis corrupted and needs to be reset.\n\nDo you wish to reset it?", NULL },
+	{ GAMEPHRASE_CONFIRMFORMAT,					L"Resetting will erase all\nprofiles saved in this location.\nDo you wish to proceed?", NULL },
+	{ GAMEPHRASE_MUSELECT_CARDNEEDSFORMATTING,	L"The save data is corrupted\nand needs to be reset.", NULL },
+	{ GAMEPHRASE_SELECTMU,						L"Select Save Location", NULL },
+	{ GAMEPHRASE_DONTTOUCHMU,					L"Saving to\n%ls\n\nPlease do not close the game.", NULL },
+};
+#define _PC_PHRASE_COUNT	( sizeof( _aPcPhrases ) / sizeof( _aPcPhrases[0] ) )
+static cwchar *_apwszPcPhraseKeyboard[_PC_PHRASE_COUNT], *_apwszPcPhrasePad[_PC_PHRASE_COUNT];
+static BOOL _bPcPromptsForPad;
+#endif
 static cchar *_pszGlobalSettingsTableName = "global_settings";
 static cchar *_pszGlobalSettingsCSVFilename = "ma";
 
@@ -2104,6 +2331,19 @@ _EXIT_WITH_ERROR:
 	return FALSE;
 }
 
+#if defined(MA_PC_INPUT)
+void game_PcPromptWork( void ) {
+	BOOL bPad = pcinput_PromptsForPad();
+	if( bPad == _bPcPromptsForPad || !_apwszPcPhraseKeyboard[0] ) {
+		return;
+	}
+	_bPcPromptsForPad = bPad;
+	for( u32 i=0; i < _PC_PHRASE_COUNT; i++ ) {
+		Game_apwszPhrases[_aPcPhrases[i].nPhrase] = bPad ? _apwszPcPhrasePad[i] : _apwszPcPhraseKeyboard[i];
+	}
+}
+#endif
+
 // This function loads a phrases CSV table that
 // will contain the games displayable text.  This text
 // is wide-char localized.
@@ -2115,7 +2355,11 @@ BOOL _LoadPhraseTable( void ) {
 	FGameData_VarType_e nDataType;
 	int i, nStringsAdded = 0;
 	cwchar *pwszText;
-	
+#if FANG_WINGC
+	FGameDataTableHandle_t hCommonPhrases = FGAMEDATA_INVALID_TABLE_HANDLE;
+	int nNumCommonPhrases = 0;
+#endif
+
 	// grab an fres and fmem frame
 	hResFrame = fres_GetFrame();
 	hMemFrame = fmem_GetFrame();
@@ -2137,6 +2381,10 @@ BOOL _LoadPhraseTable( void ) {
 	}
 	// get the number of fields in the table
 	i = fgamedata_GetNumFields( hTable );
+#if FANG_WINGC
+	hCommonPhrases = hTable;
+	nNumCommonPhrases = i;
+#endif
 	if( i < GAMEPHRASE_NUM_COMMON_STRINGS ) {
 		DEVPRINTF( "game::_LoadPhrasesTable() : The phrases table in '%s' has %d strings; %d are required.\n", _pszGamePhrasesTableName, i, GAMEPHRASE_NUM_COMMON_STRINGS );
 		goto _EXIT_WITH_ERROR;
@@ -2181,6 +2429,24 @@ BOOL _LoadPhraseTable( void ) {
 	}
 
 	FASSERT( nStringsAdded == GAMEPHRASE_COUNT );
+
+#if FANG_WINGC
+	if( nNumCommonPhrases == _RETAIL_GAMEPHRASE_COMMON_COUNT && fgamedata_GetNumFields( hTable ) == _RETAIL_GAMEPHRASE_PLATFORM_COUNT ) {
+		for( i=0; i < GAMEPHRASE_COUNT; i++ ) {
+			u32 nField = _anRetailGamePhraseField[i];
+			pwszText = (cwchar *)fgamedata_GetPtrToFieldData( (nField & 0x100) ? hTable : hCommonPhrases, nField & 0xFF, nDataType );
+			Game_apwszPhrases[i] = gstring_Main.AddString( pwszText );
+		}
+	}
+#endif
+#if defined(MA_PC_INPUT)
+	for( i=0; i < (int)_PC_PHRASE_COUNT; i++ ) {
+		_apwszPcPhraseKeyboard[i] = gstring_Main.AddString( _aPcPhrases[i].pwszKeyboard );
+		_apwszPcPhrasePad[i] = _aPcPhrases[i].pwszPad ? gstring_Main.AddString( _aPcPhrases[i].pwszPad ) : _apwszPcPhraseKeyboard[i];
+	}
+	_bPcPromptsForPad = !pcinput_PromptsForPad();	// force the first game_PcPromptWork() to apply
+	game_PcPromptWork();
+#endif
 
 	////////////////////////////////	    
 	// done with the loaded csv file

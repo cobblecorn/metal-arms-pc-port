@@ -734,6 +734,22 @@ static BOOL _bMouseOverlayInstalled;
 static BOOL _bMouseDrawPointer;			// the menus drew this frame; draw the pointer over their text
 static BOOL _bMouseDebug;				// MA_PORT_POINTER_DEBUG: outline the hit boxes and log clicks
 
+// The menu's "Press A ..." phrases with the key named instead, for the keyboard/mouse port while it
+// is not using its pad.
+static cwchar *_PromptPhrase( u32 nPhrase, s32 nPort ) {
+	if( (nPort >= 0 && (u32)nPort != pcinput_KeyboardPort()) || pcinput_PromptsForPad() ) {
+		return _apwszPhrases[nPhrase];
+	}
+	switch( nPhrase ) {
+	case WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN:		return L"Press Space to join";
+	case WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED:	return L"Press Space to proceed";
+	case WPR_DATATYPES_PHRASES_PRESS_A_TO_ACCEPT:	return L"Press Space to accept";
+	case WPR_DATATYPES_PHRASES_PRESS_A_TO_CONTINUE:	return L"Press Space to continue";
+	case WPR_DATATYPES_PHRASES_PRESS_START:			return L"Press Enter";
+	default:										return _apwszPhrases[nPhrase];
+	}
+}
+
 static BOOL _MousePort( u32 nControllerID ) {
 	return !_bInGame && nControllerID == pcinput_KeyboardPort();
 }
@@ -1082,9 +1098,10 @@ static void _MouseUninstall( void ) {
 	_nMouseItemsScreen = -1;
 	_bMouseDrawPointer = FALSE;
 }
+	#define _PROMPT_PHRASE( nPhrase, nPort )	_PromptPhrase( nPhrase, nPort )
+#else
+	#define _PROMPT_PHRASE( nPhrase, nPort )	_apwszPhrases[nPhrase]
 #endif
-
-
 
 //===================
 // private prototypes
@@ -3192,7 +3209,7 @@ static BOOL _Draw( void ) {
 					ftext_Printf( 0.5f, 0.65f, 
 								L"~f1~C%ls~w0~ac~s1.20%ls",
 								WprDataTypes_pwszPressStartColor,
-								_apwszPhrases[WPR_DATATYPES_PHRASES_PRESS_START] );
+								_PROMPT_PHRASE( WPR_DATATYPES_PHRASES_PRESS_START, -1 ) );
 				} else {
 					ftext_Printf( 0.5f, 0.65f, 
 								L"~f1~C%ls~w0~ac~s1.20%ls",
@@ -7581,7 +7598,7 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 				L"~f8~C%ls~w0~ac~s%.2f%ls",
 				WprDataTypes_pwszInstructionTextColor,
 				pTextLayout->fScale + 0.10f,
-				( Gamepad_nPortOnlineMask & (1<<i) ) ? _apwszPhrases[WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN] : Game_apwszPhrases[GAMEPHRASE_INSERT_CONTROLLER] );		
+				( Gamepad_nPortOnlineMask & (1<<i) ) ? _PROMPT_PHRASE( WPR_DATATYPES_PHRASES_PRESS_A_TO_JOIN, i ) : Game_apwszPhrases[GAMEPHRASE_INSERT_CONTROLLER] );
 			break;
 
 		case _MULTI_JOIN_STATE_SELECT:
@@ -7628,7 +7645,7 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 				L"~f8~C%ls~w0~ac~s%.2f%ls",
 				WprDataTypes_pwszInstructionTextColor,
 				pTextLayout->fScale,
-				_apwszPhrases[WPR_DATATYPES_PHRASES_PRESS_A_TO_ACCEPT] );
+				_PROMPT_PHRASE( WPR_DATATYPES_PHRASES_PRESS_A_TO_ACCEPT, i ) );
 			break;
 
 		case _MULTI_JOIN_STATE_WAIT:
@@ -7647,7 +7664,7 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 					L"~f8~C%ls~w0~ac~s%.2f%ls",
 					WprDataTypes_pwszInstructionTextColor,
 					pTextLayout->fScale,
-					_apwszPhrases[WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED] );
+					_PROMPT_PHRASE( WPR_DATATYPES_PHRASES_PRESS_A_TO_PROCEED, i ) );
 			} else {
 				ftext_Printf( pTextLayout->fUnitX,
 					pTextLayout->fUnitY + 0.13f, 
@@ -7673,7 +7690,7 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 				L"~f8~C%ls~w0~ac~s%.2f%ls",
 				WprDataTypes_pwszInstructionTextColor,
 				pTextLayout->fScale,
-				_apwszPhrases[WPR_DATATYPES_PHRASES_PRESS_A_TO_CONTINUE] );
+				_PROMPT_PHRASE( WPR_DATATYPES_PHRASES_PRESS_A_TO_CONTINUE, i ) );
 			break;
 
 		default:
