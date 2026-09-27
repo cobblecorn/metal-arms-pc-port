@@ -924,6 +924,13 @@ BOOL CPauseScreen::IsActive()
 	return(m_eState != PSSTATE_INACTIVE);
 }
 
+#if defined(MA_PC_INPUT)
+BOOL pausescreen_IsActive( void )
+{
+	return CPauseScreen::IsActive();
+}
+#endif
+
 // =============================================================================================================
 
 void CPauseScreen::SetEnabled(BOOL bEnabled)
@@ -1766,10 +1773,10 @@ void CPauseScreen::DrawFrame()
 				}
 
 				#if defined(MA_PC_INPUT)
-				if( pcinput_UseKeyboardPrompts() ) {
+				if( pcinput_UseKeyboardPromptsForPort( Player_aPlayer[0].m_nControllerIndex ) ) {
 					// Space selects (Enter is START, which resumes); Escape resumes or backs out
 					_DrawSlotKeyCap( nButtonIndex == 0 ? L"Space" : L"Esc", &(m_avtxButton[6 * nButtonIndex]), L'R', 0.62f );
-				} else if( pcinput_UsePlayStationPrompts() ) {
+				} else if( pcinput_UsePlayStationPromptsForPort( Player_aPlayer[0].m_nControllerIndex ) ) {
 					const FDrawVtx_t *pButton = &(m_avtxButton[6 * nButtonIndex]);
 					const f32 fCenterX = 0.5f * (pButton[0].Pos_MS.x + pButton[5].Pos_MS.x);
 					const f32 fCenterY = 0.5f * (pButton[0].Pos_MS.y + pButton[5].Pos_MS.y);
@@ -1793,10 +1800,16 @@ void CPauseScreen::DrawFrame()
 
 		if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
 #if defined(MA_PC_INPUT)
-			if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL && pcinput_UseKeyboardPrompts() ) {
-				// the page tabs: Q and E (or Tab / Shift+Tab) instead of the shoulder buttons
-				_DrawSlotKeyCap( L"Q", &(m_avtxButton[6 * 2]), L'C', 0.80f );
-				_DrawSlotKeyCap( L"E", &(m_avtxButton[6 * 3]), L'C', 0.80f );
+			if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL && pcinput_UseKeyboardPromptsForPort( Player_aPlayer[0].m_nControllerIndex ) ) {
+				// Both the letter shortcuts and the Tab alternatives are read by the pause menu.
+				_DrawSlotKeyCap( L"Q/Shift+Tab", &(m_avtxButton[6 * 2]), L'C', 0.54f );
+				_DrawSlotKeyCap( L"E/Tab", &(m_avtxButton[6 * 3]), L'C', 0.62f );
+				fdraw_SetTexture( &m_texControls );
+				fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
+			} else if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL && pcinput_UsePlayStationPromptsForPort( Player_aPlayer[0].m_nControllerIndex ) ) {
+				// These pause-page actions map to analog triggers, which are L2/R2 on PlayStation pads.
+				_DrawSlotKeyCap( L"L2", &(m_avtxButton[6 * 2]), L'C', 0.80f );
+				_DrawSlotKeyCap( L"R2", &(m_avtxButton[6 * 3]), L'C', 0.80f );
 				fdraw_SetTexture( &m_texControls );
 				fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
 			} else

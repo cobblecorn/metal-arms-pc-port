@@ -29,6 +29,9 @@
 #include "fperf.h"
 #include "launcher.h"
 #include "game.h"
+#if defined(MA_PC_INPUT)
+extern BOOL pausescreen_IsActive( void );	// PauseScreen.cpp (its header clashes with names here)
+#endif
 
 
 u32 Gamepad_nPortOnlineMask;
@@ -400,10 +403,12 @@ void gamepad_Sample( void )
 
 	Gamepad_nPortOnlineMask = fpad_UpdateSamples();
 #if defined(MA_PC_INPUT)
-	// A paused game is a menu for the keyboard and mouse even while the gameplay map is set: the pause
-	// menu switches to the menu map only for the moment it reads its buttons. So the mouse is free for
-	// the pointer and Escape is Back there.
-	pcinput_BeginFrame( _anCurrentMap[pcinput_KeyboardPort()] == GAMEPAD_MAP_MAIN1 && !FLoop_bGamePaused );
+	// The pause menu is a menu for the keyboard and mouse even while the gameplay map is set: it switches
+	// to the menu map only for the moment it reads its buttons. So the mouse is free for its pointer and
+	// Escape is Back there. Only the pause menu, not any paused game loop: holding Q/R for a weapon list
+	// also pauses the loop, and treating that as a menu remapped the held key, which closed the list,
+	// which unpaused, which reopened it (the list flickered open and shut).
+	pcinput_BeginFrame( _anCurrentMap[pcinput_KeyboardPort()] == GAMEPAD_MAP_MAIN1 && !pausescreen_IsActive() );
 	game_PcPromptWork();
 #endif
 
@@ -475,7 +480,12 @@ GamepadMap_e gamepad_SetMapping( u32 nPortIndex, GamepadMap_e nMap ) {
 	_anCurrentMap[nPortIndex] = nMap;
 
 	#if FANG_PLATFORM_WIN
-		fpad_Map( nPortIndex, _aMapInfo[nMap].nMapCount, _aMapInfo[nMap].aMap[Gameloop_nPlatform], Gamepad_aapSample[nPortIndex] );
+		#if defined(MA_PC_INPUT)
+			const _Platform_e nMapPlatform = ( nMap == GAMEPAD_MAP_MENU ) ? _PLATFORM_XB : (_Platform_e)Gameloop_nPlatform;
+			fpad_Map( nPortIndex, _aMapInfo[nMap].nMapCount, _aMapInfo[nMap].aMap[nMapPlatform], Gamepad_aapSample[nPortIndex] );
+		#else
+			fpad_Map( nPortIndex, _aMapInfo[nMap].nMapCount, _aMapInfo[nMap].aMap[Gameloop_nPlatform], Gamepad_aapSample[nPortIndex] );
+		#endif
 	#elif FANG_PLATFORM_XB
 		fpad_Map( nPortIndex, _aMapInfo[nMap].nMapCount, _aMapInfo[nMap].aMap[_PLATFORM_XB], Gamepad_aapSample[nPortIndex] );
 	#elif FANG_PLATFORM_GC

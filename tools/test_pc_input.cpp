@@ -76,7 +76,8 @@ int main() {
 	Check(Value(out,FPADIO_INPUT_START)==1 && Value(out,FPADIO_INPUT_CROSS_LEFT)==0, "Escape pauses during gameplay");
 	state.menus = true;
 	pcinput_MapSample(state,true,gc,&out);
-	Check(Value(out,FPADIO_INPUT_START)==0 && Value(out,FPADIO_INPUT_CROSS_LEFT)==1, "Escape is Back (GameCube left face button) in menus");
+	// PC menus use the Xbox menu map on both platforms (gamepad_SetMapping), so Back is CROSS_RIGHT (B)
+	Check(Value(out,FPADIO_INPUT_START)==0 && Value(out,FPADIO_INPUT_CROSS_RIGHT)==1 && Value(out,FPADIO_INPUT_CROSS_LEFT)==0, "Escape is Back (Xbox B) in menus, GameCube gameplay map");
 	pcinput_MapSample(state,true,FPADIO_INPUT_EMULATION_PLATFORM_XB,&out);
 	Check(Value(out,FPADIO_INPUT_START)==0 && Value(out,FPADIO_INPUT_CROSS_RIGHT)==1, "Escape is Back (Xbox B) in menus");
 	state.keys[VK_ESCAPE] = false; state.keys[VK_RETURN] = true;

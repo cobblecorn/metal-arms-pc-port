@@ -1306,6 +1306,34 @@ static BOOL _WorldLoadAndUnloadCallback( FWorldEvent_e oeEvent )
 
 #if FANG_WINGC
 static BOOL _bMixSnapshot;	// -port-diag: log every playing emitter this frame
+
+// Emitters still paused by a global pause level that has since dropped below theirs (marked by
+// _EMITTER_PROPERTIES_IGNOREINPAUSEMODE): sounds started while a level's intro movie had the audio
+// paused were never in the lists SetGlobalPauseLevel( NONE ) walked, and stayed paused for the level.
+static void _ResumeStrandedEmitters( void )
+{
+	for( u32 uLevel = 0; uLevel < _uMaxPriorityLevels; ++uLevel )
+	{
+		for( u32 u3D = 0; u3D < 2; ++u3D )
+		{
+			FLinkRoot_t *poList = u3D ? &_paoVirtualEmittersListActive3D[ uLevel ] : &_paoVirtualEmittersListActive2D[ uLevel ];
+			for( _VirtualEmitter_t *poEmitter = (_VirtualEmitter_t *)flinklist_GetHead( poList ); poEmitter;
+				 poEmitter = (_VirtualEmitter_t *)flinklist_GetNext( poList, poEmitter ) )
+			{
+				if( ( FAUDIO_EMITTER_STATE_PAUSED == poEmitter->oeState ) &&
+					( poEmitter->uProperties & _EMITTER_PROPERTIES_IGNOREINPAUSEMODE ) &&
+					( (u32)poEmitter->uPauseLevel > (u32)_ePauseLevelEmitters ) )
+				{
+					// as CFAudioEmitter::Pause( FALSE ) does (private to the class)
+					poEmitter->oeState        = FAUDIO_EMITTER_STATE_PLAYING;
+					poEmitter->uStateChanges &= ~( _EMITTER_STATE_CHANGE_PLAY | _EMITTER_STATE_CHANGE_STOP | _EMITTER_STATE_CHANGE_PAUSE );
+					poEmitter->uStateChanges |= poEmitter->poRealEmitter ? _EMITTER_STATE_CHANGE_UNPAUSE : _EMITTER_STATE_CHANGE_PLAY;
+					poEmitter->uProperties   &= ~_EMITTER_PROPERTIES_IGNOREINPAUSEMODE;
+				}
+			}
+		}
+	}
+}
 #endif
 
 void faudio_Work( void )
@@ -1320,9 +1348,42 @@ void faudio_Work( void )
 		_bMixSnapshot = Fang_bPortDiag && ( ++_nMixFrames % 120 ) == 0;
 		if( _bMixSnapshot )
 		{
-			DEVPRINTF( "PORT-MIX snapshot (sfx master %.2f, music master %.2f):\n", FAudio_fMasterSfxUnitVol, FAudio_fMasterMusicUnitVol );
+			// how many emitters are active, how many of them hold a DirectSound voice, and the pause level
+			u32 uActive = 0, uVoiced = 0;
+			for( u32 uLevel = 0; uLevel < _uMaxPriorityLevels; ++uLevel )
+			{
+				for( u32 u3D = 0; u3D < 2; ++u3D )
+				{
+					FLinkRoot_t *poList = u3D ? &_paoVirtualEmittersListActive3D[ uLevel ] : &_paoVirtualEmittersListActive2D[ uLevel ];
+					for( _VirtualEmitter_t *poEmitter = (_VirtualEmitter_t *)flinklist_GetHead( poList ); poEmitter;
+						 poEmitter = (_VirtualEmitter_t *)flinklist_GetNext( poList, poEmitter ) )
+					{
+						++uActive;
+						if( poEmitter->poRealEmitter ) ++uVoiced;
+						else if( poEmitter->oWaveHandle && poEmitter->oeState == FAUDIO_EMITTER_STATE_PLAYING && poEmitter->oeListenerIntersection )
+						{
+							DEVPRINTF( "PORT-MIX   voiceless %s '%s' state %d changes %x pause level %u props %x listener %d\n", u3D ? "3D" : "2D",
+								((FDataWvbFile_Wave_t *)poEmitter->oWaveHandle)->szName, (s32)poEmitter->oeState, (u32)poEmitter->uStateChanges,
+								(u32)poEmitter->uPauseLevel, (u32)poEmitter->uProperties, (s32)poEmitter->oeListenerIntersection );
+						}
+					}
+				}
+			}
+			u32 uPlaying = 0, uPlayable = 0;
+			for( u32 uLevel = 0; uLevel < _uMaxPriorityLevels; ++uLevel )
+			{
+				uPlaying += _paoRealEmittersLimits[ uLevel ].uPlaying;
+				uPlayable += _paoRealEmittersLimits[ uLevel ].uPlayable;
+			}
+			DEVPRINTF( "PORT-MIX snapshot (sfx master %.2f, music master %.2f, emitters %u active %u voiced, free voices 2D %d 3D %d, playing %u of %u, pause emitters %d streams %d):\n",
+				FAudio_fMasterSfxUnitVol, FAudio_fMasterMusicUnitVol, uActive, uVoiced, _oRealEmittersListFree2D.nCount, _oRealEmittersListFree3D.nCount,
+				uPlaying, uPlayable, (s32)_ePauseLevelEmitters, (s32)CFAudioStream::GetGlobalPauseLevel() );
 		}
 	}
+#endif
+
+#if FANG_WINGC
+	_ResumeStrandedEmitters();
 #endif
 
 	////
@@ -1786,7 +1847,15 @@ void faudio_Work( void )
 
 				while( poVirtualEmitter )
 				{
+#if FANG_WINGC
+					// Also a playing emitter already in range without a voice: one resumed after it entered
+					// range while paused (by a movie or the pause menu) never sees "entered" again, and its
+					// play request is cleared each frame, so it stayed silent until the listener left and
+					// came back.
+					if( ( ( _LISTENER_INTERSECTION_ENTERED | _LISTENER_INTERSECTION_PRESENT | _LISTENER_INTERSECTION_SWITCHED ) & poVirtualEmitter->oeListenerIntersection ) &&
+#else
 					if( ( _LISTENER_INTERSECTION_ENTERED == poVirtualEmitter->oeListenerIntersection ) &&
+#endif
 						( FAUDIO_EMITTER_STATE_PLAYING == poVirtualEmitter->oeState ) &&
 						( ! poVirtualEmitter->poRealEmitter ) )
 					{
@@ -3529,7 +3598,15 @@ void CFAudioEmitter::Pause( BOOL bEnabled )
 		{
 			poVirtualEmitter->oeState        = FAUDIO_EMITTER_STATE_PLAYING;
 			poVirtualEmitter->uStateChanges &= ( ~ ( _EMITTER_STATE_CHANGE_PLAY | _EMITTER_STATE_CHANGE_STOP | _EMITTER_STATE_CHANGE_PAUSE ) );
+#if FANG_WINGC
+			// Paused before it was ever given a DirectSound voice (a sound started on the frame a level's
+			// intro movie paused the audio): unpausing has no voice to resume, so ask to play it, which
+			// allocates one. Without this, level ambience stayed silent for the whole level after an
+			// intro movie.
+			poVirtualEmitter->uStateChanges |= poVirtualEmitter->poRealEmitter ? _EMITTER_STATE_CHANGE_UNPAUSE : _EMITTER_STATE_CHANGE_PLAY;
+#else
 			poVirtualEmitter->uStateChanges |= _EMITTER_STATE_CHANGE_UNPAUSE;
+#endif
 		}
 	}
 
