@@ -201,6 +201,5 @@ All of this is committed and pushed on `x86-port` (last commit `6cfcd81`). Newes
 - Retail data drift is the usual cause of "wrong text/sound/value": the retail tables were
   reordered or extended after this source snapshot. Dump the retail table (`tools/gamedata_dump.py`)
   and compare with the source enum before changing code; check `main.dol` for names/tables.
-- The Bash tool mangles backslash escapes in heredocs (`
-` became a real newline in C strings):
-  write edit scripts with the Write tool and run them, or use the Edit tool.
+- The Bash tool mangles backslash escapes in heredocs (a backslash-n became a real newline inside C
+  strings): write edit scripts with the Write tool and run them, or use the Edit tool.
