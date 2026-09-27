@@ -478,10 +478,12 @@ BOOL CBotMiner::ClassHierarchyBuild( void ) {
 	// Set input parameters for CBot creation...
 	pBuilder->m_pBotDef = &m_BotDef;
 
+#if !FANG_WINGC	// retail has no Miner bank (main.dol names none for this bot); its sounds come from the level's banks
 	// Load the sound effects bank for this bot...
 	if( !fresload_Load( FSNDFX_RESTYPE, BotMiner_pszSoundEffectBank) ) {
 		DEVPRINTF( "CBotMiner::ClassHierarchyBuild(): Could not load sound effect bank '%s'\n", BotMiner_pszSoundEffectBank);
 	}
+#endif
 
 	// Build parent class...
 	if( !CBot::ClassHierarchyBuild() ) {

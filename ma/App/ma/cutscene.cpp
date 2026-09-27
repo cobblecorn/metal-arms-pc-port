@@ -215,6 +215,12 @@ static BOOL _Work( void ) {
 		if( Gamepad_aapSample[CPlayer::m_pCurrent->m_nControllerIndex][GAMEPAD_MENU_START]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
 			bTerminateCutscene = TRUE;
 		}
+#if defined(MA_PC_INPUT)
+		// the desktop's Escape is Back while a movie runs (the movie uses the menu map)
+		if( Gamepad_aapSample[CPlayer::m_pCurrent->m_nControllerIndex][GAMEPAD_MENU_BACK]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
+			bTerminateCutscene = TRUE;
+		}
+#endif
 	}
 
 	if( bTerminateCutscene ) {

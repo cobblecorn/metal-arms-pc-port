@@ -1,0 +1,5 @@
+// Windows resources for ma_port.exe.
+#include "resource.h"
+
+// The game icon (Explorer, the title bar and the taskbar); 16 to 256 pixels.
+IDI_MA_PORT ICON "ma_port.ico"

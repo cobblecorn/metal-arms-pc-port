@@ -16,6 +16,8 @@
 //   -dev-menu       boot into the development launcher (level picker) instead of the retail front end
 //   -console        open a console window showing the log (the game is a windowed app without one)
 //   -port-diag      log the port's periodic PORT-* diagnostics (also MA_PORT_DIAG=1)
+//   -discord-app-id <id> show Discord Rich Presence under this Discord application (also
+//                   MA_PORT_DISCORD_APP_ID)
 //   -debug-info     draw the game's debug overlays: on-screen script messages and errors (errors
 //                   pause the game), frame rate, checkpoint and AI debug drawing. Scripts always log.
 //   -mission <name> load a registered single-player world with its mission data
@@ -29,6 +31,8 @@
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 //   -save-dir <dir> where player profiles are saved (default: %APPDATA%\Metal Arms PC Port\Saves)
 
+#include "res/resource.h"
+#include "discord_rpc.h"
 #include "fang.h"
 #include "fclib.h"
 #include "fvid.h"
@@ -69,6 +73,7 @@ static bool _bNoAudio = false;
 static bool _bDebugInfo = false;
 static bool _bConsole = false;
 static bool _bPortDiag = false;
+static char _szDiscordAppId[32];
 static bool _bDevMenu = false;
 
 static FILE *_pLog = NULL;
@@ -335,7 +340,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-save-dir <dir>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id>] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> | -world-only <world-resource>] [-log <file>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-save-dir <dir>]\n" );
 }
 
 static bool _ParseArgs( int argc, char **argv )
@@ -363,6 +368,7 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-debug-info" ) )				_bDebugInfo = true;
 		else if( !_stricmp( pszArg, "-console" ) )					_bConsole = true;
 		else if( !_stricmp( pszArg, "-port-diag" ) )				_bPortDiag = true;
+		else if( !_stricmp( pszArg, "-discord-app-id" ) && bHasValue )	strncpy( _szDiscordAppId, argv[++i], sizeof(_szDiscordAppId) - 1 );
 		else if( !_stricmp( pszArg, "-dev-menu" ) )					_bDevMenu = true;
 		else if( !_stricmp( pszArg, "-mouse-sensitivity" ) && bHasValue ) {
 			char *pEnd;
@@ -513,6 +519,21 @@ int main( int argc, char **argv )
 	}
 	char szDiag[8];
 	Fang_bPortDiag = _bPortDiag || ( GetEnvironmentVariableA( "MA_PORT_DIAG", szDiag, sizeof(szDiag) ) > 0 && szDiag[0] == '1' );
+	if( !_szDiscordAppId[0] )
+	{
+		GetEnvironmentVariableA( "MA_PORT_DISCORD_APP_ID", _szDiscordAppId, sizeof(_szDiscordAppId) );
+	}
+	if( _szDiscordAppId[0] )
+	{
+		if( discord_Start( _szDiscordAppId ) )
+		{
+			discord_SetActivity( "Starting up", "", true );
+		}
+		else
+		{
+			_Log( "Discord: '%s' is not a Discord application ID; Rich Presence is off.\n", _szDiscordAppId );
+		}
+	}
 
 	_pLog = fopen( _szLogFile, "w" );
 
@@ -601,7 +622,7 @@ int main( int argc, char **argv )
 	Win.fUnitFSAA = 0.0f;
 	Win.hInstance = GetModuleHandle( NULL );
 	Win.hWnd = 0;
-	Win.nIconIDI = 0;
+	Win.nIconIDI = IDI_MA_PORT;	// port/res/ma_port.rc
 	Win.bAllowPowerSuspend = TRUE;
 	Win.pFcnSuspend = NULL;
 	strcpy( Win.szWindowTitle, "Metal Arms: Glitch in the System" );
@@ -624,6 +645,7 @@ int main( int argc, char **argv )
 	}
 
 	gameloop_End();
+	discord_Stop();
 	fang_Shutdown();
 
 	if( _pLog ) fclose( _pLog );

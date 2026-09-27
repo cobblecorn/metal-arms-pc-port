@@ -623,7 +623,7 @@ FStorage_Error_e fstorage_Install( const FStorage_Init_t *poInit /* = NULL */ )
 
 	////
 	//
-	fclib_wcscpy( _oDeviceInfo.wszName, L"PC Hard Disk" );
+	fclib_wcscpy( _oDeviceInfo.wszName, L"Save Folder" );
 	_uInserted = _oDeviceInfo.oeID = FSTORAGE_DEVICE_ID_XB_PC_HD;
 
 	// A save directory that cannot be used leaves the device connected but unavailable, so the

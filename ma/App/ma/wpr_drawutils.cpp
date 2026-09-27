@@ -20,6 +20,9 @@
 #include "wpr_drawutils.h"
 #include "ftext.h"
 #include "fclib.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 FDrawVtx_t Wpr_DrawUtils_aVtx[4];// used by all fdraw functions
 
@@ -198,34 +201,110 @@ void wpr_drawutils_DrawTextureToScreen( BOOL bColor,
 	fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, Wpr_DrawUtils_aVtx, 4 );
 }
 
-void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen, 
+#if defined(MA_PC_INPUT)
+// The keyboard's menu keys for the prompts, in WPR_DATATYPES_DRAW_*_BUTTON_ONLY order (A, B, Y, X):
+// Enter accepts, Escape goes back, E and R are the pad's top and side face buttons.
+static cwchar *_apwszKeyCapLabels[] = { L"Enter", L"Esc", L"E", L"R" };
+
+// Draws a keyboard key cap for prompt i in place of the pad icon: the key's name on a raised key,
+// starting where the icon started. Returns the unit x where the prompt's instruction text begins.
+static f32 _DrawKeyCap( u32 i, const Wpr_DataTypes_ButtonLayout_t *pButton, f32 fUnitHeight, f32 fTextUnitY, f32 fMinLeft,
+						f32 fHalfXRes, f32 fHalfYRes, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom ) {
+	const f32 fIconHalfX = 0.5f * (fUnitHeight * fHalfYRes / fHalfXRes);
+	const f32 fCapLeft = FMATH_MAX( (pButton->fBiPolarUnitX - fIconHalfX + 1.0f) * 0.5f, fMinLeft );
+	const f32 fPadX = 0.006f, fPadY = 0.003f;
+
+	ftext_Printf( fCapLeft + fPadX, fTextUnitY, L"~f1~C%ls~w0~aL~s%.2f%ls", WprDataTypes_pwszSolidWhiteTextColor,
+				  pButton->fFontScale * 0.72f, _apwszKeyCapLabels[i] );
+	f32 fLeft, fTop, fRight, fBottom;
+	if( !ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
+		return fCapLeft + fUnitHeight * 0.5f;
+	}
+	fLeft = fCapLeft;
+	fRight += fPadX;
+	fTop -= fPadY;
+	fBottom += fPadY;
+	if( fRight - fLeft < fIconHalfX ) {
+		fRight = fLeft + fIconHalfX;	// at least as wide as the icon was
+	}
+
+	// screen fractions -> ortho pixels (y up, origin at the center)
+	#define _CAP_X( f )		( ( (f) * 2.0f - 1.0f ) * fHalfXRes )
+	#define _CAP_Y( f )		( ( 1.0f - (f) * 2.0f ) * fHalfYRes )
+	fdraw_Depth_EnableWriting( FALSE );
+	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
+	fdraw_SetTexture( NULL );
+	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
+	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+	const f32 fDepth = 2.0f / fHalfYRes;	// the key's lower lip, in screen fractions of height
+	CFVec3 a( _CAP_X( fLeft ), _CAP_Y( fTop ), 1.0f ), b( _CAP_X( fRight ), _CAP_Y( fTop ), 1.0f );
+	CFVec3 c( _CAP_X( fRight ), _CAP_Y( fBottom + fDepth ), 1.0f ), d( _CAP_X( fLeft ), _CAP_Y( fBottom + fDepth ), 1.0f );
+	CFColorRGBA Lip( 0.02f, 0.04f, 0.10f, 0.90f );
+	fdraw_SolidQuad( &a, &b, &c, &d, &Lip );
+	c.y = d.y = _CAP_Y( fBottom );
+	CFColorRGBA Face( 0.10f, 0.16f, 0.30f, 0.90f );
+	fdraw_SolidQuad( &a, &b, &c, &d, &Face );
+	CFColorRGBA Edge( 0.55f, 0.72f, 0.95f, 1.0f );
+	fdraw_SolidLine( &a, &b, &Edge ); fdraw_SolidLine( &b, &c, &Edge );
+	fdraw_SolidLine( &c, &d, &Edge ); fdraw_SolidLine( &d, &a, &Edge );
+	#undef _CAP_X
+	#undef _CAP_Y
+
+	*pfLeft = fLeft; *pfTop = fTop; *pfRight = fRight; *pfBottom = fBottom + fDepth;
+	return fRight + 0.008f;
+}
+#endif
+
+void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 									  u32 nDrawButtonMask,
 									 f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
 	u32 i;
 	Wpr_DataTypes_ButtonLayout_t *pButton;
 	f32 fUnitHeight;
-	
+#if defined(MA_PC_INPUT)
+	f32 fRowUnitY = -1.0f, fRowNextLeft = 0.0f;	// where the next key cap on the current row may start
+#endif
+
 	for( i=0; i < pScreen->nNumButtons; i++ ) {
 		pButton = &pScreen->paButtons[i];
 
 		if( nDrawButtonMask & (1<<i) ) {
 			fUnitHeight = pButton->fPixelSize / (2.0f * fHalfYRes);
-
-			wpr_drawutils_DrawTextureToScreen( TRUE, 
+			f32 fTextUnitX = ((pButton->fBiPolarUnitX + 1.0f) * 0.5f) + (fUnitHeight * 0.25f);
+			const f32 fTextUnitY = (((pButton->fBiPolarUnitY - 1.0f) * -0.5f) * 0.75f) - (fUnitHeight * 0.10f);
+#if defined(MA_PC_INPUT)
+			// keyboard and mouse: a key cap naming the key, instead of the pad's button icon
+			f32 fCapLeft = 0.0f, fCapTop = 0.0f, fCapRight = 0.0f, fCapBottom = 0.0f;
+			const BOOL bKeyCap = i < sizeof( _apwszKeyCapLabels ) / sizeof( _apwszKeyCapLabels[0] ) && !pcinput_PromptsForPad();
+			if( bKeyCap ) {
+				const f32 fMinLeft = ( fRowUnitY >= 0.0f && FMATH_FABS( fRowUnitY - fTextUnitY ) < 0.02f ) ? fRowNextLeft : 0.0f;
+				fTextUnitX = _DrawKeyCap( i, pButton, fUnitHeight, fTextUnitY, fMinLeft, fHalfXRes, fHalfYRes, &fCapLeft, &fCapTop, &fCapRight, &fCapBottom );
+			} else
+#endif
+			wpr_drawutils_DrawTextureToScreen( TRUE,
 				pButton->pTexture,
 				pButton->fBiPolarUnitX,
 				pButton->fBiPolarUnitY,
 				fUnitHeight,
-				fScaleMultiplier, fHalfXRes, fHalfYRes );	
-			
+				fScaleMultiplier, fHalfXRes, fHalfYRes );
+
 			// draw the button instructions
-			ftext_Printf( ((pButton->fBiPolarUnitX + 1.0f) * 0.5f) + (fUnitHeight * 0.25f),
-				(((pButton->fBiPolarUnitY - 1.0f) * -0.5f) * 0.75f) - (fUnitHeight * 0.10f),
+			ftext_Printf( fTextUnitX,
+				fTextUnitY,
 				L"~f1~C%ls~w0~a%lc~s%.2f%ls", 
 				WprDataTypes_pwszButtonTextColor,
 				L'L',
 				pButton->fFontScale,
-				pButton->pwszInstructions );		
+				pButton->pwszInstructions );
+#if defined(MA_PC_INPUT)
+			{
+				f32 fL, fT, fR, fB;
+				if( ftext_GetLastPrintBounds( &fL, &fT, &fR, &fB ) ) {
+					fRowUnitY = fTextUnitY;
+					fRowNextLeft = fR + 0.02f;
+				}
+			}
+#endif
 
 #if defined(MA_PC_INPUT)
 			if( i < WPR_DRAWUTILS_BUTTON_HITS ) {
@@ -242,6 +321,12 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 					pHit->fTop = FMATH_MIN( pHit->fTop, fTop );
 					pHit->fRight = FMATH_MAX( pHit->fRight, fRight );
 					pHit->fBottom = FMATH_MAX( pHit->fBottom, fBottom );
+				}
+				if( bKeyCap ) {
+					pHit->fLeft = FMATH_MIN( pHit->fLeft, fCapLeft );
+					pHit->fTop = FMATH_MIN( pHit->fTop, fCapTop );
+					pHit->fRight = FMATH_MAX( pHit->fRight, fCapRight );
+					pHit->fBottom = FMATH_MAX( pHit->fBottom, fCapBottom );
 				}
 				pHit->bDrawn = TRUE;
 			}

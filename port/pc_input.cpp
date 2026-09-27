@@ -114,7 +114,11 @@ void pcinput_MapSample(const PcInputState &state, bool primary,
 	// (guns); a tap of the primary button reloads. Q = throwables, R = guns/reload (user choice).
 	if (k['Q']) v[FPADIO_INPUT_CROSS_LEFT-1] = 1.0f;
 	if (k['R']) v[FPADIO_INPUT_CROSS_RIGHT-1] = 1.0f;
-	if (k[VK_ESCAPE] || k[VK_RETURN]) v[FPADIO_INPUT_START-1] = 1.0f;
+	// Enter is START (menus accept it); Escape pauses in gameplay and is Back in menus, which is B on
+	// the Xbox layout and the left face button on the GameCube's.
+	if (k[VK_RETURN] || (k[VK_ESCAPE] && !state.menus)) v[FPADIO_INPUT_START-1] = 1.0f;
+	if (k[VK_ESCAPE] && state.menus)
+		v[(platform == FPADIO_INPUT_EMULATION_PLATFORM_GC ? FPADIO_INPUT_CROSS_LEFT : FPADIO_INPUT_CROSS_RIGHT)-1] = 1.0f;
 	if (k[VK_LBUTTON]) v[FPADIO_INPUT_TRIGGER_RIGHT-1] = 1.0f;
 	if (k[VK_RBUTTON]) v[FPADIO_INPUT_TRIGGER_LEFT-1] = 1.0f;
 	if (k['F']) v[(platform == FPADIO_INPUT_EMULATION_PLATFORM_GC ? FPADIO_INPUT_GC_DBUTTON_TRIGGER_Z : FPADIO_INPUT_XB_DBUTTON_STICK_RIGHT)-1] = 1.0f;
@@ -285,6 +289,7 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 		(abs(state.pad.sThumbRX) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || abs(state.pad.sThumbRY) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE))
 		InterlockedExchange(&s_mouseAiming, 0);
 	state.focused = s_window && GetForegroundWindow() == s_window && !IsIconic(s_window);
+	state.menus = keyboard && !InterlockedCompareExchange(&s_lookAllowed, 0, 0);
 	if (keyboard && state.connected && state.focused) {
 		const XINPUT_GAMEPAD &p = state.pad;
 		if (p.wButtons || p.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD || p.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ||

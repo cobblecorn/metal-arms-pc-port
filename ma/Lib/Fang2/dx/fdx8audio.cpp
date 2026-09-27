@@ -313,20 +313,29 @@ static void _ReleaseCodec( void )
 }
 
 #if FANG_WINGC
-// The retail GameCube mix, which the data was balanced for (fgcaudio.cpp):
-// - 3D sounds start at 80% volume (_3D_SOUND_VOLUME_SCALE) and MusyX fades them linearly
-//   (sndAddEmitter comp 0) to silence at 1.25x the emitter radius (_3D_SOUND_RADIUS_SCALE).
-//   DirectSound's own inverse-distance rolloff from 1 unit made anything a few feet away
-//   far too quiet (user report: quiet robot dialog, muffled gunfire).
-// - Streams use _GetVolume()'s curve, and stereo streams (music) a further 0.6.
-// - Sound effect volumes go to MusyX as MIDI volumes, which it turns into amplitude through its
-//   DLS table (main.dol 0x3de80c: entry i = (i/127)^2), so an effect's amplitude is the square of
-//   its volume, distance fade included. Without that, quietly authored and distant sounds (ambient
-//   loops, machinery) played far louder than the dialog and weapons the mix was balanced around.
+// The retail GameCube mix, which the data was balanced for (gc/fgcaudio.cpp and MusyX):
+// - Every volume handed to MusyX goes through fgcaudio's _GetVolume() curve first (effects: the
+//   emitter volume after ducking and the master volume; streams: the stream volume), scaled by 0.8
+//   for 3D effects and 0.6 for stereo streams (music), as a MIDI volume (x 127).
+// - MusyX fades a 3D effect's MIDI volume linearly to silence at 1.25x the emitter radius
+//   (sndAddEmitter comp 0).
+// - MusyX turns MIDI volumes into amplitude through its DLS table (main.dol 0x3de80c: entry i =
+//   (i/127)^2), so the amplitude is the square of all of the above.
+// Full-volume music therefore plays at about 0.21 of full scale and full-volume speech and effects
+// near 0.58; the data's balance between them depends on this.
 #define _GC_3D_VOLUME_SCALE		( 0.80f )
 #define _GC_3D_RADIUS_SCALE		( 1.25f )
 #define _GC_STEREO_STREAM_SCALE	( 0.6f )
 
+// fgcaudio.cpp's _GetVolume(): unit volume -> MusyX unit (MIDI / 127) volume.
+static f32 _GCMusyxVolume( f32 fVolume )
+{
+	FMATH_CLAMP( fVolume, 0.0f, 1.0f );
+	const f32 fRoot = fmath_Sqrt( fVolume );
+	return 0.5f * 0.76f * ( fmath_Sqrt( fRoot ) + fRoot );
+}
+
+// MusyX's 3D fade of the MIDI volume, including the 0.8 3D scale.
 static f32 _GC3DDistanceGain( f32 fDistance, f32 fRadiusOuter )
 {
 	const f32 fMaxDistance = fRadiusOuter * _GC_3D_RADIUS_SCALE;
@@ -337,12 +346,15 @@ static f32 _GC3DDistanceGain( f32 fDistance, f32 fRadiusOuter )
 	return _GC_3D_VOLUME_SCALE * ( 1.0f - fDistance / fMaxDistance );
 }
 
+// A stream's amplitude.
 static f32 _GCStreamGain( f32 fVolume, u32 uChannels )
 {
-	FMATH_CLAMP( fVolume, 0.0f, 1.0f );
-	const f32 fRoot = fmath_Sqrt( fVolume );
-	const f32 fGain = 0.5f * 0.76f * ( fmath_Sqrt( fRoot ) + fRoot );
-	return ( uChannels > 1 ) ? fGain * _GC_STEREO_STREAM_SCALE : fGain;
+	f32 fMidi = _GCMusyxVolume( fVolume );
+	if( uChannels > 1 )
+	{
+		fMidi *= _GC_STEREO_STREAM_SCALE;
+	}
+	return fMidi * fMidi;
 }
 
 // DirectSound volume (hundredths of a decibel) for an amplitude gain.
@@ -1281,12 +1293,26 @@ static BOOL _WorldLoadAndUnloadCallback( FWorldEvent_e oeEvent )
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+#if FANG_WINGC
+static BOOL _bMixSnapshot;	// -port-diag: log every playing emitter this frame
+#endif
+
 void faudio_Work( void )
 {
 	if( ! FAudio_bModuleInstalled )
 	{
 		return;
 	}
+#if FANG_WINGC
+	{
+		static u32 _nMixFrames = 0;
+		_bMixSnapshot = Fang_bPortDiag && ( ++_nMixFrames % 120 ) == 0;
+		if( _bMixSnapshot )
+		{
+			DEVPRINTF( "PORT-MIX snapshot (sfx master %.2f, music master %.2f):\n", FAudio_fMasterSfxUnitVol, FAudio_fMasterMusicUnitVol );
+		}
+	}
+#endif
 
 	////
 	//
@@ -3928,19 +3954,31 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 					poVirtualEmitter->uStateChanges & _EMITTER_STATE_CHANGE_VOLUME ) {
 					fVolume = FAudio_fMasterSfxUnitVol * poVirtualEmitter->fVolumeDucked;
 #if FANG_WINGC
+					// MIDI volume as fgcaudio.cpp and MusyX compute it, then MusyX's squared DLS law
+					fVolume = _GCMusyxVolume( fVolume );
 					if( poVirtualEmitter->poRealEmitter->poDS3DBuffer )
 					{
 						// Not computed yet (no listener update): the flat 3D scale, never silence.
 						fVolume *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? _GC_3D_VOLUME_SCALE : poVirtualEmitter->fDistanceGain;
 					}
-#endif
-#if FANG_WINGC
 					pDSBuffer->SetVolume( _GainToDSVolume( fVolume * fVolume ) );
 #else
 					pDSBuffer->SetVolume( _anVolumes[ fmath_FloatToU32( _UNIQUE_FLOAT_VOL_LEVEL_INDICES * fVolume ) ] );
 #endif
 				}
 				
+#if FANG_WINGC
+				if( _bMixSnapshot && poVirtualEmitter->oWaveHandle ) {
+					f32 fMidi = _GCMusyxVolume( FAudio_fMasterSfxUnitVol * poVirtualEmitter->fVolumeDucked );
+					const BOOL b3D = poVirtualEmitter->poRealEmitter->poDS3DBuffer != NULL;
+					if( b3D ) {
+						fMidi *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? _GC_3D_VOLUME_SCALE : poVirtualEmitter->fDistanceGain;
+					}
+					DEVPRINTF( "PORT-MIX   %s '%s' vol=%.2f ducked=%.2f dist=%.2f radius=%.0f -> amp %.3f\n", b3D ? "3D" : "2D",
+						((FDataWvbFile_Wave_t *)poVirtualEmitter->oWaveHandle)->szName, poVirtualEmitter->fVolume, poVirtualEmitter->fVolumeDucked,
+						poVirtualEmitter->fDistanceGain, poVirtualEmitter->fRadiusOuter, fMidi * fMidi );
+				}
+#endif
 				// Frequency.
 				if( _EMITTER_STATE_CHANGE_FREQUENCY & poVirtualEmitter->uStateChanges ) {
 					poWave = (FDataWvbFile_Wave_t *)poVirtualEmitter->oWaveHandle;
@@ -4246,6 +4284,11 @@ static void _StreamsWork( void )
 
 		if( FAUDIO_STREAM_STATE_PLAYING == poStream->oeState )
 		{
+			if( _bMixSnapshot )
+			{
+				DEVPRINTF( "PORT-MIX   stream '%s' vol=%.2f channels=%u -> amp %.3f\n", poStream->szName, poStream->fVolume, poStream->oInfo.nChannels,
+					_GCStreamGain( poStream->fVolume * ( poStream->bTreatAsSfx ? FAudio_fMasterSfxUnitVol : FAudio_fMasterMusicUnitVol ), poStream->oInfo.nChannels ) );
+			}
 			DWORD uStatus = 0, uPlayCursor = 0;
 			poStream->poDSBuffer->GetStatus( &uStatus );
 

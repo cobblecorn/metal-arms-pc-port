@@ -21,7 +21,21 @@ Output: `build/Debug/ma_port.exe` (+ `binkw32.dll`). It must be 32-bit (see belo
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
-    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-no-audio] [-debug-info] [-save-dir <dir>]
+    ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> | -world-only <world>] [-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-no-audio] [-debug-info] [-save-dir <dir>] [-console] [-port-diag] [-discord-app-id <id>]
+
+`ma_port.exe` is a windowed app with no console window; `-console` opens one showing the log (engine
+output and the level scripts' own print messages, such as "NONETRIPWIRE ENTER EVENT"). The log
+file (`-log`, default `ma_port.log` in the working directory) always has everything. `-port-diag`
+(or `MA_PORT_DIAG=1`) adds the port's diagnostics: `PORT-HITCH` frames over 40 ms, `PORT-SND` the
+first plays of each sound, `PORT-MIX` a snapshot of every playing sound's level every 2 seconds,
+`PORT-TALK` bot dialog and `PORT-DUCK` audio ducking. They are off by default because writing them
+every few seconds caused visible hitches.
+
+`-discord-app-id <id>` (or `MA_PORT_DISCORD_APP_ID`) turns on Discord Rich Presence: "In the menus",
+or the level ("Level 4: Clean Up") with "Campaign" / "Multiplayer: <game type> (N players)" and the
+elapsed time. It needs an application created at discord.com/developers (the application's name is
+what Discord shows as "Playing ..."); the port talks to the local Discord client's pipe directly, so
+nothing else is installed, and it does nothing when Discord isn't running.
 
 `-level <world>` starts the generic debug level path using `Level01` configuration.
 `-mission <world>` resolves a registered single-player mission and uses its own configuration,
@@ -79,10 +93,12 @@ originals are left in place. In-level checkpoints are memory-only, as on the con
 | E | Action / interact |
 | F | Melee |
 | Left / right mouse button | Primary / secondary fire (requires a supported weapon) |
-| Q | Hold 0.5 s for the throwables (secondary) list |
-| R | Tap to reload; hold 0.5 s for the weapons (primary) list |
+| Q | Hold 0.3 s for the throwables (secondary) list |
+| R | Tap to reload; hold 0.3 s for the weapons (primary) list |
 | 1 / 2 / 3 / 4 | Quick-select up / right / down / left |
-| Escape / Enter | Pause; Escape also releases the mouse |
+| Escape / Enter | Pause (gameplay); Escape also releases the mouse |
+| Enter / Space | Menus: accept |
+| Escape | Menus: back (also leaves the pause menu and skips movies) |
 | Alt-Tab | Releases the mouse; moving it over the game again recaptures it |
 | Alt-F4 | Close the game |
 
@@ -92,7 +108,7 @@ in `gamepad.cpp`, used for both the Xbox and GameCube layouts → `Hud2.cpp`): S
 jump; E → `CROSS_TOP` → action; R → `CROSS_RIGHT` → select primary (hand 0, weapons; a tap reloads);
 Q → `CROSS_LEFT` → select secondary (hand 1, throwables); F → GameCube Z → melee. Q and R were swapped
 from the adapter's first mapping at the user's request. On the desktop a weapon list opens only after
-its button is held for 0.5 s (`_WEAPONSELECT_HOLD_SECS` in `game.cpp`, pads included); a shorter tap
+its button is held for 0.3 s (`_WEAPONSELECT_HOLD_SECS` in `game.cpp`, pads included); a shorter tap
 replays the original press-and-release, so R still reloads without the list flashing up. With a throwable equipped
 and ammo available, right mouse maps to secondary fire and starts the throw. The HUD selection code
 accepts W/S to scroll while a selection menu is held open; releasing the menu button equips the
@@ -125,6 +141,12 @@ the triggers (a held right trigger starts the launch screen's level-unlock code 
 `MA_PORT_POINTER_DEBUG=1` outlines every hit box and logs each click's target.
 
 The in-game pause menu does not take the mouse yet (it uses the system cursor).
+
+With the keyboard and mouse in use, the menus' button prompts are drawn as key caps naming the key
+(Enter, Esc, E, R) instead of controller buttons, and in-game prompts name the key ("Press E to drive
+vehicle"). Using the controller switches both to the Xbox-style buttons (the retail Xbox prompt art
+and wording, which the PC build uses). Storage text talks about the save folder instead of memory
+cards (`wpr_datatypes_PcText()`; format becomes reset, blocks become space).
 
 XInput controllers can connect after launch. `-input-layout shared` (default) puts the keyboard/mouse
 and controller 1 on port 1 and controllers 2-4 on ports 2-4. `-input-layout separate` keeps the

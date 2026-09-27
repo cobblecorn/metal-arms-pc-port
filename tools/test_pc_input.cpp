@@ -71,6 +71,18 @@ int main() {
 	state.keys['Q'] = false; state.keys['R'] = true;
 	pcinput_MapSample(state,true,gc,&out);
 	Check(Value(out,FPADIO_INPUT_CROSS_RIGHT)==1 && Value(out,FPADIO_INPUT_CROSS_LEFT)==0, "R opens the gun (primary) list and reloads on a tap");
+	state = PcInputState(); state.focused = true; state.keys[VK_ESCAPE] = true;
+	pcinput_MapSample(state,true,gc,&out);
+	Check(Value(out,FPADIO_INPUT_START)==1 && Value(out,FPADIO_INPUT_CROSS_LEFT)==0, "Escape pauses during gameplay");
+	state.menus = true;
+	pcinput_MapSample(state,true,gc,&out);
+	Check(Value(out,FPADIO_INPUT_START)==0 && Value(out,FPADIO_INPUT_CROSS_LEFT)==1, "Escape is Back (GameCube left face button) in menus");
+	pcinput_MapSample(state,true,FPADIO_INPUT_EMULATION_PLATFORM_XB,&out);
+	Check(Value(out,FPADIO_INPUT_START)==0 && Value(out,FPADIO_INPUT_CROSS_RIGHT)==1, "Escape is Back (Xbox B) in menus");
+	state.keys[VK_ESCAPE] = false; state.keys[VK_RETURN] = true;
+	pcinput_MapSample(state,true,gc,&out);
+	Check(Value(out,FPADIO_INPUT_START)==1, "Enter is START in menus");
+	state = PcInputState(); state.focused = true;
 	state.keys[VK_RIGHT]=state.keys[VK_DOWN]=true; state.keys['R'] = false;
 	pcinput_MapSample(state,true,gc,&out);
 	Check(Value(out,FPADIO_INPUT_STICK_RIGHT_X)==1 && Value(out,FPADIO_INPUT_STICK_RIGHT_Y)==-1, "arrow keys preserve controller look directions");

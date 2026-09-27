@@ -2737,6 +2737,9 @@ void level_DuckAudio( f32 fDuckVol/*= LEVEL_DEFAULT_DUCK_VOLUME*/ ) {
 	FMATH_CLAMP_UNIT_FLOAT( fDuckVol );
 	
 	_LDData.nDuckCount++;
+#if FANG_WINGC
+	if( Fang_bPortDiag ) DEVPRINTF( "PORT-DUCK duck %.2f (count %d)\n", fDuckVol, _LDData.nDuckCount );
+#endif
 
 	if( fDuckVol != _LDData.fDuckVolume ) {
 		_LDData.fDuckVolume = fDuckVol;
@@ -2748,6 +2751,9 @@ void level_DuckAudio( f32 fDuckVol/*= LEVEL_DEFAULT_DUCK_VOLUME*/ ) {
 void level_UnduckAudio( void ) {
 	FASSERT( _LDData.nDuckCount > 0 );
 	_LDData.nDuckCount--;
+#if FANG_WINGC
+	if( Fang_bPortDiag ) DEVPRINTF( "PORT-DUCK unduck (count %d)\n", _LDData.nDuckCount );
+#endif
 	if( _LDData.nDuckCount == 0 ) {
 		_LDData.fDuckVolume = 1.0f;
 		level_FadeMusicVolume( _LDData.fDuckVolume, _LEVEL_AUDIO_DUCK_TIME );

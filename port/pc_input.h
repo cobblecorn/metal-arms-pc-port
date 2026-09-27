@@ -11,6 +11,7 @@ struct PcInputState {
 	XINPUT_GAMEPAD pad;
 	bool connected;
 	bool focused;
+	bool menus;		// the port is in a menu (not the gameplay control map): Escape is Back, not START
 	bool keys[256];
 };
 

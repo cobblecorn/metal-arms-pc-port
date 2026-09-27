@@ -153,8 +153,20 @@ BOOL CBotTalkInst::Start( CBot *pBotToRun, BotTalkInstDoneCallback_t* pfcnTalkDo
 		pBotToRun->UserAnim_IsLocked())	   // Some other system is using the user anim slots  //FINDFIX: could utilize the abort feature in cbot  someday
 
 	{
+#if FANG_WINGC
+		if( Fang_bPortDiag ) {
+			DEVPRINTF( "PORT-TALK refused '%s' on '%s': %s\n", m_pTalkData->m_pszSourceFileName ? m_pTalkData->m_pszSourceFileName : "?",
+				pBotToRun->Name() ? pBotToRun->Name() : "?", pBotToRun->UserAnim_IsLocked() ? "user anims locked" : "another talk is playing" );
+		}
+#endif
 		return FALSE;
 	}
+#if FANG_WINGC
+	if( Fang_bPortDiag ) {
+		DEVPRINTF( "PORT-TALK start '%s' on '%s' (%u actions)\n", m_pTalkData->m_pszSourceFileName ? m_pTalkData->m_pszSourceFileName : "?",
+			pBotToRun->Name() ? pBotToRun->Name() : "?", m_pTalkData->m_uActionCnt );
+	}
+#endif
 
 	if( pBTI != NULL ) {
 		//stop a BTI that is currently playing on this bot
@@ -329,6 +341,11 @@ void CBotTalkInst::Work() {
 			{
 				// It's a sound clip.
 				FAudio_WaveHandle_t hWave = (FAudio_WaveHandle_t)( pCurBTA->m_uData2 );
+#if FANG_WINGC
+				if( Fang_bPortDiag ) {
+					DEVPRINTF( "PORT-TALK   wave %08x radius=%.0f 2d=%d\n", (u32)hWave, m_fRadius, (m_uFlags & BOTTALKINSTFLAG_FORCE_2D_AUDIO) || m_pTalkData->Use2DSound() );
+				}
+#endif
 
 				BOOL bDuckable = ( ( m_uFlags & BOTTALKINSTFLAG_DUCK_AUDIO_WHEN_PLAYING ) == 0 );
 
@@ -905,6 +922,11 @@ void CTalkInst::Work() {
 			{
 				// It's a sound clip.
 				FAudio_WaveHandle_t hWave = (FAudio_WaveHandle_t)( pCurBTA->m_uData2 );
+#if FANG_WINGC
+				if( Fang_bPortDiag ) {
+					DEVPRINTF( "PORT-TALK   wave %08x radius=%.0f 2d=%d\n", (u32)hWave, m_fRadius, (m_uFlags & BOTTALKINSTFLAG_FORCE_2D_AUDIO) || m_pTalkData->Use2DSound() );
+				}
+#endif
 
 				BOOL bDuckable = ( ( m_uFlags & BOTTALKINSTFLAG_DUCK_AUDIO_WHEN_PLAYING ) == 0 );
 

@@ -57,6 +57,7 @@
 #if defined(MA_PC_INPUT)
 #include "fvid.h"
 #include "pc_input.h"
+#include "discord_rpc.h"
 #endif
 
 #define _DEBUG_NO_SPACE							0
@@ -1743,6 +1744,9 @@ void wpr_system_Start( BOOL bBootup ) {
 
 	_bInGame = FALSE;
 	gameloop_SetLoopHandlers( _Work, _Draw, _Init );
+#if defined(MA_PC_INPUT)
+	discord_SetActivity( "In the menus", "", true );
+#endif
 
 	_bBootup = bBootup;
 }
@@ -2510,7 +2514,7 @@ static BOOL _Init( void ) {
 		if( !fclib_wcscmp( pwszText, L"NULL_" ) ) {
 			_apwszPhrases[i] = _pStringTable->AddString( L"" );
 		} else {
-			_apwszPhrases[i] = _pStringTable->AddString( pwszText );
+			_apwszPhrases[i] = _pStringTable->AddString( WPR_PC_TEXT( pwszText ) );
 		}
 	}
 	// now the platform specific table
@@ -2540,7 +2544,7 @@ static BOOL _Init( void ) {
 		if( !fclib_wcscmp( pwszText, L"NULL_" ) ) {
 			_apwszPhrases[WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT + i] = _pStringTable->AddString( L"" );
 		} else {
-			_apwszPhrases[WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT + i] = _pStringTable->AddString( pwszText );
+			_apwszPhrases[WPR_DATATYPES_PHRASES_NON_PLATFORM_SPECIFIC_COUNT + i] = _pStringTable->AddString( WPR_PC_TEXT( pwszText ) );
 		}
 	}
 	#if FANG_WINGC
@@ -2554,7 +2558,7 @@ static BOOL _Init( void ) {
 			} else {
 				pwszText = (cwchar *)fgamedata_GetPtrToFieldData( hCommonPhrases, nField, nDataType );
 			}
-			_apwszPhrases[i] = _pStringTable->AddString( fclib_wcscmp( pwszText, L"NULL_" ) ? pwszText : L"" );
+			_apwszPhrases[i] = _pStringTable->AddString( fclib_wcscmp( pwszText, L"NULL_" ) ? WPR_PC_TEXT( pwszText ) : L"" );
 		}
 	}
 	#endif

@@ -445,6 +445,13 @@ extern Wpr_DataTypes_ScreenData_t *Wpr_DataTypes_paScreenData;
 extern wchar Wpr_DataTypes_wszTempString[WPR_DATATYPES_TEMPSTRING_LENGTH];
 
 extern Wpr_DataTypes_Alignment_e wpr_datatypes_GetAlignmentCode( char c );
+#if FANG_WINGC
+// The PC's wording for a retail front-end string (storage text), or the string itself.
+extern cwchar *wpr_datatypes_PcText( cwchar *pwszText );
+	#define WPR_PC_TEXT( pwszText )		wpr_datatypes_PcText( pwszText )
+#else
+	#define WPR_PC_TEXT( pwszText )		( pwszText )
+#endif
 extern Wpr_DataTypes_TextType_e wpr_datatypes_GetATextType( char c );
 extern BOOL wpr_datatypes_InitScreenTextLayoutArray( FGameDataFileHandle_t hFile, 
 													cchar *pszTableName, 

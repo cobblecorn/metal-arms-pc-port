@@ -74,6 +74,116 @@ Wpr_DataTypes_Alignment_e wpr_datatypes_GetAlignmentCode( char c ) {
 	return WPR_DATATYPES_ALIGN_LEFT;
 }
 
+#if FANG_WINGC
+// PC wording for the front end's storage text: the retail strings talk about Memory Cards (GameCube)
+// or Memory Units and the Xbox Dashboard; on the PC saves live in a folder. Exact matches only.
+static const struct { cwchar *pwszRetail, *pwszPC; } _aPcText[] = {
+	{ L"Memory Card:",
+	  L"Save Location:" },
+	{ L"Memory Unit:",
+	  L"Save Location:" },
+	{ L"Free Blocks:",
+	  L"Free Space:" },
+	{ L"hard disk",
+	  L"save folder" },
+	{ L"Memory Unit",
+	  L"Save Folder" },
+	{ L"Xbox Dashboard",
+	  L"Manage Saves" },
+	{ L"Manage Memory Card",
+	  L"Manage Saves" },
+	{ L"Memory management",
+	  L"Manage saves" },
+	{ L"Launch Xbox Dashboard",
+	  L"Manage saves" },
+	{ L"Memory unit is unusable.",
+	  L"The save folder can't be used." },
+	{ L"Memory Card is unusable.",
+	  L"The save folder can't be used." },
+	{ L"Not enough free blocks to save a new profile.",
+	  L"Not enough disk space to save a new profile." },
+	{ L"Please insert Memory Unit.",
+	  L"The save folder can't be found." },
+	{ L"Please insert a Memory Card.",
+	  L"The save folder can't be found." },
+	{ L"Memory Unit is damaged.\nPlease insert alternate memory unit.",
+	  L"The save folder is damaged.\nChoose another location." },
+	{ L"Memory unit is damaged.\nPlease insert alternate memory unit.",
+	  L"The save folder is damaged.\nChoose another location." },
+	{ L"Memory Card is damaged.\nPlease insert alternate Memory Card.",
+	  L"The save folder is damaged.\nChoose another location." },
+	{ L"Memory unit full!",
+	  L"Disk full!" },
+	{ L"hard disk full!",
+	  L"Disk full!" },
+	{ L"Format Memory Card",
+	  L"Reset Save Data" },
+	{ L"Corrupted Memory Card",
+	  L"Corrupted Save Data" },
+	{ L"The Memory Card in",
+	  L"The save data in" },
+	{ L"is corrupted and needs to be formatted.",
+	  L"is corrupted and needs to be reset." },
+	{ L"Do you want to format?",
+	  L"Do you want to reset it?" },
+	{ L"Continue without formatting",
+	  L"Continue without resetting" },
+	{ L"Continue without Formatting",
+	  L"Continue without Resetting" },
+	{ L"Format",
+	  L"Reset" },
+	{ L"Format Error",
+	  L"Reset Error" },
+	{ L"Formatting the Memory Card will\nerase all previously saved data.\n\nDo you wish to proceed with\nthe format?",
+	  L"Resetting will erase all\nprofiles saved in this location.\n\nDo you wish to proceed?" },
+	{ L"Memory Card Error",
+	  L"Save Data Error" },
+	{ L"Insert a Memory Card in\n\nto save your profile.",
+	  L"Choose a save location in\n\nto save your profile." },
+	{ L"The Memory Card in\n\nalready has a saved profile\nwith the same name.\n\nOverwrite existing profile?",
+	  L"The save location\n\nalready has a saved profile\nwith the same name.\n\nOverwrite existing profile?" },
+	{ L"The Memory Card in\n\ndoesn't have enough free files or blocks\nto save a new profile.  Existing profiles\ncan be loaded and overwritten.",
+	  L"The save location\n\ndoesn't have enough free space\nto save a new profile.  Existing profiles\ncan be loaded and overwritten." },
+	{ L"The Memory Card in\n\nis corrupted and needs to be formatted.\n\nDo you wish to format?",
+	  L"The save data in\n\nis corrupted and needs to be reset.\n\nDo you wish to reset it?" },
+	{ L"The Memory Card in\n\nis damaged and cannot be used.",
+	  L"The save location\n\nis damaged and cannot be used." },
+	{ L"There is no Memory Card in\n\n\nPlease insert a Memory Card\nto save your profile.",
+	  L"The save location\n\n\ncan't be found. Choose another\nlocation to save your profile." },
+	{ L"Wrong Device in\n\n\nPlease insert a Memory Card.",
+	  L"The save location\n\n\ncan't be used." },
+	{ L"Saving to the Memory Card in\n\n\nDo not touch the Memory Card\nor the POWER Button.",
+	  L"Saving to\n\n\nPlease do not close the game." },
+	{ L"Saving to memory unit",
+	  L"Saving to the save folder" },
+	{ L"Wrong Device in Memory Card Slot.",
+	  L"The save location can't be used." },
+	{ L"Free more blocks",
+	  L"Free more space" },
+	{ L"free blocks to save games.",
+	  L"free space to save games." },
+	{ L"Memory Card Slot A",
+	  L"Save Folder" },
+	{ L"Memory Card Slot B",
+	  L"Save Folder" },
+	{ L"is full and can be managed\nfrom the Memory Card Screen.",
+	  L"is full. Free some disk space\nand try again." },
+	{ L"There was an error\nsaving your profile.\n\nThe memory card in\n%ls\nis damaged and cannot be used.",
+	  L"There was an error\nsaving your profile.\n\nThe save location\n%ls\nis damaged and cannot be used." },
+};
+
+cwchar *wpr_datatypes_PcText( cwchar *pwszText ) {
+	if( pwszText ) {
+		for( u32 i=0; i < sizeof( _aPcText ) / sizeof( _aPcText[0] ); i++ ) {
+			if( !fclib_wcscmp( pwszText, _aPcText[i].pwszRetail ) ) {
+				return _aPcText[i].pwszPC;
+			}
+		}
+	}
+	return pwszText;
+}
+#endif
+
 Wpr_DataTypes_TextType_e wpr_datatypes_GetATextType( char c ) {
 
 	switch( c ) {
@@ -179,7 +289,7 @@ BOOL wpr_datatypes_InitScreenTextLayoutArray( FGameDataFileHandle_t hFile,
 
 		FASSERT( nDataType != FGAMEDATA_VAR_TYPE_STRING );
 		if( nDataType == FGAMEDATA_VAR_TYPE_WIDESTRING ) {
-			rScreen.pText[i].pwszText = rStringTable.AddString( pwszText );
+			rScreen.pText[i].pwszText = rStringTable.AddString( WPR_PC_TEXT( pwszText ) );
 		} else if( nDataType == FGAMEDATA_VAR_TYPE_FLOAT ) {
 			// turn the float into a string
 			_snwprintf( Wpr_DataTypes_wszTempString, WPR_DATATYPES_TEMPSTRING_LENGTH, L"%d", (u32)( *(f32 *)pwszText ) );
@@ -258,7 +368,7 @@ BOOL wpr_datatypes_InitScreenButtonLayoutArray( FGameDataFileHandle_t hFile,
 	nIndex = 0;
 	for( i=0; i < rScreen.nNumButtons; i++ ) {
 		pwszText = (cwchar *)fgamedata_GetPtrToFieldData( hTable, nIndex, nDataType );
-		rScreen.paButtons[i].pwszInstructions = rStringTable.AddString( pwszText );
+		rScreen.paButtons[i].pwszInstructions = rStringTable.AddString( WPR_PC_TEXT( pwszText ) );
 		
 		pszChar = (cchar *)fgamedata_GetPtrToFieldData( hTable, nIndex + 1, nDataType );
 		switch( pszChar[0] ) {

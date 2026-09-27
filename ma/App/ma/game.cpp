@@ -21,6 +21,7 @@
 #include "game.h"
 #if defined(MA_PC_INPUT)
 #include "pc_input.h"
+#include "discord_rpc.h"
 #endif
 
 #include "fviewport.h"
@@ -438,7 +439,7 @@ static BOOL8 _bAllowCutSceneSkip;
 static BOOL8 _bCompletedLevel;
 static ControlMode_e _aeControlMode[MAX_PLAYERS];
 #if defined(MA_PC_INPUT)
-#define _WEAPONSELECT_HOLD_SECS		( 0.5f )	// user-chosen hold before a weapon list opens
+#define _WEAPONSELECT_HOLD_SECS		( 0.3f )	// user-chosen hold before a weapon list opens
 static BOOL8 _aabWeaponSelectArmed[MAX_PLAYERS][2];	// [player][0 = primary, 1 = secondary]
 static f32 _aafWeaponSelectHeldSecs[MAX_PLAYERS][2];
 #endif
@@ -553,6 +554,61 @@ BOOL game_IsInitialized( void ) {
 
 // Loads and initializes everything needed for the specified level.
 // Returns TRUE if successful, or FALSE otherwise.
+#if defined(MA_PC_INPUT)
+// Discord Rich Presence: the level's display name (the loading screen's heading when the front end
+// gave one, else "Level N: Title" from the level table) and the kind of game.
+static void _DiscordLevelPresence( const GameInitInfo_t *pGameInit ) {
+	char szDetails[128], szState[128];
+	u32 i = 0;
+	szDetails[0] = szState[0] = 0;
+
+	cwchar *pwszHeading = pGameInit ? pGameInit->pwszLevelDisplayHeading : NULL;
+	if( pwszHeading && pwszHeading[0] && !fclib_wcschr( pwszHeading, L'~' ) ) {
+		for( ; pwszHeading[i] && i < sizeof(szDetails) - 1; i++ ) {
+			szDetails[i] = ( pwszHeading[i] >= 0x20 && pwszHeading[i] < 0x7f ) ? (char)pwszHeading[i] : ' ';
+		}
+		szDetails[i] = 0;
+	} else if( Level_nLoadedIndex >= 0 && Level_aInfo[Level_nLoadedIndex].pszTitle ) {
+		// "4 Clean Up" -> "Level 4: Clean Up"
+		cchar *pszTitle = Level_aInfo[Level_nLoadedIndex].pszTitle;
+		u32 nNumber = 0;
+		while( *pszTitle >= '0' && *pszTitle <= '9' ) {
+			nNumber = nNumber * 10 + (u32)( *pszTitle++ - '0' );
+		}
+		while( *pszTitle == ' ' ) {
+			pszTitle++;
+		}
+		if( nNumber && ( !pGameInit || pGameInit->bSinglePlayer ) ) {
+			_snprintf( szDetails, sizeof(szDetails) - 1, "Level %u: %s", nNumber, pszTitle );
+		} else {
+			_snprintf( szDetails, sizeof(szDetails) - 1, "%s", pszTitle );
+		}
+		szDetails[sizeof(szDetails) - 1] = 0;
+	}
+
+	if( !pGameInit || pGameInit->bSinglePlayer ) {
+		fclib_strcpy( szState, "Campaign" );
+	} else {
+		char szRules[64];
+		szRules[0] = 0;
+		if( pGameInit->pMultiplayerRules ) {
+			for( i=0; pGameInit->pMultiplayerRules->wszGameName[i] && i < sizeof(szRules) - 1; i++ ) {
+				wchar c = pGameInit->pMultiplayerRules->wszGameName[i];
+				szRules[i] = ( c >= 0x20 && c < 0x7f ) ? (char)c : ' ';
+			}
+			szRules[i] = 0;
+		}
+		if( szRules[0] ) {
+			_snprintf( szState, sizeof(szState) - 1, "Multiplayer: %s (%u players)", szRules, (u32)pGameInit->nNumPlayers );
+		} else {
+			_snprintf( szState, sizeof(szState) - 1, "Multiplayer (%u players)", (u32)pGameInit->nNumPlayers );
+		}
+		szState[sizeof(szState) - 1] = 0;
+	}
+	discord_SetActivity( szDetails, szState, true );
+}
+#endif
+
 BOOL game_LoadLevel( cchar *pszLevelTitle,
 					 BOOL bShowLoadingScreen/*=TRUE*/,
 					 const GameInitInfo_t *pGameInit/*=NULL*/ ) {
@@ -614,6 +670,10 @@ BOOL game_LoadLevel( cchar *pszLevelTitle,
 	ffile_LogStop();
 #endif
 
+#if defined(MA_PC_INPUT)
+	_DiscordLevelPresence( pGameInit );
+#endif
+
 	// Level loaded successfully...
 	return TRUE;
 
@@ -660,6 +720,10 @@ BOOL game_LoadGenericDebugLevel( cchar *pszWorldResName ) {
 	if( !_PostWorldLoadGameInit( NULL ) ) {
 		goto _ExitWithError;
 	}
+
+#if defined(MA_PC_INPUT)
+	_DiscordLevelPresence( NULL );
+#endif
 
 	// Level loaded successfully...
 	return TRUE;
