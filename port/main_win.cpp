@@ -832,6 +832,10 @@ int main( int argc, char **argv )
 	Fang_ConfigDefs.nMaxParticleEmitters = 500;
 	Fang_ConfigDefs.nMaxParticles = 3000;
 	Fang_ConfigDefs.nMaxParticleEmitterSprites = 1000;
+	// fdraw streams primitives into one dynamic VB. More space means fewer DISCARD locks
+	// when 2D effects wrap it within a frame; the Fang default is only 2,048 vertices.
+	Fang_ConfigDefs.nDraw_D3DVBVertexCount = 8192;
+	_Log( "Dynamic draw buffer: %u vertices.\n", Fang_ConfigDefs.nDraw_D3DVBVertexCount );
 	Fang_nLaunchType = FANG_LAUNCH_TYPE_STANDALONE;
 
 	if( !fang_Startup() )

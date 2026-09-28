@@ -130,6 +130,9 @@ static const NameType_t _collectableTypes[] = {
 	{ "Cleaner",			COLLECTABLE_WEAPON_CLEANER },
 	{ "Wrench",				COLLECTABLE_WEAPON_WRENCH },
 	{ "Recruiter Grenade",	COLLECTABLE_WEAPON_RECRUITER },
+#if FANG_WINGC
+	{ "megawasher",		COLLECTABLE_MEGA_WASHER },
+#endif
 };
 
 static const u32 _uNumCollectableTypes		= sizeof( _collectableTypes ) / sizeof( NameType_t );
@@ -3280,6 +3283,9 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 
 	switch( m_pCollectableType->m_eType ) {
 		case COLLECTABLE_WASHER:
+#if FANG_WINGC
+		case COLLECTABLE_MEGA_WASHER:
+#endif
 			_PickupWasher();
 		break;
 		case COLLECTABLE_PUP_ENERGY:
@@ -3365,7 +3371,11 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 	// Give back the mesh early on so we are sure to see it in the HUD
 	_ReturnWorldMesh();
 
-	if( ( m_pCollectableType->m_eType != COLLECTABLE_WASHER ) && ( m_pCollectableType->m_eType != COLLECTABLE_PUP_WEAPON ) ) {
+	if( ( m_pCollectableType->m_eType != COLLECTABLE_WASHER ) &&
+#if FANG_WINGC
+		( m_pCollectableType->m_eType != COLLECTABLE_MEGA_WASHER ) &&
+#endif
+		( m_pCollectableType->m_eType != COLLECTABLE_PUP_WEAPON ) ) {
 		m_pCollectHud->PickupItemGeneric( m_pCollectableType, ITEMTYPE_POWERUP,
 			m_pCollectableType->m_bSpecialEUK ? m_pCollectableType->m_fHUDScaleSpecialEUK : m_pCollectableType->m_fHUDScale );
 	}
@@ -3386,8 +3396,16 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 void CCollectable::_PickupWasher( void ) {
 	FASSERT( m_pCollectBot && m_pCollectHud && m_pPlayer );
 
-	m_pCollectBot->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo++;
-	m_pPlayer->CreditWasher();
+	const s32 nCount =
+#if FANG_WINGC
+		m_pCollectableType->m_nAmmoCount > 0 ? m_pCollectableType->m_nAmmoCount : 1;
+#else
+		1;
+#endif
+	m_pCollectBot->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo += nCount;
+	for( s32 i = 0; i < nCount; ++i ) {
+		m_pPlayer->CreditWasher();
+	}
 
 	m_pCollectHud->SetWasherTimed( 2.0f );
 }

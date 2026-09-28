@@ -49,6 +49,7 @@
 #include "site_botWeapon.h"
 #include "game.h"
 #include "letterbox.h"
+#include "eshield.h"
 
 #define _BOTINFO_FILENAME		"b_grunt"
 #define _BOTPART_FILENAME		"bp_grunt"
@@ -130,6 +131,7 @@ void CBotGruntBuilder::SetDefaults( u64 nEntityTypeBits, u64 nEntityLeafTypeBit,
 	FMATH_SETBITMASK( m_uFlags, BOT_BUILDER_SHOWS_UP_ON_RADAR );
 
 	m_bAllowWeaponDrop = TRUE;
+	m_bEnableShield = FALSE;
 }
 
 
@@ -197,6 +199,19 @@ BOOL CBotGruntBuilder::InterpretTable( void ) {
 			}
 		}
 
+		return TRUE;
+	}
+
+	if( !fclib_stricmp( CEntityParser::m_pszTableName, "Shield" ) ) {
+		if( CEntityParser::Interpret_String( &pszString ) ) {
+			if( !fclib_stricmp( pszString, "On" ) ) {
+				m_bEnableShield = TRUE;
+			} else if( !fclib_stricmp( pszString, "Off" ) ) {
+				m_bEnableShield = FALSE;
+			} else {
+				CEntityParser::Error_InvalidParameterValue();
+			}
+		}
 		return TRUE;
 	}
 
@@ -449,6 +464,9 @@ BOOL CBotGrunt::Create( s32 nPlayerIndex, BOOL bInstallDataPort, cchar *pszEntit
 
 
 void CBotGrunt::ClassHierarchyDestroy( void ) {
+	fdelete( m_pShield );
+	m_pShield = NULL;
+
 	// Delete the items that we had instantiated for us...
 	fdelete( m_apWeapon[0] );
 	m_apWeapon[0] = NULL;
@@ -706,6 +724,23 @@ BOOL CBotGrunt::ClassHierarchyBuild( void ) {
 
 	SetBotFlag_Enemy();
 
+	if( pBuilder->m_bEnableShield ) {
+		m_pShield = fnew CEShield;
+		if( m_pShield == NULL || !m_pShield->Create( "GruntShield" ) ) {
+			DEVPRINTF( "CBotGrunt::ClassHierarchyBuild(): Error creating shield\n" );
+			goto _ExitWithError;
+		}
+
+		ShieldInit_t shieldInit;
+		shieldInit.uShieldFlags = 0;
+		shieldInit.fShieldScale = 1.0f;
+		shieldInit.fShieldRechargeTime = m_BotInfo_Grunt.fShieldRechargeTime;
+		shieldInit.fShieldRechargeDelay = m_BotInfo_Grunt.fShieldRechargeDelay;
+		shieldInit.pArmorProfile = CDamage::FindArmorProfile( m_BotInfo_Grunt.pszShieldArmorProfile );
+		m_pShield->Init( this, &shieldInit );
+		m_pShield->RemoveFromWorld();
+	}
+
 	nLeftHandSecondaryFire = m_pWorldMesh->FindBone( "Secondary_Fire" );
 
 	if( nLeftHandSecondaryFire < 0 ) {
@@ -832,6 +867,11 @@ void CBotGrunt::ClassHierarchyAddToWorld( void ) {
 
 	CBot::ClassHierarchyAddToWorld();
 	m_pWorldMesh->UpdateTracker();
+	if( m_pShield ) {
+		m_pShield->AddToWorld();
+		m_pShield->Attach_UnitMtxToParent_PS( this, m_apszBoneNameTable[BONE_GROIN] );
+		m_pShield->EnableShield( TRUE );
+	}
 
 //	m_uBotDeathFlags |= BOTDEATHFLAG_PLAYDEATHANIM | BOTDEATHFLAG_COMEAPART | BOTDEATHFLAG_AUTOPERSISTAFTERDEATH;
 	for( i=0; i<2; i++ ) {
@@ -860,6 +900,9 @@ void CBotGrunt::ClassHierarchyRemoveFromWorld( void ) {
 	m_nGruntFlags &=~GRUNTFLAG_TERMINAL_STATE_ON;
 
 	m_pWorldMesh->RemoveFromWorld();
+	if( m_pShield ) {
+		m_pShield->RemoveFromWorld();
+	}
 	CBot::ClassHierarchyRemoveFromWorld();
 }
 
@@ -869,6 +912,9 @@ void CBotGrunt::AppendTrackerSkipList(u32& nTrackerSkipListCount, CFWorldTracker
 	FASSERT( (nTrackerSkipListCount + 1) <= FWORLD_MAX_SKIPLIST_ENTRIES );
 
 	apTrackerSkipList[nTrackerSkipListCount++] = m_pWorldMesh;
+	if( m_pShield ) {
+		m_pShield->AppendTrackerSkipList(nTrackerSkipListCount, apTrackerSkipList);
+	}
 
 	if( m_apWeapon[0] ) {
 		m_apWeapon[0]->AppendTrackerSkipList(nTrackerSkipListCount,apTrackerSkipList);
@@ -877,6 +923,21 @@ void CBotGrunt::AppendTrackerSkipList(u32& nTrackerSkipListCount, CFWorldTracker
 	if( m_pDataPortMeshEntity ) {
 		m_pDataPortMeshEntity->AppendTrackerSkipList(nTrackerSkipListCount,apTrackerSkipList);
 	}
+}
+
+
+void CBotGrunt::InflictDamage( CDamageData *pDamageData ) {
+	if( m_pShield ) {
+		m_pShield->NotifyBotDamage();
+	}
+
+	if( !pDamageData ||
+		(m_pShield && m_pShield->NormHealth() > 0.0f &&
+		pDamageData->m_nDamageLocale != CDamageForm::DAMAGE_LOCALE_AMBIENT) ) {
+		return;
+	}
+
+	CBot::InflictDamage( pDamageData );
 }
 
 
@@ -1027,6 +1088,13 @@ void CBotGrunt::ClassHierarchyWork() {
 	PROTRACK_BEGINBLOCK("WeaponWork");
 		_HandleWeaponWork();
 	PROTRACK_ENDBLOCK();//"WeaponWork");
+
+	if( m_pShield ) {
+		if( IsDeadOrDying() ) {
+			m_pShield->EnableShield( FALSE );
+		}
+		m_pShield->Work();
+	}
 
 	// Call the work function for our botfx system...
 	_HandleParticles();

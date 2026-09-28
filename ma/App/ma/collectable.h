@@ -101,7 +101,12 @@ typedef enum
 
 	COLLECTABLE_WEAPON_END, // Don't use this one
 
+#if FANG_WINGC
+	COLLECTABLE_MEGA_WASHER, // retail GameCube goodie; append so weapon IDs do not move
+	COLLECTABLE_COUNT,
+#else
 	COLLECTABLE_COUNT = COLLECTABLE_WEAPON_END,
+#endif
 } CollectableType_e;
 
 

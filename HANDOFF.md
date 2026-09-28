@@ -111,6 +111,24 @@ boxes), `MA_PORT_TEXPROBE=1` (dump texture instances), `MA_PORT_INPUT_LAYOUT`,
 | Discord | Connects under the port's application; Discord accepts the activity. No image asset. |
 | Co-op | Experimental PC menu entry (2-4 players, selectable controls); command line (`-mission W -coop N`): start points beside player 1, respawn beside a standing partner, scripts use player 1. Two-player menu launch verified; physical multi-pad play pending; no progress saving. See `docs/coop-audit.md`. |
 
+### Retail city goodie, grunt shields, and draw buffer (2026-09-27)
+
+- The retail `megawasher` goodie now has a distinct PC collectable ID after the
+  existing weapon range. Its retail table supplies 25 washers on pickup; ordinary
+  washers still supply one. This keeps goodie-bag spawning on the correct table.
+- Grunts now parse the retail `Shield=On/Off` property. Shielded grunts use the
+  `GruntShield` armor profile and the recharge fields in the retail `b_grunt`
+  table, following the same `CEShield` lifecycle as Titans. Shield appearance
+  and combat behavior have not been inspected interactively.
+- The PC dynamic fdraw vertex buffer is 8,192 vertices instead of 2,048, reducing
+  expected DISCARD wraps. This has not been proven to eliminate rare D3D lock
+  waits. The front-end static mesh-load lock stall is a separate path.
+- Debug and Release build. An isolated 50-second muted Debug `WEMCcity_01` run
+  loaded, displayed gameplay (`build/shots/retail_city_fixes/latest.png`), and
+  logged no crash, assert, script or audio error, or long-frame stall. Its old
+  `megawasher` and grunt `Shield` parser errors are gone. Two retail
+  `disablevelocityimpulses` commands still log as unknown.
+
 ### Information item counts and pause-page scope (2026-09-27)
 
 - The active pause build sets `_4_SCREEN_SETUP` to FALSE, intentionally using
@@ -568,21 +586,19 @@ No MSVC, no retail data, no game runs or logs. What works:
 
 ## Open work, roughly in priority order
 
-1. **Grunt shields** (see "Mission sweep"): implement the retail `shield` property for grunts, modeled
-   on the Titan's `CEShield`. Find the retail fields with `gamedata_dump.py` on the grunt tables and the
-   `GruntShield` references in `main.dol` first.
-2. **Occasional ~110 ms stall in a dynamic vertex-buffer lock**: `PORT-STALL` stacks in
-   `build/logs/coop2.log` (from `CEZipLine::_Draw` -> `fdraw_PrimList`) and `build/logs/rel_front2.log`
-   (front end) end in `fdx8vb_Lock` (`fdx8vb.cpp`, the `D3DLOCK_DISCARD`/`NOOVERWRITE` lock) waiting on
-   a critical section inside the D3D9 runtime. Rare (2 of many runs). Look at how often fdraw's dynamic
-   buffer wraps (each DISCARD) per frame, and whether a larger buffer avoids it.
+1. **Vertex-buffer stalls**: the PC dynamic fdraw buffer is now 8,192 vertices;
+   measure whether that reduces the rare ~110 ms `fdx8vb_Lock` wait in
+   `build/logs/coop2.log` (`CEZipLine::_Draw`). The `rel_front2.log` wait is
+   instead a static mesh-load VB lock, and `coop2.log` also has a separate
+   Present stall. Do not attribute either to dynamic-buffer wrapping.
 3. **Confirm with the user**: Shady's shop in `wessstatn01` opens; a co-op death respawns beside the
    partner; alt-tab/fullscreen/resize under D3D9Ex; the PC Button Prompts setting persists.
 4. **Co-op** (`docs/coop-audit.md`): front-end entry, progress saving, barter, collectables, AI
    targeting, minigames and bosses, cutscene cameras for players 2-4.
 5. One ambient in `L02_rslide3` stays voiceless (its listener state is EXITED while in range); see the
    "voiceless" lines in `PORT-MIX`.
-6. The remaining retail-data warnings (see "Mission sweep").
+6. The remaining retail-data warnings (see "Mission sweep"), including
+   `disablevelocityimpulses` on two `WEMCcity_01` entities.
 7. The ~1 s pause between the front end's logo movies (opening the next movie on the game thread).
 8. Older items: the save flow from the menus; the laser's charged burst and other weapons' particle and
    sound fields; `Difficulty.csv` extra fields; failed-load teardown beyond `CLOUD_SESSION_LOG.md` 5/10;

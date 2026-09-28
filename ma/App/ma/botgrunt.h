@@ -316,6 +316,9 @@ private:
 		CFSoundGroup *pSoundGroupGas;
 		f32 fGasTimeMin;
 		f32 fGasTimeMax;
+		cchar *pszShieldArmorProfile;
+		f32 fShieldRechargeTime;
+		f32 fShieldRechargeDelay;
 	} BotInfo_Grunt_t;
 
 
@@ -452,6 +455,7 @@ public:
 	BOOL Create( s32 nPlayerIndex=-1, BOOL bInstallDataPort=FALSE, cchar *pszEntityName=NULL, const CFMtx43A *pMtx=NULL, cchar *pszAIBuilderName=NULL, u32 nMeshVersionOverride=0, CBotBuilder::NPCWeapon_e nWeapon=CBotBuilder::_NPC_WEAPON_LASER );
 
 	virtual void AppendTrackerSkipList(u32& FWorld_nTrackerSkipListCount=FWorld_nTrackerSkipListCount, CFWorldTracker ** FWorld_apTrackerSkipList=&FWorld_apTrackerSkipList[0]);
+	virtual void InflictDamage( CDamageData *pDamageData );
 	virtual const CFVec3A *GetApproxEyePoint( void ) const;
 
 	BOOL GrabCable( CEZipLine *pCable );
@@ -564,6 +568,7 @@ FCLASS_ALIGN_PREFIX class CBotGruntBuilder : public CBotBuilder {
 public:
 	CFColorRGB m_MeshTintColor;
 	BOOL m_bAllowWeaponDrop;
+	BOOL m_bEnableShield;
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // Public Functions:
