@@ -39,6 +39,25 @@ co-op.
 - Actual lift blockage behavior and the newly invincible grunts still need gameplay observation;
   automated level loads confirm property parsing, not those events.
 
+## Diagnostics follow-up (2026-09-27)
+
+- The front-end logo transition is not explained by `BinkOpen`/`BinkClose`: an isolated Debug run
+  measured each close at 0 ms and the two following opens at 47 ms. Transition frames reached about
+  63 ms; the separate 1,166 ms worst frame occurred during initial loading. Keep the reported logo
+  gap open until it is reproduced with frame timing tied to the visible transition.
+- Added opt-in `PORT-VB` timing around vertex-buffer locks. A 55-second two-player Debug town run had
+  one Present stall (109 ms), but no matching lock stall. Several individual locks were 15-16 ms,
+  including dynamic `NOOVERWRITE` locks. This does not establish that the older 110 ms zipline lock
+  reproduces; collect another sample before changing buffer policy.
+- Corrected the audio mixer diagnostic: listener state `EXITED` (value 2) was incorrectly counted as
+  in-range/voiceless. The updated log condition reports only ENTERED, PRESENT, or SWITCHED listeners.
+  The prior 321 `L02_rslide3` voiceless records were all EXITED; the same run had voiced instances of
+  that wave, so there is no confirmed ambient playback bug from those records.
+- After the latest changes, Debug and Release builds passed. A 24-second isolated Release run loaded
+  `WEDMmines01` with no crash, assert, allocation failure, audio error, or script error. It retained
+  the seven known malformed-goodie warnings. Startup produced one WndProc/Present hitch each; check
+  whether either repeats before diagnosing a runtime issue.
+
 ## Repository
 
 - Private GitHub repo `cobblecorn/metal-arms-pc-port`. `main` is the verbatim source drop; all work is
@@ -630,21 +649,23 @@ No MSVC, no retail data, no game runs or logs. What works:
 
 ## Open work, roughly in priority order
 
-1. **Vertex-buffer stalls**: the PC dynamic fdraw buffer is now 8,192 vertices;
-   measure whether that reduces the rare ~110 ms `fdx8vb_Lock` wait in
-   `build/logs/coop2.log` (`CEZipLine::_Draw`). The `rel_front2.log` wait is
-   instead a static mesh-load VB lock, and `coop2.log` also has a separate
-   Present stall. Do not attribute either to dynamic-buffer wrapping.
+1. **Vertex-buffer stalls**: the PC dynamic fdraw buffer is now 8,192 vertices. The old
+   `build/logs/coop2.log` has a ~110 ms zipline `fdx8vb_Lock` sample, but fresh timing in
+   `build/logs/pc_vb_town_coop_diag.log` shows 15-16 ms individual locks and a separate Present
+   stall. Capture more startup samples before changing buffer allocation or lock flags. The
+   `rel_front2.log` wait is a static mesh-load VB lock.
 3. **Confirm with the user**: Shady's shop in `wessstatn01` opens; a co-op death respawns beside the
    partner; alt-tab/fullscreen/resize under D3D9Ex; the PC Button Prompts setting persists.
 4. **Co-op** (`docs/coop-audit.md`): front-end entry, progress saving, barter, collectables, AI
    targeting, minigames and bosses, cutscene cameras for players 2-4.
-5. One ambient in `L02_rslide3` stays voiceless (its listener state is EXITED while in range); see the
-   "voiceless" lines in `PORT-MIX`.
+5. `L02_rslide3` playback is not confirmed broken; earlier `PORT-MIX` voiceless reports were
+   diagnostic false positives for emitters whose listener had EXITED. The log condition is corrected.
 6. The remaining retail-data warnings (see "Mission sweep" and latest pass above), including
    malformed `ColorRed` and `goodie` entries and LiquidMesh `dropfreq`. The `setdamageable`,
    `noliftblockchecking`, and `useby` world entries are handled.
-7. The ~1 s pause between the front end's logo movies (opening the next movie on the game thread).
+7. The reported pause between front-end logo movies is not reproduced as a 1 s Bink open/close: the
+   latest isolated timing measured opens at 47 ms and closes at 0 ms. Reproduce and profile the visible
+   transition before changing movie startup.
 8. Older items: the save flow from the menus; the laser's charged burst and other weapons' particle and
    sound fields; `Difficulty.csv` extra fields; failed-load teardown beyond `CLOUD_SESSION_LOG.md` 5/10;
    a Discord image asset; 64-bit, widescreen, rumble.

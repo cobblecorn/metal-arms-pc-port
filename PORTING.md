@@ -334,9 +334,11 @@ environment variables remain available.
 - Retail data was built with newer tool versions than this source snapshot (e.g. mesh
   compiler 0x39 vs 0x37 in `fdata.h`); the runtime doesn't enforce these, but layouts
   may differ slightly.
-- Retail `Difficulty.csv` has 20 fields in its `Diff` table; this source expects 8 fields
-  for four difficulty levels and therefore falls back to its defaults. The retail flamer
-  table also has newer tail columns, which are ignored by the older source vocabulary.
+- Retail `Difficulty.csv` has 20 fields in its `Diff` table. The PC build now reads all
+  five fields for each of the four difficulty levels, so it no longer falls back to
+  defaults. The three retail additions are retained in `CDifficulty::CInfo` but their
+  gameplay uses have not yet been mapped. The retail flamer table also has newer tail
+  columns, which are ignored by the older source vocabulary.
 - Retail `w_laser.csv` (73 fields; a charge/burst redesign) is mapped onto the source's
   primary-fire laser from retail evidence: the `LaserL1` vocabulary in `main.dol` and the retail
   `CWeaponLaser` InitSystem/ClassHierarchyBuild/fire code. Mesh, muzzle bone, tracer texture

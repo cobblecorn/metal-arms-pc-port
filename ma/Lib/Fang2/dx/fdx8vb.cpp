@@ -424,6 +424,9 @@ void *fdx8vb_Lock( FDX8VB_t *pVB, u32 nStartVtxIndex, u32 nVtxCount ) {
 
 	pVB->nLockOffset = nVtxBytes * nStartVtxIndex;
 	pVB->nLockBytes = nVtxBytes * nVtxCount;
+#if FANG_WINGC
+	DWORD uLockStart = Fang_bPortDiag ? GetTickCount() : 0;
+#endif
 
 	if( !pVB->bDynamic ) {
 		pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, (void **)&pnLockedDestBuf, 0 );
@@ -434,6 +437,16 @@ void *fdx8vb_Lock( FDX8VB_t *pVB, u32 nStartVtxIndex, u32 nVtxCount ) {
 			pVB->pDXVB->Lock( pVB->nLockOffset, pVB->nLockBytes, &pnLockedDestBuf, D3DLOCK_NOOVERWRITE );
 		#endif
 	}
+
+#if FANG_WINGC
+	if( Fang_bPortDiag ) {
+		DWORD uLockMs = GetTickCount() - uLockStart;
+		if( uLockMs >= 10 )
+			DEVPRINTF( "PORT-VB lock-ms %lu dynamic=%d offset=%u bytes=%u vertices=%u flag=%s\n",
+				(unsigned long)uLockMs, pVB->bDynamic, pVB->nLockOffset, pVB->nLockBytes,
+				pVB->nVtxCount, pVB->bDynamic ? ( nStartVtxIndex ? "NOOVERWRITE" : "DISCARD" ) : "NONE" );
+	}
+#endif
 
 	pVB->bLocked = TRUE;
 	pVB->pLockBuf = (void *)pnLockedDestBuf;

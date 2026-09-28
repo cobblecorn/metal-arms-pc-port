@@ -1364,7 +1364,9 @@ void faudio_Work( void )
 					{
 						++uActive;
 						if( poEmitter->poRealEmitter ) ++uVoiced;
-						else if( poEmitter->oWaveHandle && poEmitter->oeState == FAUDIO_EMITTER_STATE_PLAYING && poEmitter->oeListenerIntersection )
+						else if( poEmitter->oWaveHandle && poEmitter->oeState == FAUDIO_EMITTER_STATE_PLAYING &&
+							( poEmitter->oeListenerIntersection & ( _LISTENER_INTERSECTION_ENTERED |
+								_LISTENER_INTERSECTION_PRESENT | _LISTENER_INTERSECTION_SWITCHED ) ) )
 						{
 							DEVPRINTF( "PORT-MIX   voiceless %s '%s' state %d changes %x pause level %u props %x listener %d\n", u3D ? "3D" : "2D",
 								((FDataWvbFile_Wave_t *)poEmitter->oWaveHandle)->szName, (s32)poEmitter->oeState, (u32)poEmitter->uStateChanges,

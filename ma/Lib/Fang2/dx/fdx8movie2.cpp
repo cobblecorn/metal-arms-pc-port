@@ -329,7 +329,14 @@ void fmovie2_Play( cchar *pszFileName, f32 fVolume, cu32 uPlayFlags ) {
 	uFlags |= BINKIOSIZE;
 #endif
 
+#if FANG_WINGC
+	DWORD uOpenStart = GetTickCount();
+#endif
 	_hBink = BinkOpen( szFullMoviePathName, uFlags );
+#if FANG_WINGC
+	if( Fang_bPortDiag )
+		DEVPRINTF( "PORT-BINK open-ms %s %lu\n", pszFileName, (unsigned long)( GetTickCount() - uOpenStart ) );
+#endif
 	if( !_hBink ) {
 		//there was an error loading the bink file.
 		DEVPRINTF( "[ FMOVIE2 ] Error : Couldn't load movie file %s\n", szFullMoviePathName );
@@ -411,7 +418,14 @@ void fmovie2_Unload( void ) {
 		return;
 
 	if( _hBink ) {
+#if FANG_WINGC
+		DWORD uCloseStart = GetTickCount();
+#endif
 		BinkClose( _hBink );
+#if FANG_WINGC
+		if( Fang_bPortDiag )
+			DEVPRINTF( "PORT-BINK close-ms %lu\n", (unsigned long)( GetTickCount() - uCloseStart ) );
+#endif
 		DEVPRINTF( "[ FMOVIE2 ] Info : Unloading Bink Movie -- Num Skipped Frames = %d\n", _nSkippedFrames);
 	}
 
