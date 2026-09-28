@@ -737,6 +737,7 @@ BOOL CESwitchBuilder::InterpretTable()
 			DEVPRINTF("CESwitchBuilder::InterpretTable() : Invalid value '%s' for 'useby' table. mil\n", pszValue);
 			return(TRUE);
 		}
+		return(TRUE);
 	}
 
 	return (CMeshEntityBuilder::InterpretTable());;

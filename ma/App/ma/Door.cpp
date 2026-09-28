@@ -1542,7 +1542,8 @@ void CDoorEntity::StateWork()
 			{
 				case DOORMOVETYPE_LINE:
 				{
-					bPathBlocked = _UpdateLineDoorPosition(DO_COLLISION_TEST);
+					bPathBlocked = _UpdateLineDoorPosition(
+						(m_uBehaviorCtrlFlags & DOOR_BEHAVIOR_CTRL_NO_LIFT_BLOCK_CHECK) ? NO_COLLISION_TEST : DO_COLLISION_TEST);
 					break;
 				}
 				case DOORMOVETYPE_VECOBJ:
@@ -1565,7 +1566,8 @@ void CDoorEntity::StateWork()
 			{
 				case DOORMOVETYPE_LINE:
 				{
-					bPathBlocked = _UpdateLineDoorPosition(DO_COLLISION_TEST);
+					bPathBlocked = _UpdateLineDoorPosition(
+						(m_uBehaviorCtrlFlags & DOOR_BEHAVIOR_CTRL_NO_LIFT_BLOCK_CHECK) ? NO_COLLISION_TEST : DO_COLLISION_TEST);
 					break;
 				}
 				case DOORMOVETYPE_VECOBJ:
@@ -2900,6 +2902,11 @@ BOOL CEDoorBuilder::InterpretTable()
 	else if(!fclib_stricmp(CEntityParser::m_pszTableName, "disablecall1"))
 	{
 		CEntityParser::Interpret_Flag(&m_uBehaviorCtrlFlags, CDoorEntity::DOOR_BEHAVIOR_CTRL_DISABLE_AUTO_CALL1);
+		return(TRUE);
+	}
+	else if(!fclib_stricmp(CEntityParser::m_pszTableName, "noliftblockchecking"))
+	{
+		CEntityParser::Interpret_Flag(&m_uBehaviorCtrlFlags, CDoorEntity::DOOR_BEHAVIOR_CTRL_NO_LIFT_BLOCK_CHECK);
 		return(TRUE);
 	}
 	else if(!fclib_stricmp(CEntityParser::m_pszTableName, "startopen"))

@@ -130,6 +130,7 @@ public:
 		DOOR_BEHAVIOR_CTRL_OPENBACK					=	1 << 2,		// Door will open automatically if it detects someone behind it.
 		DOOR_BEHAVIOR_CTRL_DISABLE_AUTO_CALL0		=	1 << 3,		// Elevator will not automatically get called from state 0.
 		DOOR_BEHAVIOR_CTRL_DISABLE_AUTO_CALL1		=	1 << 4,		// Elevator will not automatically get called from state 1.
+		DOOR_BEHAVIOR_CTRL_NO_LIFT_BLOCK_CHECK		=	1 << 5,		// Lift movement does not stop for bots in its path.
 	};
 
 	/////////////////////////////////////////////////////////////

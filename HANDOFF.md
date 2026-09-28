@@ -19,6 +19,26 @@ A working native Windows build of *Metal Arms: Glitch in the System* that runs t
 co-op. The whole campaign is playable today; the work now is polish, the remaining log errors, and
 co-op.
 
+## Latest local pass (2026-09-27)
+
+- `SetDamageable=false` on four inactive grunts in `WEDMmines01` now sets the existing invincibility
+  flag. `NoLiftBlockChecking=true` on two lifts in that world skips only the bot blockage check during
+  line movement; ordinary physical collision remains. `useby=Mil` on three `WEWCcomm_02` switches
+  was already applied, but the switch parser fell through and emitted false unknown-command warnings;
+  it now returns success.
+- Debug and Release `ma_port` builds passed. Three parallel, isolated, muted Debug runs of
+  `wedmmines01`, `wewccomm_02`, and `wemccity_01` loaded, with no crash, assert, allocation failure,
+  or audio error. Mines property warnings fell from 13 to 7; Communications fell from 4 to 1.
+  The remaining seven Mines warnings are malformed two-field `goodie1` tables followed by valid
+  four-field drop tables. Communications has a six-field chip drop (`chip,1,1,1,X,safe`) that the
+  current parser skips; the same authored pattern appears in `WESSstatn02`. Neither has been changed
+  without gameplay evidence of the intended drop. City still reports two malformed `ColorRed`
+  entries; the same pattern occurs in other retail worlds. Leave its color fallback alone until the
+  rendered tint can be compared with retail. `dropfreq` on two front-end LiquidMesh entries remains
+  unimplemented; the source only supports it on LiquidVolume.
+- Actual lift blockage behavior and the newly invincible grunts still need gameplay observation;
+  automated level loads confirm property parsing, not those events.
+
 ## Repository
 
 - Private GitHub repo `cobblecorn/metal-arms-pc-port`. `main` is the verbatim source drop; all work is
@@ -621,9 +641,9 @@ No MSVC, no retail data, no game runs or logs. What works:
    targeting, minigames and bosses, cutscene cameras for players 2-4.
 5. One ambient in `L02_rslide3` stays voiceless (its listener state is EXITED while in range); see the
    "voiceless" lines in `PORT-MIX`.
-6. The remaining retail-data warnings (see "Mission sweep"), including the
-   `ColorRed`, `setdamageable`, short `goodie`, `noliftblockchecking`, and `useby` world entries
-   observed in the three impulse-property runs above.
+6. The remaining retail-data warnings (see "Mission sweep" and latest pass above), including
+   malformed `ColorRed` and `goodie` entries and LiquidMesh `dropfreq`. The `setdamageable`,
+   `noliftblockchecking`, and `useby` world entries are handled.
 7. The ~1 s pause between the front end's logo movies (opening the next movie on the game thread).
 8. Older items: the save flow from the menus; the laser's charged burst and other weapons' particle and
    sound fields; `Difficulty.csv` extra fields; failed-load teardown beyond `CLOUD_SESSION_LOG.md` 5/10;

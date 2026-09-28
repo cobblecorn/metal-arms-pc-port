@@ -351,6 +351,11 @@ BOOL CEntityBuilder::InterpretTable( void ) {
 		CEntityParser::Interpret_Flag( &m_nEC_Flags, CEntity::ENTITY_FLAG_INWORLD );
 		return TRUE;
 
+	} else if( !fclib_stricmp( CEntityParser::m_pszTableName, "SetDamageable" ) ) {
+
+		CEntityParser::Interpret_Flag( &m_nEC_Flags, CEntity::ENTITY_FLAG_INVINCIBLE, TRUE );
+		return TRUE;
+
 	} else if( !fclib_stricmp( CEntityParser::m_pszTableName, "HealthContainer" ) ) {
 
 		CEntityParser::Interpret_U32( &m_nEC_HealthContainerCount, 1, 0xffffffff, TRUE );
