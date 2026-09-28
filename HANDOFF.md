@@ -57,6 +57,11 @@ co-op.
   `WEDMmines01` with no crash, assert, allocation failure, audio error, or script error. It retained
   the seven known malformed-goodie warnings. Startup produced one WndProc/Present hitch each; check
   whether either repeats before diagnosing a runtime issue.
+- Fixed launch from Explorer/build directories: if the current working directory has no master file,
+  the launcher searches upward from the executable for the selected relative data folder. An invalid
+  data path now gets a visible message box. Verified both a no-`-data` launch from `build/Release` and
+  a relative `-data gamedata/files` launch from another working directory; both found the retail
+  master file and reached the main menu. A captured 1280x960 frame confirmed the menu rendered.
 
 ## Repository
 

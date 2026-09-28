@@ -558,6 +558,59 @@ static void _Usage( void )
 	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id> [-discord-large-image <asset-key-or-url>] [-discord-large-text <tooltip>]] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> [-coop 2-4] | -world-only <world-resource>] [-log <file>] [-asset-log <file>] [-instance-label <name>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-save-dir <dir>]\n" );
 }
 
+static bool _DataDirHasMaster( const char *pszDataDir )
+{
+	char szMasterPath[MAX_PATH * 3];
+	int nLength = snprintf( szMasterPath, sizeof( szMasterPath ), "%s\\%s", pszDataDir, _szMasterName );
+	if( nLength <= 0 || nLength >= sizeof( szMasterPath ) )
+		return false;
+	DWORD dwAttributes = GetFileAttributesA( szMasterPath );
+	return dwAttributes != INVALID_FILE_ATTRIBUTES && !( dwAttributes & FILE_ATTRIBUTE_DIRECTORY );
+}
+
+static bool _ResolveDataDirFromExecutable( void )
+{
+	// Explorer starts a clicked EXE with its own directory as the working directory. Walk up
+	// from the EXE so the repository's default gamedata/files works from build/Release too.
+	char szSearchDir[MAX_PATH];
+	DWORD nPathLength = GetModuleFileNameA( NULL, szSearchDir, sizeof( szSearchDir ) );
+	if( nPathLength == 0 || nPathLength >= sizeof( szSearchDir ) )
+		return false;
+	char *pszSlash = strrchr( szSearchDir, '\\' );
+	char *pszForwardSlash = strrchr( szSearchDir, '/' );
+	if( pszForwardSlash && ( !pszSlash || pszForwardSlash > pszSlash ) )
+		pszSlash = pszForwardSlash;
+	if( !pszSlash )
+		return false;
+	*pszSlash = 0;
+
+	const bool bDataDirAbsolute = _szDataDir[0] == '\\' || _szDataDir[0] == '/' ||
+		( _szDataDir[0] && _szDataDir[1] == ':' && ( _szDataDir[2] == '\\' || _szDataDir[2] == '/' ) );
+	if( bDataDirAbsolute )
+		return false;
+
+	for( int nDepth = 0; nDepth < 8; ++nDepth )
+	{
+		char szCandidate[MAX_PATH * 2];
+		int nCandidateLength = snprintf( szCandidate, sizeof( szCandidate ), "%s\\%s", szSearchDir, _szDataDir );
+		if( nCandidateLength > 0 && nCandidateLength < sizeof( szCandidate ) &&
+			_DataDirHasMaster( szCandidate ) && strlen( szCandidate ) < sizeof( _szDataDir ) )
+		{
+			strcpy( _szDataDir, szCandidate );
+			return true;
+		}
+
+		pszSlash = strrchr( szSearchDir, '\\' );
+		pszForwardSlash = strrchr( szSearchDir, '/' );
+		if( pszForwardSlash && ( !pszSlash || pszForwardSlash > pszSlash ) )
+			pszSlash = pszForwardSlash;
+		if( !pszSlash || pszSlash <= szSearchDir + 2 )
+			break;
+		*pszSlash = 0;
+	}
+	return false;
+}
+
 static bool _ParseArgs( int argc, char **argv )
 {
 	strcpy( _szDataDir, _DEFAULT_DATA_DIR );
@@ -574,7 +627,9 @@ static bool _ParseArgs( int argc, char **argv )
 		const char *pszArg = argv[i];
 		const bool bHasValue = (i + 1 < argc);
 
-		if( !_stricmp( pszArg, "-data" ) && bHasValue )				strncpy( _szDataDir, argv[++i], MAX_PATH - 1 );
+		if( !_stricmp( pszArg, "-data" ) && bHasValue ) {
+			strncpy( _szDataDir, argv[++i], MAX_PATH - 1 );
+		}
 		else if( !_stricmp( pszArg, "-mst" ) && bHasValue )			strncpy( _szMasterName, argv[++i], MAX_PATH - 1 );
 		else if( !_stricmp( pszArg, "-log" ) && bHasValue )			strncpy( _szLogFile, argv[++i], MAX_PATH - 1 );
 		else if( !_stricmp( pszArg, "-asset-log" ) && bHasValue )		strncpy( _szAssetLogFile, argv[++i], MAX_PATH - 1 );
@@ -666,6 +721,14 @@ static bool _ParseArgs( int argc, char **argv )
 			_Log( "-coop requires -mission <registered campaign world>.\n" );
 			return false;
 		}
+	}
+	if( !_DataDirHasMaster( _szDataDir ) && !_ResolveDataDirFromExecutable() )
+	{
+		char szMessage[MAX_PATH + 256];
+		snprintf( szMessage, sizeof( szMessage ), "Could not find '%s' in the game data folder:\n\n%s\n\n"
+			"Use -data to point to the folder containing the master file.", _szMasterName, _szDataDir );
+		MessageBoxA( NULL, szMessage, "Metal Arms PC Port: Game Data Not Found", MB_OK | MB_ICONERROR );
+		return false;
 	}
 	_szDiscordAppId[sizeof(_szDiscordAppId) - 1] = 0;
 	_szDiscordLargeImage[sizeof(_szDiscordLargeImage) - 1] = 0;

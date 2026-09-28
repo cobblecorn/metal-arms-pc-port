@@ -24,6 +24,10 @@ engine's asserts.
 Retail data is **not** in this repo. Put the extracted disc files in `gamedata/files`
 (the `.mst` master file and the `Movies` folder), or point at them:
 
+You can double-click `build/Release/ma_port.exe` or run it with no arguments. The launcher resolves
+the default `gamedata/files` relative to its executable when the working directory is elsewhere. If
+the data is stored separately, pass its directory with `-data`.
+
     ma_port -data <dir> [-mst <file>] [-res WxH] [-fullscreen] [-level <world> | -mission <world> [-coop 2-4] | -world-only <world>] [-log <file>] [-asset-log <file>] [-shots <dir>] [-shot-every <frames>] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-no-audio] [-debug-info] [-save-dir <dir>] [-console] [-port-diag] [-discord-app-id <id>|off] [-test-keys <s:vk,...>]
 
 `ma_port.exe` is a windowed app with no console window; `-console` opens one showing the log (engine
