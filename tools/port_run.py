@@ -127,6 +127,12 @@ def summarize(name):
 
     data_errors = [line for line in lines if re.search(
         r"could not read|trouble parsing|problem while|mismatch|error in definition|has only|not of the type", line, re.I)]
+    for index, line in enumerate(lines):
+        if "Error interpreting Max User Properties" not in line:
+            continue
+        detail = next((follow.strip() for follow in lines[index + 1:index + 9]
+                       if re.match(r"(?:Unknown command|Invalid |Error (?!interpreting))", follow, re.I)), "")
+        data_errors.append("%s %s" % (line, detail) if detail else line)
     print("\n-- data/schema warnings: %d" % len(data_errors))
     for line in data_errors[:12]:
         print("  " + line)

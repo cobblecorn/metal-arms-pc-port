@@ -4929,24 +4929,24 @@ static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 
 #if defined(MA_PC_INPUT)
 	if( _bPcCoopMenu ) {
-		ftext_Printf( 0.18f, 0.22f * 0.75f, L"~f1~C99999999~w0~aL~s1.50Co-op Campaign" );
-		ftext_Printf( 0.18f, 0.31f * 0.75f, L"~f1~C99999999~w0~aL~s0.80Experimental local play - 2 to 4 players" );
-		ftext_Printf( 0.18f, 0.36f * 0.75f, L"~f1~C99999999~w0~aL~s0.60%ls", _pcCoopLayout == PCINPUT_LAYOUT_SHARED ?
+		ftext_Printf( 0.18f, 0.20f * 0.75f, L"~f1~C45759599~w0~aL~s1.50Co-op Campaign" );
+		ftext_Printf( 0.18f, 0.28f * 0.75f, L"~f1~C99999999~w0~aL~s0.80Experimental local play - 2 to 4 players" );
+		ftext_Printf( 0.18f, 0.34f * 0.75f, L"~f1~C99999999~w0~aL~s0.60%ls", _pcCoopLayout == PCINPUT_LAYOUT_SHARED ?
 			L"Controllers 1-4 control players 1-4. Keyboard is optional." :
 			L"Keyboard / mouse: player 1. Controllers: players 2-4." );
-		ftext_Printf( 0.18f, 0.41f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Starts a new campaign. Progress is not saved." );
-		ftext_Printf( 0.18f, 0.46f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Some missions and cutscenes may not work correctly." );
+		ftext_Printf( 0.18f, 0.39f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Starts a new campaign. Progress is not saved." );
+		ftext_Printf( 0.18f, 0.44f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Some missions and cutscenes may not work correctly." );
 		for( s32 nItem = 0; nItem < _PC_COOP_COUNT; ++nItem ) {
 			wchar wszLabel[96];
 			if( nItem == _PC_COOP_PLAYERS ) _snwprintf( wszLabel, 96, L"Players: %u", (u32)_nPcCoopPlayers );
 			else if( nItem == _PC_COOP_INPUT ) _snwprintf( wszLabel, 96, L"Controls: %ls",
 				_pcCoopLayout == PCINPUT_LAYOUT_SHARED ? L"Controllers" : L"Keyboard + controllers" );
 			else _snwprintf( wszLabel, 96, L"%ls", nItem == _PC_COOP_START ? L"Start Local Co-op" : L"Back" );
-			ftext_Printf( 0.18f, (0.53f + nItem * 0.065f) * 0.75f, L"~f1~C99999999~w0~aL~s0.85~C%ls%ls",
+			ftext_Printf( 0.18f, (0.50f + nItem * 0.06f) * 0.75f, L"~f1~C99999999~w0~aL~s0.85~C%ls%ls",
 				nItem == _MenuState.nCurItemIndex ? L"40994099" : L"85858599", wszLabel );
 			_MouseAddItem( nItem );
 		}
-		ftext_Printf( 0.18f, 0.79f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Network play: planned, not available" );
+		ftext_Printf( 0.18f, 0.76f * 0.75f, L"~f1~C60809099~w0~aL~s0.53Network play: planned, not available" );
 		return;
 	}
 #endif
@@ -5008,7 +5008,27 @@ static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 static void _MainMenu_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
 #if defined(MA_PC_INPUT)
 	// Text is flushed later; dim only the animated scene behind this page.
-	if( _bPcCoopMenu ) game_DrawSolidFullScreenOverlay( 0.30f, 0.0f );
+	if( _bPcCoopMenu ) {
+		game_DrawSolidFullScreenOverlay( 0.30f, 0.0f );
+		// Frame the generated co-op controls like the retail blue menu panels.
+		const f32 fLeft = -0.72f * fHalfXRes, fRight = 0.72f * fHalfXRes;
+		const f32 fTop = 0.66f * fHalfYRes, fBottom = -0.60f * fHalfYRes;
+		CFVec3 a( fLeft, fTop, 1.0f ), b( fRight, fTop, 1.0f );
+		CFVec3 c( fRight, fBottom, 1.0f ), d( fLeft, fBottom, 1.0f );
+		const CFColorRGBA Body( 0.015f, 0.035f, 0.075f, 0.88f );
+		const CFColorRGBA Edge( 0.20f, 0.44f, 0.84f, 0.95f );
+		fdraw_Depth_EnableWriting( FALSE );
+		fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
+		fdraw_SetTexture( NULL );
+		fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
+		fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+		const FDrawCullDir_e nOldCull = fdraw_GetCullDir();
+		fdraw_SetCullDir( FDRAW_CULLDIR_NONE );
+		fdraw_SolidQuad( &a, &b, &c, &d, &Body );
+		fdraw_SolidLine( &a, &b, &Edge ); fdraw_SolidLine( &b, &c, &Edge );
+		fdraw_SolidLine( &c, &d, &Edge ); fdraw_SolidLine( &d, &a, &Edge );
+		fdraw_SetCullDir( nOldCull );
+	}
 #endif
 }
 

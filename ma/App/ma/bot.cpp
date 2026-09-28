@@ -475,6 +475,13 @@ BOOL CBotBuilder::InterpretTable( void ) {
 
 		return TRUE;
 
+#if FANG_WINGC
+	} else if( !fclib_stricmp( CEntityParser::m_pszTableName, "DisableVelocityImpulses" ) ) {
+		CEntityParser::Interpret_Flag( &m_uFlags, BOT_BUILDER_FLAG_DISABLE_VELOCITY_IMPULSES );
+
+		return TRUE;
+#endif
+
 	} else if( !fclib_stricmp( CEntityParser::m_pszTableName, "CanBeRecruited" ) ) {
 		CEntityParser::Interpret_Flag( &m_uFlags, BOT_BUILDER_INST_CANNOT_BE_RECRUITED, TRUE );
 
@@ -2003,6 +2010,12 @@ BOOL CBot::ClassHierarchyBuilt( void ) {
 		FMATH_SETBITMASK( m_nBotFlags2, BOTFLAG2_SHOWS_UP_ON_RADAR );
 	}
 
+#if FANG_WINGC
+	if( pBuilder->m_uFlags & CBotBuilder::BOT_BUILDER_FLAG_DISABLE_VELOCITY_IMPULSES ) {
+		FMATH_SETBITMASK( m_nBotFlags2, BOTFLAG2_DISABLE_VELOCITY_IMPULSES );
+	}
+#endif
+
 	m_eIdleState = IDLESTATE_NO_IDLES_TO_PLAY;
 	if( m_nCountIdles > 0 ) {
 		m_eIdleState = IDLESTATE_NONE;
@@ -2955,6 +2968,9 @@ void CBot::ApplyVelocityImpulse_WS( const CFVec3A &rVelocityImpulseVec_WS ) {
 
 BOOL CBot::HandleVelocityImpulses( void ) {
 	if( (m_nBotFlags & BOTFLAG_VELOCITY_IMPULSE_VALID) &&
+#if FANG_WINGC
+		!(m_nBotFlags2 & BOTFLAG2_DISABLE_VELOCITY_IMPULSES) &&
+#endif
 		!(m_nBotFlags & BOTFLAG_GLUED_TO_PARENT) &&
 		!IsImmobileOrPending() ) {
 		m_Velocity_WS.Add( m_ImpulseVelocity_WS );

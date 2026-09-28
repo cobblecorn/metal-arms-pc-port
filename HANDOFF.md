@@ -111,6 +111,30 @@ boxes), `MA_PORT_TEXPROBE=1` (dump texture instances), `MA_PORT_INPUT_LAYOUT`,
 | Discord | Connects under the port's application; Discord accepts the activity. No image asset. |
 | Co-op | Experimental PC menu entry (2-4 players, selectable controls); command line (`-mission W -coop N`): start points beside player 1, respawn beside a standing partner, scripts use player 1. Two-player menu launch verified; physical multi-pad play pending; no progress saving. See `docs/coop-audit.md`. |
 
+### Co-op page styling and retail bot impulse property (2026-09-27)
+
+- The PC Co-op page now has a dark blue framed panel over the animated front end.
+  Its rows are spaced above the standard Accept/Back prompts, with a separate
+  network-status line. `build/shots/pc_coop_page_verified/latest.png` and
+  `build/shots/pc_coop_page_wide/latest.png` visually confirm 1280x960 and
+  1920x1080 layouts. The page is still an experimental entry; no
+  networking or campaign progress saving was added.
+- The retail `DisableVelocityImpulses=true` bot property is parsed into a
+  checkpointed bot flag. `CBot::HandleVelocityImpulses` clears pending impulses
+  for flagged bots while leaving normal movement intact. Retail uses the
+  property on six `botblink` miners in `WEMCcity_01`, `WEDMmines01`, and
+  `WEWCcomm_02`. The exact retail runtime branch is unverified; a flagged
+  miner's cable-release impulse is also suppressed by this implementation.
+- Debug and Release build. Parallel isolated muted Debug mission runs loaded all
+  three levels with no crash, assert, audio or script error. None logged
+  `disablevelocityimpulses` as unknown. The front-end capture showed no overlap
+  or literal formatting escapes after correction. Automated navigation proved
+  the page rendered, not physical pointer/controller use.
+- The run logs still have other retail property warnings: malformed `ColorRed`
+  in `WEMCcity_01`; `setdamageable`, `noliftblockchecking`, and short `goodie`
+  tables in `WEDMmines01`; `useby` in `WEWCcomm_02`. `tools/port_run.py` now counts
+  "Error interpreting Max User Properties" blocks and prints their reason.
+
 ### Retail city goodie, grunt shields, and draw buffer (2026-09-27)
 
 - The retail `megawasher` goodie now has a distinct PC collectable ID after the
@@ -597,8 +621,9 @@ No MSVC, no retail data, no game runs or logs. What works:
    targeting, minigames and bosses, cutscene cameras for players 2-4.
 5. One ambient in `L02_rslide3` stays voiceless (its listener state is EXITED while in range); see the
    "voiceless" lines in `PORT-MIX`.
-6. The remaining retail-data warnings (see "Mission sweep"), including
-   `disablevelocityimpulses` on two `WEMCcity_01` entities.
+6. The remaining retail-data warnings (see "Mission sweep"), including the
+   `ColorRed`, `setdamageable`, short `goodie`, `noliftblockchecking`, and `useby` world entries
+   observed in the three impulse-property runs above.
 7. The ~1 s pause between the front end's logo movies (opening the next movie on the game thread).
 8. Older items: the save flow from the menus; the laser's charged burst and other weapons' particle and
    sound fields; `Difficulty.csv` extra fields; failed-load teardown beyond `CLOUD_SESSION_LOG.md` 5/10;

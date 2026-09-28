@@ -555,6 +555,9 @@ protected:
 		BOTFLAG2_CONSOLE_POSSESSED			= 0x00002000,	// TRUE if this bot is being possessed via a console
 		BOTFLAG2_NO_POSSESSION_EXIT			= 0x00004000,	// TRUE if player cannot exit this bot after possessing it
 		BOTFLAG2_BABBLE						= 0x00008000,	// TRUE if the bot should babble (distorted voice) all the time
+#if FANG_WINGC
+		BOTFLAG2_DISABLE_VELOCITY_IMPULSES = 0x00010000, // retail botblink property
+#endif
 
 		BOTFLAG2_NONE						= 0x00000000
 	};
@@ -2505,6 +2508,9 @@ public:
 		BOT_BUILDER_CLASS_CAN_BE_RECRUITED				= 0x00000004,	// This class of bots can be recruited
 		BOT_BUILDER_DPORT_NOT_NEEDED_FOR_RECRUITMENT	= 0x00000008,	// If TRUE, this bot class does not require a data port to be recruited
 		BOT_BUILDER_SHOWS_UP_ON_RADAR					= 0x00000010,	// TRUE if this bot is to show up on Glitch's radar
+#if FANG_WINGC
+		BOT_BUILDER_FLAG_DISABLE_VELOCITY_IMPULSES = 0x00000020,
+#endif
 
 		BOT_BUILDER_FLAG_NONE							= 0x00000000
 	};
