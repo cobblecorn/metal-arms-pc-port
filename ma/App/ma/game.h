@@ -353,7 +353,8 @@ extern cwchar *game_GetPromptPhrase( u32 nPhrase, u32 nPort );
 // a localized loading screen is presented to the user at this time so it's not a big deal...
 extern BOOL game_InitLocalizedResources( void );
 
-extern BOOL game_LoadLevel( cchar *pszLevelTitle, BOOL bShowLoadingScreen=TRUE, const GameInitInfo_t *pGameInit=NULL );
+// pwszLoadHeading (PC port): loading-screen heading used when pGameInit supplies none.
+extern BOOL game_LoadLevel( cchar *pszLevelTitle, BOOL bShowLoadingScreen=TRUE, const GameInitInfo_t *pGameInit=NULL, cwchar *pwszLoadHeading=NULL );
 extern BOOL game_LoadGenericDebugLevel( cchar *pszWorldResName );
 extern void game_UnloadLevel( void );
 extern GameTypes_e game_GetCurrentType( void );

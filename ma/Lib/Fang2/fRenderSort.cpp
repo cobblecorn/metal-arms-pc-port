@@ -1178,6 +1178,13 @@ BOOL frs_AddMeshInst( CFMeshInst *pMeshInst, FViewportPlanesMask_t nPlanesMask, 
 			nLODIndex = FMesh_nForceLOD;
 		}
 	#endif
+	#if FANG_PLATFORM_WIN
+		// Keep the highest-detail mesh on PC; the console distance LODs become visibly pointy.
+		if ( !FMesh_bRenderShadows )
+		{
+			nLODIndex = 0;
+		}
+	#endif
 		pMeshInst->m_nCurrentLOD = nLODIndex;
 	}
 	nLODMask = 1 << nLODIndex;

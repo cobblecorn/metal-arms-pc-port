@@ -38,6 +38,10 @@
 #include "game.h"
 #include "vehicle.h"
 #include "MultiplayerMgr.h"
+#include "collectable.h"
+#if FANG_WINGC
+#include "botpart.h"
+#endif
 
 #if FANG_PLATFORM_WIN && !FANG_PRODUCTION_BUILD
 	#include "gameloop.h"
@@ -723,6 +727,15 @@ BOOL CPlayer::IsReadyToContinue( void ) {
 }
 
 void CPlayer::DrawText( void ) {
+#if FANG_WINGC
+	// Local co-op: this player is holding a tripwire event until the others arrive.
+	if( !IsReadyToContinue() && m_pEntityCurrent && CEntity::CoopTripwireWaiting( m_pEntityCurrent ) ) {
+		FTextArea_t *pWaitArea = ftext_GetAttributes( m_hTextBoxRestart );
+		pWaitArea->oColorForeground.Set( 0.8f, 0.8f, 0.8f, 1.0f );
+		ftext_PrintString( m_hTextBoxRestart, L"Waiting for your partners" );
+		return;
+	}
+#endif
 	// If this player is dead and waiting to resurrect, draw "Press A to Continue"
 	if( IsReadyToContinue() ) {
 		f32 fUnitVal = fmath_PositiveSin( FMATH_2PI * CHud2::GetAmmoAlertUnitCountdownTimer() ) * 0.6f + 0.199f;
@@ -730,6 +743,12 @@ void CPlayer::DrawText( void ) {
 		FTextArea_t *pTextArea = ftext_GetAttributes( m_hTextBoxRestart );
 		pTextArea->oColorForeground.Set( fUnitVal, fUnitVal, 0.8f, 1.0f );
 
+#if FANG_WINGC
+		if( CoopWaitingForCheckpoint() ) {
+			ftext_PrintString( m_hTextBoxRestart, L"Waiting for a checkpoint" );
+			return;
+		}
+#endif
 		ftext_PrintString( m_hTextBoxRestart, game_GetPromptPhrase( GAMEPHRASE_PRESS_A_TO_CONTINUE, m_nControllerIndex ) );
 	}
 }
@@ -786,6 +805,159 @@ static BOOL _CoopRespawnNearPartner( CPlayer *pPlayer ) {
 	}
 	return FALSE;
 }
+
+static BOOL _CoopActive( void ) {
+	return MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount >= 2;
+}
+
+// A partner of pPlayer is up: alive and in the world.
+static BOOL _CoopPartnerStanding( const CPlayer *pPlayer ) {
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
+		const CPlayer *pPartner = &Player_aPlayer[i];
+		if( pPartner == pPlayer || !pPartner->m_pEntityCurrent || !(pPartner->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) ) {
+			continue;
+		}
+		CBot *pPartnerBot = (CBot *)pPartner->m_pEntityCurrent;
+		if( !pPartnerBot->IsDeadOrDying() && pPartnerBot->IsInWorld() ) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+BOOL CPlayer::CoopWaitingForCheckpoint( void ) {
+	return _CoopActive() && IsReadyToContinue() && _CoopPartnerStanding( this );
+}
+
+// Nobody is standing and pPlayer asked to continue: resurrect the other downed players too, so the
+// checkpoint restore brings the whole team back (retail resurrects only the player who pressed).
+static void _CoopResurrectOthers( CPlayer *pPlayer ) {
+	if( !_CoopActive() ) {
+		return;
+	}
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
+		CPlayer *pOther = &Player_aPlayer[i];
+		if( pOther == pPlayer || !pOther->m_pEntityCurrent || !(pOther->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) ||
+			!((CBot *)pOther->m_pEntityCurrent)->IsDead() ) {
+			continue;
+		}
+		pOther->Resurrect();
+		if( pOther->m_pEntityCurrent->AIBrain() ) {
+			aibrainman_ConfigurePlayerBotBrain( pOther->m_pEntityCurrent->AIBrain(), pOther->m_nPlayerIndex );
+		}
+	}
+}
+
+void CPlayer::CoopReviveForCheckpoint( void ) {
+	if( !_CoopActive() ) {
+		return;
+	}
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
+		CPlayer *pPlayer = &Player_aPlayer[i];
+		if( !pPlayer->m_pEntityCurrent || !pPlayer->CoopWaitingForCheckpoint() ) {
+			continue;
+		}
+		if( pPlayer->m_pEntityCurrent != pPlayer->m_pEntityOrig ) {
+			// Died possessing a bot: going back to their own bot is the retail recovery.
+			if( (pPlayer->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) && ((CBot *)pPlayer->m_pEntityCurrent)->IsPossessionExitable() ) {
+				((CBot *)pPlayer->m_pEntityCurrent)->ForceQuickDataPortUnPlug();
+			}
+			continue;
+		}
+		if( !(pPlayer->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) ) {
+			continue;
+		}
+		CBot *pBot = (CBot *)pPlayer->m_pEntityCurrent;
+		pPlayer->Resurrect();
+		if( pBot->AIBrain() ) {
+			aibrainman_ConfigurePlayerBotBrain( pBot->AIBrain(), pPlayer->m_nPlayerIndex );
+		}
+		pPlayer->m_pEntityOrig->EnableAutoWork( FALSE );
+		pPlayer->m_pEntityOrig->SetControls( &pPlayer->m_HumanControl );
+		// The death blew the bot apart; put every part back.
+		if( pBot->GetPartMgr() && pBot->GetPartMgr()->IsCreated() ) {
+			pBot->GetPartMgr()->ResetAllToIntact();
+		}
+		if( !pBot->IsInWorld() ) {
+			pBot->AddToWorld();
+		}
+		if( _CoopRespawnNearPartner( pPlayer ) ) {
+			DEVPRINTF( "Co-op: player %d revived at the checkpoint.\n", i + 1 );
+		} else {
+			DEVPRINTF( "Co-op: player %d revived at the checkpoint, with no partner to stand beside.\n", i + 1 );
+		}
+	}
+}
+
+// Test/play aid (PC): -start-at X,Y,Z[,YAW] moves player 1's bot to that spot once, after it has had
+// control for half a second, so a session can begin at a chosen place in a level.
+extern "C" int port_GetStartAt( float *pafXYZYaw );
+
+static void _PortStartAtWork( CPlayer *pPlayer ) {
+	static BOOL _bDone = FALSE;
+	static u32 _nControlFrames = 0;
+	if( _bDone || pPlayer->m_nPlayerIndex != 0 ) {
+		return;
+	}
+	f32 afStart[4];
+	if( !port_GetStartAt( afStart ) ) {
+		_bDone = TRUE;
+		return;
+	}
+	CEntity *pEntity = pPlayer->m_pEntityCurrent;
+	if( !pEntity || !(pEntity->TypeBits() & ENTITY_BIT_BOT) ) {
+		return;
+	}
+	CBot *pBot = (CBot *)pEntity;
+	if( !pBot->IsInWorld() || pBot->IsDeadOrDying() || ++_nControlFrames < 30 ) {
+		return;
+	}
+	const f32 fYaw = afStart[3] * (FMATH_PI / 180.0f);
+	CFMtx43A Mtx;
+	Mtx.Identity();
+	Mtx.m_vFront.Set( fmath_Sin( fYaw ), 0.0f, fmath_Cos( fYaw ) );
+	Mtx.m_vUp.Set( 0.0f, 1.0f, 0.0f );
+	Mtx.m_vRight.Cross( Mtx.m_vUp, Mtx.m_vFront );
+	Mtx.m_vPos.Set( afStart[0], afStart[1], afStart[2] );
+	pBot->Relocate_RotXlatFromUnitMtx_WS( &Mtx );
+	_bDone = TRUE;
+	DEVPRINTF( "Port: -start-at moved player 1 to (%.1f, %.1f, %.1f) facing %.0f degrees.\n",
+			   afStart[0], afStart[1], afStart[2], afStart[3] );
+}
+
+// Test aid (PC): -test-give ITEM gives player 1 that weapon or throwable (three of a throwable) once,
+// after half a second of control, and selects it. The level must use the item's pickup type.
+extern "C" const char *port_GetTestGive( void );
+
+static void _PortTestGiveWork( CPlayer *pPlayer ) {
+	static BOOL _bDone = FALSE;
+	static u32 _nControlFrames = 0;
+	if( _bDone || pPlayer->m_nPlayerIndex != 0 ) {
+		return;
+	}
+	cchar *pszItem = port_GetTestGive();
+	if( !pszItem ) {
+		_bDone = TRUE;
+		return;
+	}
+	CEntity *pEntity = pPlayer->m_pEntityCurrent;
+	if( !pEntity || !(pEntity->TypeBits() & ENTITY_BIT_BOT) || ++_nControlFrames < 30 ) {
+		return;
+	}
+	CBot *pBot = (CBot *)pEntity;
+	_bDone = TRUE;
+	if( !pBot->m_pInventory || !CCollectable::GiveWeaponToPlayer( pBot, pszItem, 3 ) ) {
+		DEVPRINTF( "Port: -test-give could not give '%s'.\n", pszItem );
+		return;
+	}
+	CItemInst *pItemInst = pBot->m_pInventory->IsWeaponInInventory( pszItem );
+	for( u32 nSide = 0; pItemInst && nSide < INV_INDEX_COUNT; ++nSide ) {
+		if( pItemInst >= &pBot->m_pInventory->m_aoWeapons[nSide][0] && pItemInst < &pBot->m_pInventory->m_aoWeapons[nSide][ItemInst_uMaxInventoryWeapons] ) {
+			pBot->m_pInventory->SetCurWeapon( nSide, pItemInst, FALSE, TRUE );
+		}
+	}
+	DEVPRINTF( "Port: -test-give gave player 1 '%s'%s.\n", pszItem, pItemInst ? " and selected it" : "" );
+}
 #endif
 
 void CPlayer::Work( void ) {
@@ -802,6 +974,10 @@ void CPlayer::Work( void ) {
 	}
 
 	if( HasEntityControl() ) {
+#if FANG_WINGC
+		_PortStartAtWork( this );
+		_PortTestGiveWork( this );
+#endif
 		// ME:  I changed this to ignore controls instead of DeadOrDying() because glitch needs to receive input while dying
 		if (!(m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) || (!((CBot*)m_pEntityCurrent)->IgnoreControls() && !MultiplayerMgr.IgnoreControls(m_nPlayerIndex)))
 		{
@@ -851,6 +1027,11 @@ void CPlayer::Work( void ) {
 		if( !MultiplayerMgr.HasQuit(m_nPlayerIndex) && IsReadyToContinue() ) {
 			m_Hud.TransmissionMsg_Stop( FALSE );
 
+#if FANG_WINGC
+			if( CoopWaitingForCheckpoint() ) {
+				// Local co-op: down until the team reaches a checkpoint (CoopReviveForCheckpoint).
+			} else
+#endif
 			if( Gamepad_aapSample[m_nControllerIndex][GAMEPAD_MAIN_JUMP]->uLatches & FPAD_LATCH_TURNED_ON_WITH_NO_REPEAT ) {
 				//bring player bot back to life
 				if (m_pEntityCurrent != m_pEntityOrig &&
@@ -874,9 +1055,8 @@ void CPlayer::Work( void ) {
 					// at a new spawn point. If it is single player, we restore
 					// the last checkpoint.
 #if FANG_WINGC
-					if( _CoopRespawnNearPartner( this ) ) {
-						// co-op with a partner standing: back beside them
-					} else
+					// Local co-op with nobody standing: the checkpoint restore brings everyone back.
+					_CoopResurrectOthers( this );
 #endif
 					if( !MultiplayerMgr.RespawnBot( (CBot*)m_pEntityCurrent ) && !gamecam_GetCameraBeingDebugged() ) {
 						if( checkpoint_Saved( 1 ) ) {

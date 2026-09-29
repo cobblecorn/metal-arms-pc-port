@@ -82,6 +82,7 @@ public:
 	GamepadMap_e nPrevGamePadMap;
 	CCamManualInfo CamInfo;
 	CFCamAnimInst *pCamAnimInst;
+	CFAudioStream *pMusicStream;
 	
 #if _SHOW_SELL_SHEET_INSTEAD
 	CFTexInst *pBackgroundTexInst;	
@@ -208,6 +209,7 @@ static BOOL _SP_Init( void ) {
 	_pScreenInfo->fTimer = 0.0f;
 	_pScreenInfo->nState = _STATE_SAVING;
 	_pScreenInfo->nLettersToPrint = 0;
+	_pScreenInfo->pMusicStream = NULL;
 	
 	// setup the controller mapping
 	_pScreenInfo->nPrevGamePadMap = gamepad_SetMapping( _nControllerIndex, GAMEPAD_MAP_MENU );
@@ -302,6 +304,14 @@ static BOOL _SP_Init( void ) {
 	floop_EnableGovernor( TRUE );
 
 	wpr_system_InitInGame();
+
+	// The retail victory world has no music entry, and unloading the level stopped its stream.
+	// Reuse the available game theme so the single-player results screen is not silent. The stream
+	// loads on the audio worker; _SP_Work starts it once it is ready, as the front end's menus do.
+	_pScreenInfo->pMusicStream = CFAudioStream::Create( "MA_Theme" );
+	if( !_pScreenInfo->pMusicStream ) {
+		DEVPRINTF( "wpr_levelcomplete::_SP_Init() : Could not create the results-screen music stream.\n" );
+	}
 	
 #if !GAMELOOP_EXTERNAL_DEMO
 	ffile_LogStop();
@@ -315,6 +325,11 @@ static void _UnloadAndExit( BOOL bLoadNextLevel ) {
 
 	if( !_pScreenInfo ) {
 		return;
+	}
+	if( _pScreenInfo->pMusicStream ) {
+		_pScreenInfo->pMusicStream->Stop( FALSE );
+		_pScreenInfo->pMusicStream->Destroy();
+		_pScreenInfo->pMusicStream = NULL;
 	}
 	wpr_system_End();
 
@@ -360,6 +375,12 @@ static u32 _HowManyLettersShouldAppear( u32 nStringLen, f32 &rfTimer, f32 fChars
 
 static BOOL _SP_Work( void ) {
 	u32 nStringLen;
+
+	// Start (and loop) the results music once its stream has loaded, at the menus' music level.
+	if( _pScreenInfo->pMusicStream && _pScreenInfo->pMusicStream->GetState() == FAUDIO_STREAM_STATE_STOPPED ) {
+		_pScreenInfo->pMusicStream->SetVolume( 0.25f );
+		_pScreenInfo->pMusicStream->Play( 0 );
+	}
 
 	if( _pScreenInfo->nState >= _STATE_FADE_IN ) {
 		gamepad_Sample();

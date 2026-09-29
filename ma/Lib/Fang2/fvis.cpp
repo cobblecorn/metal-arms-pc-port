@@ -2954,7 +2954,6 @@ static void _DrawViewportExtents( CFVec3A *pCamPos, CFVec3A *paVerts, u32 nPoint
 
 void fvis_DrawLiquidVolumes()
 {
-#if !FANG_PLATFORM_WIN
 	BOOL bFogEnable = fsh_Fog_IsEnabled();
 	fsh_Fog_Enable(FALSE);
 	
@@ -2969,7 +2968,6 @@ void fvis_DrawLiquidVolumes()
 	}
 
 	fsh_Fog_Enable(bFogEnable);
-#endif
 }
 
 

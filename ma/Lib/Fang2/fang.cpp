@@ -90,6 +90,10 @@ cchar* fang_pszDevPrintLogFileName = NULL;		 //setting this to a FILE* on XB wil
 	static void _PrintMemLeakInfo( void );
 #endif
 
+#if FANG_PLATFORM_WIN
+	extern "C" void port_LogFangAssertionStack( cchar *pszFile, int nLine );
+#endif
+
 static void *_Malloc( u32 nBytes, u32 nByteAlignment );
 
 
@@ -229,9 +233,11 @@ void fang_Init( void ) {
 
 #if FANG_WINGC
 	// The consoles' budget ran out in busy fights (WEWHchase01: "No free vertices and couldn't reclaim
-	// any", so bullet marks stopped appearing). Twice as many: they are drawn through fdraw's dynamic buffer.
-	Fang_ConfigDefs.nMaxDecals = 400;
-	Fang_ConfigDefs.nMaxDecalVertices = 6000;
+	// any", so bullet marks stopped appearing), and twice it still ran out in wedmmines02. Each decal is
+	// its own small fdraw list, so the pool is not bound by fdraw's buffer: five times the console budget
+	// (about 0.5 MB of vertices).
+	Fang_ConfigDefs.nMaxDecals = 1000;
+	Fang_ConfigDefs.nMaxDecalVertices = 16000;
 #else
 	Fang_ConfigDefs.nMaxDecals = 200;
 	Fang_ConfigDefs.nMaxDecalVertices = 3000;
@@ -757,6 +763,7 @@ void fang_Assert( cchar *pszFile, int nLine, cchar *pszExpr ) {
 	static char szMsgString[__MAX_MSG_LEN+1];
 	int nReturnValue;
 	DEVPRINTF( "*** FANG ASSERTION FAILURE *** File: %s Line: %i Expression: %s\n", pszFile, nLine, pszExpr );
+	port_LogFangAssertionStack( pszFile, nLine );
 
 	_snprintf( szMsgString, __MAX_MSG_LEN, "*** FANG ASSERTION FAILURE ***\n\nFile: %s\nLine: %i\nExpression: %s\n\nClick Ok to continue or Cancel to abort.", pszFile, nLine, pszExpr );
 

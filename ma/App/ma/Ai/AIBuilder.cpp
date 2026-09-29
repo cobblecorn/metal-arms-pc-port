@@ -842,7 +842,32 @@ void CAIBuilder::SetDefaults( CEntityBuilder* pBuilder )
 	else if ( pBuilder->m_nEC_LeafTypeBit & ENTITY_BIT_BOTMOZER)
 	{
 		m_uRace = AIRACE_DROID;
-	}	
+	}
+#if FANG_WINGC
+	else if ( (pBuilder->m_nEC_LeafTypeBit & ENTITY_BIT_BOTSNIPER) && (pBuilder->m_nEC_TypeBits & ENTITY_BIT_BOT) )
+	{	// PC port: the recovered Mil Sniper (cut from retail; no defaults survived). Its rifle is built into
+		// CBotSniper (one tracer per shot, then its own reload time), so it fires single aimed shots, stops to
+		// shoot, sees players from far away and never takes vehicles or grenades.
+		m_uTimedBursts = FALSE;
+		m_fBurstDelay = 1.5f;
+		m_fBurstDelayBonus = 1.5f;
+		m_fFireDelay = 0.0f;
+		m_fFireDelayBonus = 0.0f;
+		m_uNumFiresPerBurst = 1;
+		m_uNumFiresPerBurstBonus = 0;
+		m_fAccuracy = 0.6f;
+		m_uPreferStopAndShoot = TRUE;
+		m_uMechUseageCtrl = CAIBrain::MECH_USEAGE_CTRL_NEVER;
+		m_uMechUseageRadius = 0;
+		m_uNumGrenadesAtStart = 0;
+		m_uGrenadeOdds = 0;
+		m_fEyeScanDistUnalert = 80;
+		m_fBonusEyeScanDistForPlayersUnalert = 250.0f;
+		m_fEyeScanDistAlert = 80;
+		m_fBonusEyeScanDistForPlayersAlert = 350.0f;
+		m_uNumWeapons = 1;
+	}
+#endif
 	
 
 

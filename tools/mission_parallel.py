@@ -8,18 +8,21 @@ usage: python tools/mission_parallel.py [options] WORLD [WORLD ...]
   --run-name NAME          log prefix (default: current timestamp)
   --shots FRAMES           capture a BMP every FRAMES frames
   --stall-ms MS            capture game-thread stacks above this frame time
-  --audio                  play audio in every instance (default: -mute, audio runs but is silent)
+  --audio                  explicit; audio is enabled by default in every instance
+  --mute                   run silently in every instance (Bink audio is disabled too)
   --no-audio               skip audio setup entirely (faster loads; sound errors are then meaningless)
   --test-keys KEYS         passed to every instance, e.g. "10:0x20,14:0x20,18:0x20,24:0x20" (Space skips
                            intro movies and only jumps in gameplay)
+  --game-args "ARGS"       extra game arguments passed to every instance (e.g. "-snipers-every 4")
   --quiet                  skip the per-mission summaries (use tools/log_errors.py on the run instead)
 
-Every instance has separate engine, asset, screenshot, and save paths. Audio and Discord are off by
-default. It terminates only the exact game processes it starts.
+Every instance has separate engine, asset, screenshot, and save paths. Audio is on and Discord is off
+by default. It terminates only the exact game processes it starts.
 """
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -43,9 +46,12 @@ def main():
     parser.add_argument("--run-name")
     parser.add_argument("--shots", type=int)
     parser.add_argument("--stall-ms", type=int)
-    parser.add_argument("--audio", action="store_true", help="enable audio in every launched instance")
-    parser.add_argument("--no-audio", action="store_true")
+    audio_group = parser.add_mutually_exclusive_group()
+    audio_group.add_argument("--audio", action="store_true", help="enable audio (the default)")
+    audio_group.add_argument("--mute", action="store_true", help="run silently in every instance")
+    audio_group.add_argument("--no-audio", action="store_true", help="skip audio setup")
     parser.add_argument("--test-keys")
+    parser.add_argument("--game-args", default="", help="extra game arguments for every instance, e.g. \"-snipers-every 4\"")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("missions", nargs="+")
     args = parser.parse_args()
@@ -78,12 +84,14 @@ def main():
                    "-instance-label", log_name]
         if args.no_audio:
             command.append("-no-audio")
-        elif not args.audio:
+        elif args.mute:
             command.append("-mute")
         if args.coop:
             command += ["-coop", str(args.coop)]
         if args.test_keys:
             command += ["-test-keys", args.test_keys]
+        if args.game_args:
+            command += shlex.split(args.game_args)
         if args.shots:
             os.makedirs(shot_dir, exist_ok=True)
             command += ["-shots", os.path.join("build", "shots", log_name), "-shot-every", str(args.shots)]
@@ -92,9 +100,9 @@ def main():
     pending = list(jobs)
     active = {}
     completed = []
+    audio_mode = "no audio" if args.no_audio else ("muted" if args.mute else "audio enabled")
     print("Run %s: %d mission(s), up to %d concurrent, %.1f s each (%s, %s)" %
-          (run_name, len(jobs), args.jobs, args.seconds, args.config,
-           "audio enabled" if args.audio else "muted"))
+          (run_name, len(jobs), args.jobs, args.seconds, args.config, audio_mode))
     try:
         while pending or active:
             while pending and len(active) < args.jobs:

@@ -804,15 +804,16 @@ BOOL _BltWinFrame( void ) {
 		return FALSE;
 	}
 #if FANG_WINGC
-	if( ( BackBufferSurfaceDesc.Format != D3DFMT_X8R8G8B8 && BackBufferSurfaceDesc.Format != D3DFMT_A8R8G8B8 ) ||
-		BackBufferSurfaceDesc.Width < _hBink->Width || BackBufferSurfaceDesc.Height < _hBink->Height ) {
-		DEVPRINTF( "[ FMOVIE2 ] Error : Back buffer is not a 32-bit surface large enough for the movie.\n" );
+	if( BackBufferSurfaceDesc.Format != D3DFMT_X8R8G8B8 && BackBufferSurfaceDesc.Format != D3DFMT_A8R8G8B8 ) {
+		DEVPRINTF( "[ FMOVIE2 ] Error : Back buffer is not a 32-bit surface.\n" );
 		pDX8BackBuffer->Release();
 		return FALSE;
 	}
 
 	// Decode into a movie-sized surface and stretch it over the largest 4:3 area of the back
-	// buffer: GameCube movies are 512x448 frames meant for a 4:3 television. On any failure,
+	// buffer: GameCube movies are 512x448 frames meant for a 4:3 television. Smaller movies (the
+	// 496x272 and 512x272 loading screens) sat centered in that frame, so scale a 512x448 canvas
+	// (grown to fit larger, e.g. upscaled, movies) and place the movie in it. On any failure,
 	// fall through to the original unscaled, centered copy.
 	IDirect3DDevice9 *pDev9 = FDX8_pDev->GetD3D9Device();
 	if( !_pMovieSurface && FAILED( pDev9->CreateOffscreenPlainSurface( _hBink->Width, _hBink->Height, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &_pMovieSurface, NULL ) ) ) {
@@ -829,15 +830,24 @@ BOOL _BltWinFrame( void ) {
 		} else {
 			uH = uW * 3 / 4;
 		}
+		f32 fCanvasScale = FMATH_MAX( (f32)_hBink->Width / 512.0f, (f32)_hBink->Height / 448.0f );
+		fCanvasScale = FMATH_MAX( fCanvasScale, 1.0f );
+		u32 uMovieW = (u32)( (f32)uW * (f32)_hBink->Width / ( 512.0f * fCanvasScale ) + 0.5f );
+		u32 uMovieH = (u32)( (f32)uH * (f32)_hBink->Height / ( 448.0f * fCanvasScale ) + 0.5f );
 		RECT DestRect;
-		DestRect.left = (LONG)( BackBufferSurfaceDesc.Width - uW ) / 2;
-		DestRect.top = (LONG)( BackBufferSurfaceDesc.Height - uH ) / 2;
-		DestRect.right = DestRect.left + (LONG)uW;
-		DestRect.bottom = DestRect.top + (LONG)uH;
+		DestRect.left = (LONG)( BackBufferSurfaceDesc.Width - uMovieW ) / 2;
+		DestRect.top = (LONG)( BackBufferSurfaceDesc.Height - uMovieH ) / 2;
+		DestRect.right = DestRect.left + (LONG)uMovieW;
+		DestRect.bottom = DestRect.top + (LONG)uMovieH;
 		if( SUCCEEDED( pDev9->StretchRect( _pMovieSurface, NULL, pDX8BackBuffer, &DestRect, D3DTEXF_LINEAR ) ) ) {
 			pDX8BackBuffer->Release();
 			return TRUE;
 		}
+	}
+	if( BackBufferSurfaceDesc.Width < _hBink->Width || BackBufferSurfaceDesc.Height < _hBink->Height ) {
+		DEVPRINTF( "[ FMOVIE2 ] Error : Back buffer is too small for an unscaled copy of the movie.\n" );
+		pDX8BackBuffer->Release();
+		return FALSE;
 	}
 #endif
 

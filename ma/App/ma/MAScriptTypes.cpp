@@ -44,6 +44,7 @@
 #include "FScriptSystem.h"
 #include "fverlet.h"
 #include "game.h"
+#include "gameloop.h"
 #include "gamecam.h"
 #include "gamepad.h"
 #include "gamesave.h"
@@ -1666,7 +1667,14 @@ void CMAST_BotWrapper::Work()
    //stuck this here since it is the only place I could find that was script related and got called every frame and wasn't in fang.
 #if !FANG_PRODUCTION_BUILD
 	u8 uControllerId = Gamepad_nDebugPortIndex;
+	#if FANG_WINGC
+	// The PC's debug port is player 1's own controls (port 0), where secondary fire is the right mouse
+	// button: only toggle the script monitors when the debug overlays were asked for (-debug-info).
+	if (Gameloop_bDrawDebugInfo &&
+		(CPlayer::m_nPlayerCount == 1) && (Gamepad_aapSample[uControllerId][GAMEPAD_MAIN_FIRE_SECONDARY]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK))
+	#else
 	if ((CPlayer::m_nPlayerCount == 1) && (Gamepad_aapSample[uControllerId][GAMEPAD_MAIN_FIRE_SECONDARY]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK))
+	#endif
 	{
 		CFScriptSystem::SetMonitorsOn(1-CFScriptSystem::GetMonitorsOn());
 	}

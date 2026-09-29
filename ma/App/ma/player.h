@@ -230,6 +230,13 @@ public:
 
 	// Bring this bot back to life in preparation for respawn or checkpoint restore
 	void Resurrect( void );
+
+#if FANG_WINGC
+	// Local co-op: a player who goes down stays down while a partner stands; the next checkpoint
+	// brings them back beside a partner (called just before the checkpoint is saved).
+	static void CoopReviveForCheckpoint( void );
+	BOOL CoopWaitingForCheckpoint( void );
+#endif
 	
 	// Call just before/after rendering this player's main view
 	void PreRender(void);

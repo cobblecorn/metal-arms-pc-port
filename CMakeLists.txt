@@ -95,6 +95,11 @@ set(MA_GAME_SOURCES ${MA_SOURCES})
 # ma/App/ma/win is the MFC launcher/tools shell; it is replaced rather than ported.
 list(FILTER MA_GAME_SOURCES EXCLUDE REGEX "^ma/App/ma/win/")
 add_library(ma_game STATIC ${MA_GAME_SOURCES})
+# These source-backed GameCube cut actors were omitted from the generated legacy list.
+target_sources(ma_game PRIVATE
+    ma/App/ma/botsniper.cpp
+    ma/App/ma/botsniper_data.cpp
+    ma/App/ma/grapple.cpp)
 target_compile_definitions(ma_game PRIVATE MA_PC_INPUT)
 ma_common_settings(ma_game)
 target_include_directories(ma_game PRIVATE ${MA_ROOT}/App/ma ${MA_ROOT}/App/ma/win)

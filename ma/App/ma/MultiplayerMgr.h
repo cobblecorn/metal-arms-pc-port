@@ -373,6 +373,12 @@ public:
 
 	// Indicate whether this game is a single-player level or a multi-player level
 	FINLINE BOOL	IsSinglePlayer( void ) const {return m_bIsSinglePlayer;}
+#if FANG_WINGC
+	// PC local co-op: campaign rules with more than one player. Known before the level loads (the
+	// world's bots are built before CPlayer::m_nPlayerCount is set).
+	FINLINE BOOL	IsLocalCoop( void ) const {return m_bIsSinglePlayer && m_bLocalCoop;}
+	BOOL							m_bLocalCoop;
+#endif
 	FINLINE BOOL	IsMultiplayer( void ) const {return !m_bIsSinglePlayer;}
 	FINLINE BOOL	IsTeamPlay( void ) const { return m_bIsTeamGame; }
 

@@ -112,6 +112,15 @@ private:
 
 	CEProj *m_pProjToThrow;							// The projectile we're ready to throw (NULL=none)
 
+#if FANG_WINGC
+	// PC port: the cut Nuke Grenade is this Coring Charge with the unused gp_snuke model and a far
+	// bigger blast (a central heavy explosion plus a ring of coring blasts).
+	BOOL m_bPortNuke;
+	static CEProjPool::PoolHandle_t m_hPortNukePool;
+	static FExplosion_GroupHandle_t m_hPortNukeBlast;
+	static BOOL _PortNukeDetonated( CEProj *pProj, BOOL bMakeEffect, CEProj::Event_e nEvent, const FCollImpact_t *pImpact );
+#endif
+
 
 
 
@@ -131,6 +140,11 @@ public:
 
 	// Creation:
 	BOOL Create( cchar *pszEntityName=NULL, const CFMtx43A *pMtx=NULL, cchar *pszAIBuilderName=NULL );
+
+#if FANG_WINGC
+	FINLINE void SetPortNuke( BOOL bNuke ) { m_bPortNuke = bNuke; }
+	FINLINE BOOL IsPortNuke( void ) const { return m_bPortNuke; }
+#endif
 
 
 	// Firing:

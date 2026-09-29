@@ -66,6 +66,9 @@ GameloopFcn_t*		CMsgBox::m_pFnPrevWork			= NULL;
 GameloopFcn_t*		CMsgBox::m_pFnPrevDraw			= NULL;
 GameloopFcn_t*		CMsgBox::m_pFnPrevInit			= NULL;
 GameloopFcn_t*		CMsgBox::m_pFnWork				= NULL;
+#if defined(MA_PC_INPUT)
+cwchar*				CMsgBox::m_pwszPcFooter			= NULL;
+#endif
 //GameloopFcn_t*		CMsgBox::m_pFnWork;
 CMsgBox::Button_e	CMsgBox::m_eButton				= CMsgBox::BUTTON_NONE;
 u32					CMsgBox::m_uContextData			= 0;
@@ -119,6 +122,9 @@ void CMsgBox::Display( cchar *pszName, cwchar *pwszTitle, cwchar *pwszBody, cwch
 	m_uContextData = uContextData;
 	m_bSystemActive = TRUE;
 	pMsgBox->m_bShow = TRUE;
+#if defined(MA_PC_INPUT)
+	m_pwszPcFooter = NULL;
+#endif
 
 	m_uCurrentMsgBoxLevel++;
 	pMsgBox->m_uMsgBoxLevel = m_uCurrentMsgBoxLevel;
@@ -610,6 +616,11 @@ void CMsgBox::_Draw( void ) {
 	if( m_pwszBody ) {
 		ftext_Printf( m_Data.vBodyPos.x, m_Data.vBodyPos.y * _MSGBOX_TEXT_Y_SCALE, m_Data.pwszBodyFormatStr, m_pwszBody );
 	}
+#if defined(MA_PC_INPUT)
+	if( m_pwszPcFooter ) {
+		ftext_Printf( 0.5f, (m_Data.vPosBR.y + 0.03f) * _MSGBOX_TEXT_Y_SCALE, L"~f1~C88641799~w0~aC~s1.00%ls", m_pwszPcFooter );
+	}
+#endif
 
 	_DrawButtons();
 

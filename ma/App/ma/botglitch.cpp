@@ -443,6 +443,13 @@ BOOL CBotGlitch::ClassHierarchyBuild( void ) {
 		if( pBuilder->m_pszMeshReplacement ) {
 			pszMeshFilename = pBuilder->m_pszMeshReplacement;
 		}
+#if FANG_WINGC
+		// Local co-op: the multiplayer Glitch, whose paint takes each player's colour (the campaign
+		// Glitch's paint is baked yellow, so a tint only muddies it). Level-specific meshes stay.
+		if( MultiplayerMgr.IsLocalCoop() && (pszMeshFilename == _apszDMMeshFilenames[0]) ) {
+			pszMeshFilename = _pszMultiplayerMeshName;
+		}
+#endif
 	}
 	else {
 		pszMeshFilename = _pszMultiplayerMeshName;
@@ -6292,6 +6299,15 @@ void CBotGlitch::_MeleeInflictDamage( CEntity *pEntity, CFWorldMesh *pWMesh, FCo
 	pDamageForm->InitTriDataFromCollImpact( pWMesh, pImpact, &vFireDir );
 
 	CDamage::SubmitDamageForm( pDamageForm );
+
+#if FANG_WINGC
+	// Local co-op: a partner is not a target. The damage itself is refused in CBot::InflictDamageResult;
+	// this skips the melee's direct limb breaking (which blew a partner's upper body off) and shove.
+	if( (pEntity->TypeBits() & ENTITY_BIT_BOT) && MultiplayerMgr.IsSinglePlayer() && (m_nPossessionPlayerIndex >= 0) &&
+		(((CBot *)pEntity)->m_nPossessionPlayerIndex >= 0) ) {
+		return;
+	}
+#endif
 
 	if( pEntity->TypeBits() & ENTITY_BIT_BOT ) {
 		CBot *pBot = (CBot*)pEntity;

@@ -9,4 +9,7 @@
 BOOL gcmesh_ConvertToDx( void *pGameCubeData, u32 nGameCubeBytes,
 	void **ppDxData, u32 *pnDxBytes, cchar *pszResName );
 
+// Asset tooling: decode a retail texture by name into MA_CHARACTER_EXPORT_DIR/textures.
+BOOL gcmesh_ExportTextureByName( cchar *pszName );
+
 #endif

@@ -319,6 +319,9 @@ void CMultiplayerMgr::PreLoadInitLevel( const GameInitInfo_t *pGameInit )
 	m_bPowerUpUnpossessed = TRUE;
 	m_bFriendlyFireDamage = FALSE;
 
+#if FANG_WINGC
+	m_bLocalCoop = pGameInit && pGameInit->bSinglePlayer && (pGameInit->nNumPlayers > 1);
+#endif
 	if (pGameInit) {
 		m_bIsSinglePlayer = pGameInit->bSinglePlayer;
 		m_bIsTeamGame = pGameInit->bTeamPlay;
@@ -540,8 +543,27 @@ void CMultiplayerMgr::SetupPlayer( s32 nPlayerID )
 	Player_aPlayer[nPlayerID].m_nMultiplayerColor = GAMESAVE_MP_COLORS_YELLOW;
 
 	// Don't do anything else in single player
-	if (m_bIsSinglePlayer)
+	if (m_bIsSinglePlayer) {
+#if FANG_WINGC
+		// Local co-op: each player's Glitch wears their profile's multiplayer colour (unique, as in
+		// multiplayer), so partners can be told apart; the HUD and radar use it too.
+		if ( (CPlayer::m_nPlayerCount > 1) && Player_aPlayer[nPlayerID].m_pEntityCurrent &&
+			(Player_aPlayer[nPlayerID].m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOTGLITCH) ) {
+			CBot *pCoopBot = (CBot *)Player_aPlayer[nPlayerID].m_pEntityCurrent;
+			CPlayerProfile *pCoopProfile = Player_aPlayer[nPlayerID].m_pPlayerProfile;
+			s32 nCoopColor = pCoopProfile ? pCoopProfile->m_Data.nColorIndex : GAMESAVE_MP_COLORS_YELLOW;
+			if ( (nCoopColor < 0) || (nCoopColor > GAMESAVE_MP_COLORS_BLACK) )
+				nCoopColor = GAMESAVE_MP_COLORS_YELLOW;
+			nCoopColor = _MakeUniqueColor( nCoopColor );
+			if ( pCoopBot->GetMesh() ) {
+				s32 nCoopBotColor = (nCoopColor == GAMESAVE_MP_COLORS_BLACK) ? nCoopColor + 1 : nCoopColor;
+				pCoopBot->GetMesh()->SetMeshTint( _GlitchColors[nCoopBotColor].fRed, _GlitchColors[nCoopBotColor].fGreen, _GlitchColors[nCoopBotColor].fBlue );
+			}
+			Player_aPlayer[nPlayerID].m_nMultiplayerColor = nCoopColor;
+		}
+#endif
 		return;
+	}
 
 	FASSERT(Player_aPlayer[nPlayerID].m_pEntityCurrent && (Player_aPlayer[nPlayerID].m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT));
 	CBot* pBot = (CBot*)(Player_aPlayer[nPlayerID].m_pEntityCurrent);
@@ -2755,6 +2777,13 @@ BOOL CStartPtMgr::_NearbyBotCheck( CFWorldTracker *pTracker, FVisVolume_t *pVolu
 const CFColorRGBA& Multiplayer_PlayerColor(const CBot* pBot, BOOL bRemapForText)
 {
 	// If this is single player or no bot was given, just return the default yellow.
+#if FANG_WINGC
+	// Local co-op: a player's bot has that player's colour (CMultiplayerMgr::SetupPlayer).
+	if ( pBot && MultiplayerMgr.IsSinglePlayer() && (CPlayer::m_nPlayerCount > 1) && (pBot->m_nPossessionPlayerIndex >= 0) ) {
+		const s32 nCoopColor = Player_aPlayer[ pBot->m_nPossessionPlayerIndex ].m_nMultiplayerColor;
+		return _GlitchColors[ (nCoopColor == GAMESAVE_MP_COLORS_BLACK && !bRemapForText) ? nCoopColor + 1 : nCoopColor ];
+	}
+#endif
 	if ( MultiplayerMgr.IsSinglePlayer() || (pBot == NULL) )
 		return _GlitchColors[GAMESAVE_MP_COLORS_YELLOW];
 

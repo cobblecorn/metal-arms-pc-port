@@ -14,6 +14,12 @@ static bool s_localCoopSession = false;
 static PcInputLayout s_localCoopLayout = PCINPUT_LAYOUT_SHARED;
 static volatile LONG s_connected[FPADIO_MAX_DEVICES];	// by XInput pad index
 static DWORD s_lastProbe[FPADIO_MAX_DEVICES];
+static volatile LONG s_autoPortPad[FPADIO_MAX_DEVICES];	// AUTO: pad index + 1 dealt to each port, 0 for none
+static volatile LONG s_autoPlayers = 2;
+static volatile LONG s_autoDealt;			// AUTO: the session's first deal is done
+static volatile LONG s_padAssignmentSerial;
+static CRITICAL_SECTION s_padLock;			// AUTO dealing: sampling thread and session start
+static bool s_padLockReady;
 static const DWORD XINPUT_REPROBE_MS = 250;
 static volatile LONG s_mouseLook, s_mouseDX, s_mouseDY;
 static volatile LONG s_lookAllowed;		// the keyboard port is in gameplay (set by the game thread)
@@ -445,6 +451,10 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 		InitializeCriticalSection(&s_actionLock);
 		s_actionLockReady = true;
 	}
+	if (!s_padLockReady) {
+		InitializeCriticalSection(&s_padLock);
+		s_padLockReady = true;
+	}
 	EnterCriticalSection(&s_actionLock);
 	memset(s_actionSamples, 0, sizeof(s_actionSamples));
 	memset(s_actionMenus, 0, sizeof(s_actionMenus));
@@ -541,9 +551,88 @@ bool pcinput_ParseLayout(const char *text, PcInputLayout *layout) {
 
 int pcinput_PadForPort(PcInputLayout layout, u32 port) {
 	if (port >= FPADIO_MAX_DEVICES) return -1;
+	if (layout == PCINPUT_LAYOUT_AUTO) return (int)InterlockedCompareExchange(&s_autoPortPad[port], 0, 0) - 1;
 	if (layout == PCINPUT_LAYOUT_SEPARATE) return port == 0 ? -1 : int(port) - 1;
 	return int(port);
 }
+
+// AUTO: probe every pad and deal the connected ones to ports (see PCINPUT_LAYOUT_AUTO). Runs on the
+// sampling thread before port 0 is sampled, and once when a session starts so the level's first frame
+// already sees every player's controller.
+static void UpdateAutoPadAssignmentLocked();
+static void UpdateAutoPadAssignment() {
+	if (!s_padLockReady) return;
+	EnterCriticalSection(&s_padLock);
+	UpdateAutoPadAssignmentLocked();
+	LeaveCriticalSection(&s_padLock);
+}
+
+static void UpdateAutoPadAssignmentLocked() {
+	const u32 players = (u32)InterlockedCompareExchange(&s_autoPlayers, 0, 0);
+	const DWORD now = GetTickCount();
+	bool connected[FPADIO_MAX_DEVICES];
+	u32 connectedCount = 0;
+	for (u32 pad = 0; pad < FPADIO_MAX_DEVICES; pad++) {
+		connected[pad] = InterlockedCompareExchange(&s_connected[pad], 0, 0) != 0;
+		if (s_getState && (connected[pad] || now - s_lastProbe[pad] >= XINPUT_REPROBE_MS)) {
+			XINPUT_STATE padState;
+			s_lastProbe[pad] = now;
+			connected[pad] = s_getState(pad, &padState) == ERROR_SUCCESS;
+			InterlockedExchange(&s_connected[pad], connected[pad] ? 1 : 0);
+		}
+		if (connected[pad]) connectedCount++;
+	}
+	bool changed = false;
+	int portOfPad[FPADIO_MAX_DEVICES];
+	for (u32 pad = 0; pad < FPADIO_MAX_DEVICES; pad++) portOfPad[pad] = -1;
+	for (u32 port = 0; port < FPADIO_MAX_DEVICES; port++) {
+		const int pad = (int)InterlockedCompareExchange(&s_autoPortPad[port], 0, 0) - 1;
+		if (pad < 0) continue;
+		if (port >= players || !connected[pad]) {
+			InterlockedExchange(&s_autoPortPad[port], 0);
+			changed = true;
+		} else {
+			portOfPad[pad] = (int)port;
+		}
+	}
+	const bool firstDeal = !InterlockedCompareExchange(&s_autoDealt, 0, 0);
+	for (u32 pad = 0; pad < FPADIO_MAX_DEVICES; pad++) {
+		if (!connected[pad] || portOfPad[pad] >= 0) continue;
+		int port = -1;
+		if (firstDeal && connectedCount >= players) {
+			for (u32 p = 0; p < players && port < 0; p++) if (!s_autoPortPad[p]) port = (int)p;
+		} else {
+			for (u32 p = 1; p < players && port < 0; p++) if (!s_autoPortPad[p]) port = (int)p;
+			if (port < 0 && !s_autoPortPad[0]) port = 0;
+		}
+		if (port < 0) break;
+		InterlockedExchange(&s_autoPortPad[port], (LONG)pad + 1);
+		changed = true;
+	}
+	InterlockedExchange(&s_autoDealt, 1);
+	if (changed) InterlockedIncrement(&s_padAssignmentSerial);
+}
+
+void pcinput_SetLocalCoopPlayers(u32 players) {
+	if (!s_padLockReady) return;
+	EnterCriticalSection(&s_padLock);
+	InterlockedExchange(&s_autoPlayers, (LONG)(players < 1 ? 1 : players > FPADIO_MAX_DEVICES ? FPADIO_MAX_DEVICES : players));
+	if (s_localCoopSession && s_localCoopLayout == PCINPUT_LAYOUT_AUTO) UpdateAutoPadAssignmentLocked();
+	InterlockedIncrement(&s_padAssignmentSerial);
+	LeaveCriticalSection(&s_padLock);
+}
+
+u32 pcinput_ConnectedPadCount() {
+	u32 count = 0;
+	for (u32 pad = 0; pad < FPADIO_MAX_DEVICES; pad++) if (InterlockedCompareExchange(&s_connected[pad], 0, 0)) count++;
+	return count;
+}
+
+bool pcinput_XInputPadConnected(u32 pad) {
+	return pad < FPADIO_MAX_DEVICES && InterlockedCompareExchange(&s_connected[pad], 0, 0) != 0;
+}
+
+u32 pcinput_PadAssignmentSerial() { return (u32)InterlockedCompareExchange(&s_padAssignmentSerial, 0, 0); }
 
 bool pcinput_XInputConnected(u32 port) {
 	const int pad = pcinput_PadForPort(pcinput_Layout(), port);
@@ -553,8 +642,21 @@ bool pcinput_XInputConnected(u32 port) {
 u32 pcinput_KeyboardPort() { return 0; }
 
 PcInputLayout pcinput_Layout() { return s_localCoopSession ? s_localCoopLayout : s_layout; }
-void pcinput_SetLocalCoopSession(bool active, PcInputLayout layout) {
-	s_localCoopLayout = layout == PCINPUT_LAYOUT_SEPARATE ? PCINPUT_LAYOUT_SEPARATE : PCINPUT_LAYOUT_SHARED;
+void pcinput_SetLocalCoopSession(bool active, PcInputLayout layout, u32 players) {
+	if (active && layout == PCINPUT_LAYOUT_AUTO && s_padLockReady) {
+		EnterCriticalSection(&s_padLock);
+		for (u32 port = 0; port < FPADIO_MAX_DEVICES; port++) InterlockedExchange(&s_autoPortPad[port], 0);
+		InterlockedExchange(&s_autoPlayers, (LONG)(players < 1 ? 1 : players > FPADIO_MAX_DEVICES ? FPADIO_MAX_DEVICES : players));
+		InterlockedExchange(&s_autoDealt, 0);
+		for (u32 pad = 0; pad < FPADIO_MAX_DEVICES; pad++) s_lastProbe[pad] = GetTickCount() - XINPUT_REPROBE_MS;
+		UpdateAutoPadAssignmentLocked();
+		InterlockedIncrement(&s_padAssignmentSerial);
+		s_localCoopLayout = layout;
+		s_localCoopSession = active;
+		LeaveCriticalSection(&s_padLock);
+		return;
+	}
+	s_localCoopLayout = layout;
 	s_localCoopSession = active;
 }
 
@@ -593,6 +695,10 @@ PcPromptStyle pcinput_ResolvedPromptStyle() {
 }
 
 PcPromptStyle pcinput_PromptStyleForPort(u32 port) {
+	// Only the keyboard's port can show keys: a controller-only player (local co-op, pads on ports
+	// 2-4) sees controller glyphs, Xbox unless PlayStation is chosen, whatever the setting says.
+	if (port < FPADIO_MAX_DEVICES && port != pcinput_KeyboardPort())
+		return s_promptStyle == PCINPUT_PROMPT_STYLE_PLAYSTATION ? PCINPUT_PROMPT_STYLE_PLAYSTATION : PCINPUT_PROMPT_STYLE_XBOX;
 	if (s_promptStyle != PCINPUT_PROMPT_STYLE_AUTO) return s_promptStyle;
 	if (port >= FPADIO_MAX_DEVICES) return pcinput_ResolvedPromptStyle();
 	// On a shared port, follow whichever device was used most recently. In a separate layout, the
@@ -637,6 +743,7 @@ void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info) {
 void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 	PcInputState state = {};
 	if (index >= FPADIO_MAX_DEVICES) { memset(sample, 0, sizeof(*sample)); return; }
+	if (index == 0 && pcinput_Layout() == PCINPUT_LAYOUT_AUTO) UpdateAutoPadAssignment();
 	const int pad = pcinput_PadForPort(pcinput_Layout(), index);
 	const bool keyboard = index == pcinput_KeyboardPort();
 	const DWORD now = GetTickCount();

@@ -1851,6 +1851,13 @@ void CFMeshInst::DrawAllMaterials_P( FViewportPlanesMask_t nCrossesPlanesMask )
 		nLODToUse = FMesh_nForceLOD;
 	}
 #endif
+	#if FANG_PLATFORM_WIN
+	if ( !FMesh_bRenderShadows )
+	{
+		// Match render-sort's PC quality bias so the pointy distance LOD is never selected.
+		nLODToUse = 0;
+	}
+	#endif
 	nLODMask = 1 << nLODToUse;
 
 	// Setup color stream management

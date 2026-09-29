@@ -582,11 +582,6 @@ const FGameDataMap_t CBotSniper::m_aGameDataMap[] = {
 	sizeof(m_BotInfo_Gen),
 	(void *)&m_BotInfo_Gen,
 
-	"MountAim",
-	m_aBotInfoVocab_MountAim,
-	sizeof(m_BotInfo_MountAim),
-	(void *)&m_BotInfo_MountAim,
-
 	"Walk",
 	m_aBotInfoVocab_Walk,
 	sizeof(m_BotInfo_Walk),

@@ -1623,7 +1623,8 @@ BOOL level_Load( cchar *pszLevelTitle, BOOL bShowLoadingScreen, cwchar *pwszLoad
 					goto _LevelLoadError;
 				}
 			#else
-				if( !loadingscreen_Init( "load620x340.bik", pwszLoadScreenHeading ) ) {
+				// The retail GameCube data renamed this movie: main.dol's level_Load plays gc_loading.bik.
+				if( !loadingscreen_Init( FANG_WINGC ? "gc_loading.bik" : "load620x340.bik", pwszLoadScreenHeading ) ) {
 					goto _LevelLoadError;
 				}
 			#endif

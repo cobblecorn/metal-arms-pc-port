@@ -23,6 +23,7 @@
 #include "weapon.h"
 #include "eproj.h"
 #include "explosion.h"
+#include "fparticle.h"
 
 class CBot;
 
@@ -112,6 +113,15 @@ private:
 
 	CEProj *m_pProjToThrow;							// The projectile we're ready to throw (NULL=none)
 
+#if FANG_WINGC
+	// PC port: the cut Water Grenade is this EMP grenade with the unused gp_swater model: its burst
+	// of coolant still shorts out Mils (the EMP effect), with a water blast on top.
+	BOOL m_bPortWater;
+	static CEProjPool::PoolHandle_t m_hPortWaterPool;
+	static FParticle_DefHandle_t m_hPortWaterSplash;
+	static BOOL _PortWaterDetonated( CEProj *pProj, BOOL bMakeEffect, CEProj::Event_e nEvent, const FCollImpact_t *pImpact );
+#endif
+
 
 
 
@@ -131,6 +141,11 @@ public:
 
 	// Creation:
 	BOOL Create( cchar *pszEntityName=NULL, const CFMtx43A *pMtx=NULL, cchar *pszAIBuilderName=NULL );
+
+#if FANG_WINGC
+	FINLINE void SetPortWater( BOOL bWater ) { m_bPortWater = bWater; }
+	FINLINE BOOL IsPortWater( void ) const { return m_bPortWater; }
+#endif
 
 
 	// Firing:

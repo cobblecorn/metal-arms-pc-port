@@ -441,17 +441,30 @@ void fshadow_ShadowCallback(void *pUserData)
 	}
 }
 
+// Shadow buffer sizes. The console-era buffers were 256 (the "512" pool too) and 128 texels; the PC
+// renders them at four and two times that for sharper character shadows. Each pool's shared depth
+// buffer is created at the same size, and render-target viewports follow the texture size.
+#if FANG_WINGC
+	#define _PORT_SHADOW_512	1024
+	#define _PORT_SHADOW_256	512
+	#define _PORT_SHADOW_128	256
+#else
+	#define _PORT_SHADOW_512	256
+	#define _PORT_SHADOW_256	256
+	#define _PORT_SHADOW_128	128
+#endif
+
 void fshadow_CreateShadowBuffers()
 {
 	int i, n=0;
 	char szName[16];
 	FTexData_t *pTexDef;
 
-	ftex_CreateSharedDepthBuffer(16, 256, 256);
+	ftex_CreateSharedDepthBuffer(16, _PORT_SHADOW_512, _PORT_SHADOW_512);
 	for (i=0; i<NUM_512; i++, n++)
 	{
 		sprintf(szName, "SBuf_%d", n);
-		_pShadowBuffers[n] = ftex_CreateRenderTarget_FullScreen(FTEX_RENDERTARGET_FMT_C16_D16, szName, FALSE, FRES_NULLHANDLE, NULL, 256, 256, FTEX_2D, FALSE);
+		_pShadowBuffers[n] = ftex_CreateRenderTarget_FullScreen(FTEX_RENDERTARGET_FMT_C16_D16, szName, FALSE, FRES_NULLHANDLE, NULL, _PORT_SHADOW_512, _PORT_SHADOW_512, FTEX_2D, FALSE);
          
 		_pShadowBuffers[n]->SetFlag(CFTexInst::FLAG_NORELEASE);
 
@@ -467,11 +480,11 @@ void fshadow_CreateShadowBuffers()
 		}
 	}
 
-	ftex_CreateSharedDepthBuffer(16, 256, 256);
+	ftex_CreateSharedDepthBuffer(16, _PORT_SHADOW_256, _PORT_SHADOW_256);
 	for (i=0; i<NUM_256; i++, n++)
 	{
 		sprintf(szName, "SBuf_%d", n);
-		_pShadowBuffers[n] = ftex_CreateRenderTarget_FullScreen(FTEX_RENDERTARGET_FMT_C16_D16, szName, FALSE, FRES_NULLHANDLE, NULL, 256, 256, FTEX_2D, FALSE);
+		_pShadowBuffers[n] = ftex_CreateRenderTarget_FullScreen(FTEX_RENDERTARGET_FMT_C16_D16, szName, FALSE, FRES_NULLHANDLE, NULL, _PORT_SHADOW_256, _PORT_SHADOW_256, FTEX_2D, FALSE);
 
 		_pShadowBuffers[n]->SetFlag(CFTexInst::FLAG_NORELEASE);
 
@@ -485,11 +498,11 @@ void fshadow_CreateShadowBuffers()
 		}
 	}
 	
-	ftex_CreateSharedDepthBuffer(16, 128, 128);
+	ftex_CreateSharedDepthBuffer(16, _PORT_SHADOW_128, _PORT_SHADOW_128);
 	for (i=0; i<NUM_128; i++, n++)
 	{
 		sprintf(szName, "SBuf_%d", n);
-		_pShadowBuffers[n] = ftex_CreateRenderTarget_FullScreen(FTEX_RENDERTARGET_FMT_C16_D16, szName, FALSE, FRES_NULLHANDLE, NULL, 128, 128, FTEX_2D, FALSE);
+		_pShadowBuffers[n] = ftex_CreateRenderTarget_FullScreen(FTEX_RENDERTARGET_FMT_C16_D16, szName, FALSE, FRES_NULLHANDLE, NULL, _PORT_SHADOW_128, _PORT_SHADOW_128, FTEX_2D, FALSE);
 
 		_pShadowBuffers[n]->SetFlag(CFTexInst::FLAG_NORELEASE);
 

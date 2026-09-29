@@ -22,6 +22,7 @@
 #if defined(MA_PC_INPUT)
 #include "pc_input.h"
 #include "discord_rpc.h"
+#include <windows.h>
 #endif
 
 #include "fviewport.h"
@@ -63,6 +64,7 @@
 #include "player.h"
 #include "explosion.h"
 #include "botswarmer.h"
+#include "botsniper.h"
 #include "gamesave.h"
 #include "gstring.h"
 #include "damage.h"
@@ -459,6 +461,9 @@ static BOOL8 _bAllowCutSceneSkip;
 static BOOL8 _bCompletedLevel;
 static ControlMode_e _aeControlMode[MAX_PLAYERS];
 #if defined(MA_PC_INPUT)
+static void _SetCoopLetterboxModes( ControlMode_e eFrom, ControlMode_e eFrom2, ControlMode_e eTo );
+#endif
+#if defined(MA_PC_INPUT)
 #define _WEAPONSELECT_HOLD_SECS		( 0.3f )	// user-chosen hold before a weapon list opens
 static BOOL8 _aabWeaponSelectArmed[MAX_PLAYERS][2];	// [player][0 = primary, 1 = secondary]
 static f32 _aafWeaponSelectHeldSecs[MAX_PLAYERS][2];
@@ -631,12 +636,16 @@ static void _DiscordLevelPresence( const GameInitInfo_t *pGameInit ) {
 
 BOOL game_LoadLevel( cchar *pszLevelTitle,
 					 BOOL bShowLoadingScreen/*=TRUE*/,
-					 const GameInitInfo_t *pGameInit/*=NULL*/ ) {
+					 const GameInitInfo_t *pGameInit/*=NULL*/,
+					 cwchar *pwszLoadHeading/*=NULL*/ ) {
 	u32 i;
 
 	FASSERT( _bSystemInitialized );
 
 	DEVPRINTF( "******** LOAD MARKER - START LOADING LEVEL***********.\n" );
+#if FANG_WINGC
+	CEntity::CoopTripwireReset();
+#endif
 #if !GAMELOOP_EXTERNAL_DEMO
 	ffile_LogStart( pszLevelTitle );
 #endif
@@ -670,7 +679,10 @@ BOOL game_LoadLevel( cchar *pszLevelTitle,
 		goto _ExitWithError;
 	}
 
-	if( !level_Load( pszLevelTitle, bShowLoadingScreen, (pGameInit) ? pGameInit->pwszLevelDisplayHeading : NULL ) ) {
+	if( pGameInit && pGameInit->pwszLevelDisplayHeading ) {
+		pwszLoadHeading = pGameInit->pwszLevelDisplayHeading;
+	}
+	if( !level_Load( pszLevelTitle, bShowLoadingScreen, pwszLoadHeading ) ) {
 		// Error loading level...
 		goto _ExitWithError;
 	}
@@ -761,6 +773,9 @@ void game_UnloadLevel( void ) {
 	if( !_bSystemInitialized ) {
 		return;
 	}
+#if FANG_WINGC
+	CEntity::CoopTripwireReset();
+#endif
 
 	if( !_bGameUnloadedNeeded ) {
 		return;
@@ -1023,6 +1038,9 @@ void game_ControlModeWork() {
 	//					gameloop_SetFrameTimeOverride(FALSE);
 
 						_aeControlMode[nPlayer] = CONTROLMODE_LETTERBOXFF;
+#if defined(MA_PC_INPUT)
+						_SetCoopLetterboxModes( CONTROLMODE_LETTERBOX, CONTROLMODE_LETTERBOX, CONTROLMODE_LETTERBOXFF );
+#endif
 
 						CHud2 *pHud2 = CHud2::GetCurrentHud();
 						if( pHud2->Transmission_GetAbortWithCutSceneFlag() ) {
@@ -1291,7 +1309,21 @@ BOOL game_Work( void ) {
 	// CHud2::Work should come after CTalkSystem2::Work().
 	PROTRACK_BEGINBLOCK("HUD/Pause");
 	// TODO: CPauseScreen needs to work for multiplayer...
+#if FANG_WINGC
+		// Local co-op: the pause menu reads the current player's controls (CMenuMgr) and shows an
+		// inventory, so run it as the player who paused; after the player loop the current player
+		// was the last one, whose controller then drove everyone's pause menu.
+		{
+			u32 nPausePlayer = CPauseScreen::IsActive() ? CPauseScreen::PausingPlayer() : 0;
+			if( nPausePlayer >= (u32)CPlayer::m_nPlayerCount ) {
+				nPausePlayer = 0;
+			}
+			CPlayer::SetCurrent( nPausePlayer );
+			CPauseScreen::Work(((CBot *)Player_aPlayer[nPausePlayer].m_pEntityCurrent)->m_pInventory);
+		}
+#else
 		CPauseScreen::Work(((CBot *)Player_aPlayer[0].m_pEntityCurrent)->m_pInventory);
+#endif
 		for( i=0; i<(u32)CPlayer::m_nPlayerCount; i++ ) {
 			CPlayer::SetCurrent( i );
 			CHud2::GetHudForPlayer(i)->Work(((CBot *)Player_aPlayer[i].m_pEntityCurrent)->m_pInventory);
@@ -1341,6 +1373,10 @@ BOOL game_Work( void ) {
 	PROTRACK_BEGINBLOCK("CheckpointWork");
 		checkpoint_Work();
 	PROTRACK_ENDBLOCK();// "CheckpointWork"
+#if FANG_WINGC
+	// Local co-op: release tripwire events once every standing player has arrived.
+	CEntity::CoopTripwireWork();
+#endif
 
 	MultiplayerMgr.Work();
 
@@ -1512,6 +1548,14 @@ BOOL game_Draw( void ) {
 BOOL game_BeginCutScene( cchar *pszCutSceneTitle, BOOL bImmediate )
 {
 	CPlayer::m_pCurrent->DisableEntityControl();
+#if defined(MA_PC_INPUT)
+	// Local co-op: the cutscene holds every player, not only the current one.
+	if( MultiplayerMgr.IsSinglePlayer() ) {
+		for( s32 nPlayer = 0; nPlayer < CPlayer::m_nPlayerCount; ++nPlayer ) {
+			if( &Player_aPlayer[nPlayer] != CPlayer::m_pCurrent ) Player_aPlayer[nPlayer].DisableEntityControl();
+		}
+	}
+#endif
 	CAIBrain* pBrain = Player_aPlayer[0].m_pEntityCurrent->AIBrain();
 	if (Player_aPlayer[0].m_pEntityCurrent ->TypeBits() & ENTITY_BIT_BOT)
 	{
@@ -1535,6 +1579,13 @@ BOOL game_EndCutScene( BOOL bImmediate )
 {
 	aibrainman_Deactivate(Player_aPlayer[0].m_pEntityCurrent->AIBrain());
 	CPlayer::m_pCurrent->EnableEntityControl();
+#if defined(MA_PC_INPUT)
+	if( MultiplayerMgr.IsSinglePlayer() ) {
+		for( s32 nPlayer = 0; nPlayer < CPlayer::m_nPlayerCount; ++nPlayer ) {
+			if( &Player_aPlayer[nPlayer] != CPlayer::m_pCurrent ) Player_aPlayer[nPlayer].EnableEntityControl();
+		}
+	}
+#endif
 	aibrainman_ConfigurePlayerBotBrain(Player_aPlayer[0].m_pEntityCurrent->AIBrain(), 0);
 	ai_NotifyCutSceneEnd();
 	if (Player_aPlayer[0].m_pEntityCurrent ->TypeBits() & ENTITY_BIT_BOT)
@@ -1547,6 +1598,21 @@ BOOL game_EndCutScene( BOOL bImmediate )
 }
 
 
+#if defined(MA_PC_INPUT)
+// Local co-op: a cutscene letterboxes every player, so anyone's START skips it. Scripts run with the
+// player the game loop handled last as the current one, which left only that player able to skip.
+static void _SetCoopLetterboxModes( ControlMode_e eFrom, ControlMode_e eFrom2, ControlMode_e eTo ) {
+	if( CPlayer::m_nPlayerCount < 2 || !MultiplayerMgr.IsSinglePlayer() ) {
+		return;
+	}
+	for( u32 nPlayer = 0; nPlayer < CPlayer::m_nPlayerCount; ++nPlayer ) {
+		if( _aeControlMode[nPlayer] == eFrom || _aeControlMode[nPlayer] == eFrom2 ) {
+			_aeControlMode[nPlayer] = eTo;
+		}
+	}
+}
+#endif
+
 BOOL game_EnterLetterbox( cchar *pszCutSceneName/*=NULL*/, BOOL bImmediate/*=FALSE*/, BOOL bAllowMovieSkip/*=TRUE*/ ) {
 
 	if( _aeControlMode[CPlayer::m_nCurrent] != CONTROLMODE_NORMAL ) {
@@ -1558,6 +1624,9 @@ BOOL game_EnterLetterbox( cchar *pszCutSceneName/*=NULL*/, BOOL bImmediate/*=FAL
 	_bAllowCutSceneSkip = bAllowMovieSkip;
 
 	_aeControlMode[CPlayer::m_nCurrent] = CONTROLMODE_LETTERBOX;
+#if defined(MA_PC_INPUT)
+	_SetCoopLetterboxModes( CONTROLMODE_NORMAL, CONTROLMODE_NORMAL, CONTROLMODE_LETTERBOX );
+#endif
 
 	return TRUE;
 }
@@ -1574,8 +1643,11 @@ BOOL game_LeaveLetterbox( BOOL bImmediate ) {
 	floop_SetTimeScale( 1.0f );
 	gameloop_SetDrawEnabled( TRUE );
 	gameloop_SetSwapEnabled( TRUE );
-	
+
 	_aeControlMode[CPlayer::m_nCurrent] = CONTROLMODE_NORMAL;
+#if defined(MA_PC_INPUT)
+	_SetCoopLetterboxModes( CONTROLMODE_LETTERBOX, CONTROLMODE_LETTERBOXFF, CONTROLMODE_NORMAL );
+#endif
 
 	return TRUE;
 }
@@ -1725,6 +1797,10 @@ static void _DrawMainScene_Persp( void ) {
 		CFXMagmaBomb::DrawAll();
 		CBotScout::DrawBeams();
 		BotEliteGuard_DrawBeams();
+#if FANG_WINGC
+		// Recovered Mil Snipers: bullet trails, laser sights and grapple cables (also resets the sight count).
+		CBotSniper::DrawEffects();
+#endif
 
 		fexplosion_Draw( gamecam_GetActiveCamera() );
 
@@ -1981,6 +2057,42 @@ _ExitWithError:
 	return FALSE;
 }
 
+#if defined(MA_PC_INPUT)
+// Port-only combat harness: place a retail-asset Sniper in front of player 0 so
+// its inherited enemy brain, rifle and grapple code can be exercised in a real map.
+static BOOL _SpawnPortTestSniper( void ) {
+	char szEnabled[8] = { 0 };
+	if( !GetEnvironmentVariableA( "MA_PORT_SPAWN_SNIPER_TEST", szEnabled, sizeof(szEnabled) ) || szEnabled[0] != '1' ) {
+		return TRUE;
+	}
+
+	if( !Player_aPlayer[0].m_pEntityOrig ) {
+		DEVPRINTF( "Port Sniper test spawn requested before player 0 was created.\n" );
+		return FALSE;
+	}
+
+	CFMtx43A SpawnMtx = *Player_aPlayer[0].m_pEntityOrig->MtxToWorld();
+	SpawnMtx.m_vPos.x += SpawnMtx.m_vFront.x * 32.0f;
+	SpawnMtx.m_vPos.y += SpawnMtx.m_vFront.y * 32.0f;
+	SpawnMtx.m_vPos.z += SpawnMtx.m_vFront.z * 32.0f;
+	SpawnMtx.m_vFront.Negate();
+	SpawnMtx.m_vRight.Negate();
+
+	CBotSniper *pSniper = fnew CBotSniper;
+	if( !pSniper || !pSniper->Create( -1, FALSE, "PortSniperTest", &SpawnMtx, "Default" ) ) {
+		if( pSniper ) {
+			fdelete( pSniper );
+		}
+		DEVPRINTF( "Could not create the opt-in PortSniperTest enemy.\n" );
+		return FALSE;
+	}
+
+	DEVPRINTF( "Spawned opt-in PortSniperTest enemy at (%.2f, %.2f, %.2f).\n",
+			   SpawnMtx.m_vPos.x, SpawnMtx.m_vPos.y, SpawnMtx.m_vPos.z );
+	return TRUE;
+}
+#endif
+
 void _DisablePlayerControls(s32 nPlayer) {
 	// Get the player currently in control...
 	CPlayer* pPlayer = &Player_aPlayer[nPlayer];
@@ -2105,6 +2217,12 @@ static BOOL _PostWorldLoadGameInit( const GameInitInfo_t *pGameInit ) {
 				// Setup player-specific elements in multiplayer manager
 				MultiplayerMgr.SetupPlayer( nPlayerNum );
 		}
+
+#if defined(MA_PC_INPUT)
+		if( !_SpawnPortTestSniper() ) {
+			goto _ExitStartGameWithError;
+		}
+#endif
 
 //////////////////////////////////////////////////////////////
 // put modules that require the player array to be setup here:
@@ -2268,7 +2386,13 @@ void game_SetupRenderTargets() {
 #else
 	// Create a 32-bit render target...
 
+	#if FANG_WINGC
+		// The scope renders the whole view into this target and stretches it over the screen; the
+		// console-era 512x256 is a quarter of a 1080p display. 2048x1024 keeps the scope view sharp.
+		Game_pFullscreenRenderTarget = ftex_CreateRenderTarget_FullScreen( FTEX_RENDERTARGET_FMT_C24_A8_D24_S8, "FSRT", TRUE, FRES_NULLHANDLE, NULL, 2048, 1024 );
+	#else
 	Game_pFullscreenRenderTarget = ftex_CreateRenderTarget_FullScreen( FTEX_RENDERTARGET_FMT_C24_A8_D24_S8, "FSRT", TRUE, FRES_NULLHANDLE, NULL, 512, 256 );
+	#endif
 	if( Game_pFullscreenRenderTarget ) {
 		ftex_AddRenderTarget( Game_pFullscreenRenderTarget, _FullscreenRenderTargetCallback, FALSE, 0, FALSE, FALSE, NULL, TRUE, FALSE );
 	}
@@ -2579,8 +2703,23 @@ _EXIT_WITH_ERROR:
 static wchar _wszString[64];
 BOOL _ControllerWaitForReconnect( void );
 
+// Which ports have their controller. PC: ask the input layer, which knows at once when local co-op
+// deals a controller; the sample history (Gamepad_nPortOnlineMask) trails it by a few frames, long
+// enough to put up "reconnect" as a level starts.
+static u32 _PortsOnline( void ) {
+#if defined(MA_PC_INPUT)
+	u32 nMask = 1 << pcinput_KeyboardPort();
+	for( u32 nPort = 0; nPort < GAMEPAD_MAX_PORT_COUNT; ++nPort ) {
+		if( pcinput_XInputConnected( nPort ) ) nMask |= 1 << nPort;
+	}
+	return nMask;
+#else
+	return Gamepad_nPortOnlineMask;
+#endif
+}
+
 BOOL _ControllerWaitForStart( void ) {
-	if( !(Gamepad_nPortOnlineMask & (1<<_nControllerToPlugIn)) ) {	
+	if( !(_PortsOnline() & (1<<_nControllerToPlugIn)) ) {	
 		CMsgBox::Clear();
 		_snwprintf( _wszString, 64, Game_apwszPhrases[GAMEPHRASE_LOST_CONTROLLER_FORMATSTRING], '\n', '\n', _nControllerToPlugIn+1 );
 		CMsgBox::Display( "CtlReconnect", NULL, _wszString, NULL, NULL, NULL, 0, TRUE, _ControllerWaitForReconnect );
@@ -2597,7 +2736,25 @@ BOOL _ControllerWaitForStart( void ) {
 
 BOOL _ControllerWaitForReconnect( void ) {
 
-	if( Gamepad_nPortOnlineMask & (1<<_nControllerToPlugIn) ) {
+#if defined(MA_PC_INPUT)
+	// PC: the retail box has no buttons and covers the pause menu, so a player without the missing
+	// controller could only close the window. Esc (or B) leaves the level for the main menu, as the
+	// pause menu's Quit Game does.
+	static wchar _wszPcFooter[48];
+	_snwprintf( _wszPcFooter, 48, L"%ls: Quit to main menu",
+		pcinput_UseKeyboardPromptsForPort( pcinput_KeyboardPort() ) ? L"Esc" : L"B" );
+	_wszPcFooter[47] = 0;
+	CMsgBox::SetPcFooter( _wszPcFooter );
+	for( u32 nPort = 0; nPort < GAMEPAD_MAX_PORT_COUNT; ++nPort ) {
+		if( Gamepad_aapSample[nPort][GAMEPAD_MENU_BACK]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
+			DEVPRINTF( "PC: left the level from the reconnect prompt (controller %d missing).\n", _nControllerToPlugIn + 1 );
+			CMsgBox::Clear();
+			launcher_EnterMenus( LAUNCHER_FROM_GAME );
+			return TRUE;
+		}
+	}
+#endif
+	if( _PortsOnline() & (1<<_nControllerToPlugIn) ) {
 		_nControllerPauseState = _CONTROLLER_PAUSE_STATE_WAIT_FOR_PRESS;
 		
 		CMsgBox::Clear();
@@ -2616,10 +2773,10 @@ void game_HandleControllersBeingUnplugged( void ) {
 	// make sure all player controllers are connected
 	if( _nControllerToPlugIn == _ALL_CONTROLLERS_PLUGGED_IN ) {
 		// see if all controllers are still plugged in
-		if( (Gamepad_nPortOnlineMask & _nControllerMaskRequired) != _nControllerMaskRequired ) {
+		if( (_PortsOnline() & _nControllerMaskRequired) != _nControllerMaskRequired ) {
 			// a needed controller has been unplugged, which one?
 			for( i=0; i < CPlayer::m_nPlayerCount; i++ ) {
-				if( ((1<<Player_aPlayer[i].m_nControllerIndex) & Gamepad_nPortOnlineMask) == 0 ) {
+				if( ((1<<Player_aPlayer[i].m_nControllerIndex) & _PortsOnline()) == 0 ) {
 					// not plugged in
 					_nControllerToPlugIn = Player_aPlayer[i].m_nControllerIndex;
 					_nControllerPauseState = _CONTROLLER_PAUSE_STATE_WAIT_FOR_INSERT;

@@ -46,6 +46,11 @@ static BOOL _hCurrentCutscene;
 
 //controller Mappings
 static GamepadMap_e _nOldMappings;
+#if defined(MA_PC_INPUT)
+// Local co-op: every player's controls can skip a movie (the retail code used the current player,
+// which is whichever the game loop handled last).
+static GamepadMap_e _anOldCoopMappings[MAX_PLAYERS];
+#endif
 
 
 static GameloopFcn_t *_pPreviousFcnWork;		// Work function (NULL=none)
@@ -152,7 +157,13 @@ BOOL cutscene_Start( cutscene_Handle_t hCutscene, f32 fNormalizedVolume ){
 		CFAudioStream::SetGlobalPauseLevel( FAUDIO_PAUSE_LEVEL_5 );
 
 		// save the state of the controller mappings as we set the mapping to menu mode
+#if defined(MA_PC_INPUT)
+		for( s32 i = 0; i < CPlayer::m_nPlayerCount; ++i ) {
+			_anOldCoopMappings[i] = gamepad_SetMapping( Player_aPlayer[i].m_nControllerIndex, GAMEPAD_MAP_MENU );
+		}
+#else
 		_nOldMappings = gamepad_SetMapping( CPlayer::m_pCurrent->m_nControllerIndex, GAMEPAD_MAP_MENU );
+#endif
 
 		floop_PauseGame( TRUE );
 
@@ -183,7 +194,13 @@ void cutscene_End( void ){
 		CFAudioStream::SetGlobalPauseLevel( FAUDIO_PAUSE_LEVEL_NONE );
 
 		// restore the controller mappings
+#if defined(MA_PC_INPUT)
+		for( s32 i = CPlayer::m_nPlayerCount - 1; i >= 0; --i ) {
+			gamepad_SetMapping( Player_aPlayer[i].m_nControllerIndex, _anOldCoopMappings[i] );
+		}
+#else
 		gamepad_SetMapping( CPlayer::m_pCurrent->m_nControllerIndex, _nOldMappings );
+#endif
 
 		//restore the original loop handlers
 		gameloop_SetLoopHandlers( _pPreviousFcnWork, _pPreviousFcnDraw, NULL );
@@ -209,15 +226,20 @@ static BOOL _Work( void ) {
 		//query the controller here for early termination issues...
 		gamepad_Sample();
 
+#if defined(MA_PC_INPUT)
+		// Any player's A / Start / Back (the desktop's Escape is Back while a movie runs: menu map).
+		for( s32 i = 0; i < CPlayer::m_nPlayerCount; ++i ) {
+			const u32 nPort = Player_aPlayer[i].m_nControllerIndex;
+			if( (Gamepad_aapSample[nPort][GAMEPAD_MENU_ACCEPT]->uLatches | Gamepad_aapSample[nPort][GAMEPAD_MENU_START]->uLatches |
+				Gamepad_aapSample[nPort][GAMEPAD_MENU_BACK]->uLatches) & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
+				bTerminateCutscene = TRUE;
+			}
+		}
+#else
 		if( Gamepad_aapSample[CPlayer::m_pCurrent->m_nControllerIndex][GAMEPAD_MENU_ACCEPT]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
 			bTerminateCutscene = TRUE;
 		}
 		if( Gamepad_aapSample[CPlayer::m_pCurrent->m_nControllerIndex][GAMEPAD_MENU_START]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
-			bTerminateCutscene = TRUE;
-		}
-#if defined(MA_PC_INPUT)
-		// the desktop's Escape is Back while a movie runs (the movie uses the menu map)
-		if( Gamepad_aapSample[CPlayer::m_pCurrent->m_nControllerIndex][GAMEPAD_MENU_BACK]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
 			bTerminateCutscene = TRUE;
 		}
 #endif

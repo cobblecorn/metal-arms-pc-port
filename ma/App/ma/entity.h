@@ -121,6 +121,9 @@ const u64 ENTITY_BIT_JUMPPAD			= 0x0800000000000000;	// CEJumpPad
 const u64 ENTITY_BIT_BOTCORROSIVE		= 0x1000000000000000;	// CBotCorrosive
 const u64 ENTITY_BIT_DEBRIS				= 0x2000000000000000;	// CEDebris
 const u64 ENTITY_BIT_UNSPECIFIED		= 0x4000000000000000;	// Unspecified entity
+// The entity bit namespace is full. Sniper bots share this generic leaf bit;
+// ENTITY_BIT_BOT remains present so bot-only filters still classify them as bots.
+const u64 ENTITY_BIT_BOTSNIPER			= ENTITY_BIT_UNSPECIFIED;	// CBotSniper
 
 
 const u64 ENTITY_BIT_RESERVED_FOR_FANG	= 0x8000000000000000;	// Fang reserves this bit for its internal tracker filter
@@ -157,6 +160,7 @@ const u64 ENTITY_BITS_ALLBOTBITS		= (	ENTITY_BIT_BOT		  |
 #define ENTITY_TYPE_WEAPON			"Weapon"				// Maps to CWeapon
 #define ENTITY_TYPE_MESH			"Mesh"					// Maps to CMeshEntity
 #define ENTITY_TYPE_BOTGLITCH		"BotGlitch"				// Maps to CBotGlitch
+#define ENTITY_TYPE_BOTSNIPER		"BotSniper"				// Maps to CBotSniper
 #define ENTITY_TYPE_WEAPONHAND		"WeaponHand"			// Maps to CWeaponHand
 #define ENTITY_TYPE_WEAPONLASER		"WeaponLaser"			// Maps to CWeaponLaser
 #define ENTITY_TYPE_WEAPONRIVET		"WeaponRivet"			// Maps to CWeaponRivet
@@ -584,6 +588,14 @@ public:
 	FINLINE BOOL IsTripwire( void ) const { return (BOOL)m_pTripwire; }
 	FINLINE BOOL IsTripwireArmed( void ) const { return m_pTripwire ? m_nEntityFlags & ENTITY_FLAG_TRIPWIRE_ARMED : FALSE; }
 	void ArmTripwire( BOOL bArm );
+#if FANG_WINGC
+	// Local co-op (PC): a tripwire's enter event from a player waits until every standing player has
+	// arrived in it (entity.cpp). Work runs once a frame; Reset at level load; Waiting tells a
+	// player's HUD they are holding an event for the others.
+	static void CoopTripwireWork( void );
+	static void CoopTripwireReset( void );
+	static BOOL CoopTripwireWaiting( const CEntity *pPlayerEntity );
+#endif
 
 	FINLINE CFSphereA *TripwireBoundingSphere_WS( void ) const;
 	void SetTripwireBoundingSphere_MS( const CFSphereA *pSphere_MS );
@@ -909,6 +921,11 @@ private:
 
 
 	void _CheckMovedEntityAgainstTripwires( const CFVec3A *pPrevPos_WS, const CFVec3A *pNewPos_WS );
+#if FANG_WINGC
+	BOOL _CoopHoldTripwireEnter( CEntity *pTripper );
+	void _CoopFireTripwireEnter( CEntity *pTripper );
+	u32 _CoopPlayersInsideMask( void );
+#endif
 	void _ClearTripwireArray( void );
 	void _UpdateTripwireArrayBasedOnFilterChange( void );
 	BOOL _DoesTripperPassTripwireFilterTest( CEntity *pTripperEntity );

@@ -2097,7 +2097,15 @@ FINLINE void CPEmitter::UpdatePosAndVelocity( f32 fSecsSinceLastWork ) {
 }
 
 FINLINE f32 CPEmitter::CalculatePercentOfParticlesToDraw( f32 fDistToCam ) {
-	
+
+#if FANG_WINGC
+	// The consoles thinned an emitter's particles between its skip-draw distance and its cull distance
+	// to save fill rate; a PC draws them all until the emitter is culled. (Particles right in front of
+	// the camera are still thinned below, which keeps them from covering the view.)
+	if( fDistToCam > m_fStartSkipDrawDist ) {
+		return 1.0f;
+	}
+#endif
 	if( fDistToCam > m_fStartSkipDrawDist ) {
 		// compute what percent of the particles to draw
 		fDistToCam -= m_fStartSkipDrawDist;

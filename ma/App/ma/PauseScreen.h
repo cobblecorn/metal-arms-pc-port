@@ -83,6 +83,7 @@ public:
 	static void LevelUninit();
 
 	static BOOL IsActive();
+	static u32 PausingPlayer( void ) { return m_nPlayer; }	// valid while active
 	static void SetEnabled(BOOL bEnabled);
 	static BOOL Start(CInventory *pInventory );
 	static BOOL ExitPause( void );
@@ -164,6 +165,7 @@ private:
 	static BOOL m_bShowMonitors;		// remembers state of script system text monitors
 	static BOOL m_bIgnoreControlsNextFrame;
 	static BOOL m_bQuitNextFrame;
+	static u32 m_nPlayer;				// the player who paused
 	
 	static BOOL m_bPauseAudio;
 #if defined(MA_PC_INPUT)

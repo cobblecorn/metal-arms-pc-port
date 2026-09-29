@@ -43,6 +43,7 @@
 #include "gamesave.h"
 #include "gameloop.h"
 #include "launcher.h"
+#include "loadingscreen.h"
 #include "game.h"
 #include "fcamanim.h"
 #include "entity.h"
@@ -674,12 +675,18 @@ static BOOL8 _bInGame;
 static BOOL8 _bBootup;
 static _MenuData_t _MenuState;
 #if defined(MA_PC_INPUT)
-static BOOL _bPcCoopMenu = FALSE;
+// Local co-op uses the retail multiplayer "Players Join In" screen (_bPcCoopJoin): each player joins
+// on their own controls and picks a profile, which brings their settings and multiplayer colour.
+// Controls are dealt automatically (PCINPUT_LAYOUT_AUTO): keyboard/mouse is player 1's box,
+// controllers take players 2-4 as they connect.
+static BOOL _bPcCoopJoin = FALSE;
 static BOOL _bPcCoopLaunch = FALSE;
-static u8 _nPcCoopPlayers = 2;
-static PcInputLayout _pcCoopLayout = PCINPUT_LAYOUT_SHARED;
-// Separate from the retail table indices: this page uses generated text.
-enum { _PC_COOP_START, _PC_COOP_PLAYERS, _PC_COOP_INPUT, _PC_COOP_BACK, _PC_COOP_COUNT };
+static f32 _fPcCoopNeedPlayersTimer = 0.0f;	// shows "needs two players" after a refused start
+// Each ready player's multiplayer colour (GAMESAVE_MP_COLORS_...), chosen with left/right in their box.
+static u8 _anPcCoopColor[MAX_PLAYERS];
+static u16 _anPcCoopLastState[MAX_PLAYERS];
+static cwchar *_apwszPcCoopColorNames[GAMESAVE_MP_COLORS_COUNT] = { L"Yellow", L"Blue", L"Purple", L"Red", L"Green", L"Black" };
+static cwchar *_apwszPcCoopColorCodes[GAMESAVE_MP_COLORS_COUNT] = { L"95851099", L"30559999", L"70359599", L"99251599", L"25902599", L"55555599" };
 #endif
 static FResFrame_t _ResFrame;
 static CFStringTable *_pStringTable;
@@ -2006,7 +2013,7 @@ void wpr_system_ResetToStartupScreen( BOOL bBootup ) {
 	}
 
 #if defined(MA_PC_INPUT)
-	_bPcCoopMenu = FALSE;
+	_bPcCoopJoin = FALSE;
 	_bPcCoopLaunch = FALSE;
 	pcinput_SetLocalCoopSession( false );
 #endif
@@ -2736,7 +2743,12 @@ static BOOL _Init( void ) {
 
 	// Set our wrappers loading callback
 	if( bWrappers ) {
+#if FANG_WINGC
+		// As retail: the front end loads behind the gc_loading2.bik loading screen.
+		loadingscreen_Init( "gc_loading2.bik" );
+#else
 		fresload_SetProgressCallback( _WrappersLoadingCallback );
+#endif
 	}
 
 	// reset all of our vars
@@ -3251,7 +3263,11 @@ static BOOL _Init( void ) {
 
 	if( bWrappers ) {
 		DEVPRINTF( "******** LOAD MARKER - END OF WRAPPERS***********.\n" );
+#if FANG_WINGC
+		loadingscreen_Uninit();
+#else
 		fresload_SetProgressCallback( NULL );
+#endif
 	}
 
 	return TRUE;
@@ -3268,7 +3284,11 @@ _EXIT_WITH_ERROR:
     fdelete_array( _MenuState.MLLevelSelectInfo.paTexInsts );
 
 	if( bWrappers ) {
+#if FANG_WINGC
+		loadingscreen_Uninit();
+#else
 		fresload_SetProgressCallback( NULL );
+#endif
 		CGColl::ClearMaterialTable();
 		DEVPRINTF( "******** LOAD MARKER - END OF WRAPPERS***********.\n" );
 	}
@@ -3698,7 +3718,9 @@ void wpr_system_IG_SelectScreen( Wpr_DataTypes_Screens_e nScreenIndex ) {
 	}
 
 	_MenuState.nCurrentScreen = nScreenIndex;
-	_MenuState.nControllerIndex = Player_aPlayer[0].m_nControllerIndex;
+	// The pause menu calls this from the pausing player's work, so the current player is the one
+	// whose controller and settings these screens use (every player in local co-op).
+	_MenuState.nControllerIndex = CPlayer::m_pCurrent->m_nControllerIndex;
 	_MenuState.nCurItemIndex = 0;
 
 	switch( nScreenIndex ) {
@@ -3720,10 +3742,10 @@ void wpr_system_IG_SelectScreen( Wpr_DataTypes_Screens_e nScreenIndex ) {
 #endif
 		_MenuState.bASForceFeedbackON = FALSE;
 		_MenuState.bASAutoCenter = FALSE;
-		_MenuState.nASVibrationTicks = (s16)(fforce_GetMasterIntensity(Player_aPlayer[0].m_nControllerIndex) * (f32)(_MENU_ITEMS_AS_NUM_TICKS-1));
+		_MenuState.nASVibrationTicks = (s16)(fforce_GetMasterIntensity(_MenuState.nControllerIndex) * (f32)(_MENU_ITEMS_AS_NUM_TICKS-1));
 		_MenuState.nASLookSensitivity = (s16)(CPlayer::m_pCurrent->GetLookSensitivity() * (f32)(_MENU_ITEMS_AS_NUM_TICKS-1));
 		_MenuState.bASFourWayQuickSelect = CPlayer::m_pCurrent->GetFourWayQuickSelect();
-		_MenuState.fASForceFeedbackOrigIntensity = fforce_GetMasterIntensity(Player_aPlayer[0].m_nControllerIndex);
+		_MenuState.fASForceFeedbackOrigIntensity = fforce_GetMasterIntensity(_MenuState.nControllerIndex);
 		fforce_NullHandle( &_MenuState.hASForceFeedback );
 		break;
 	};
@@ -3855,11 +3877,6 @@ void wpr_system_IG_Draw( void ) {
 																pViewport->HalfRes.y );
 	}
 	Wpr_DataTypes_ScreenData_t *pOverlayScreen = &Wpr_DataTypes_paScreenData[_MenuState.nCurrentScreen];
-#if defined(MA_PC_INPUT)
-	if( _MenuState.nCurrentScreen == WPR_DATATYPES_SCREENS_MAIN_MENU && _bPcCoopMenu ) {
-		pOverlayScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_PROFILE_SELECT];
-	}
-#endif
 	wpr_drawutils_DrawButtonOverlay( pOverlayScreen,
 		_MenuState.nButtonDrawMask,
 		fScaleMultiplier,
@@ -4796,9 +4813,6 @@ static BOOL _HandleAxisSelections( BOOL bLeftRight, u32 nControllerIndex, s8 &rn
 static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 
 	_MenuState.nButtonDrawMask = WPR_DATATYPES_DRAW_NO_BUTTONS;
-#if defined(MA_PC_INPUT)
-	if( _bPcCoopMenu ) _MenuState.nButtonDrawMask = WPR_DATATYPES_DRAW_AB_BUTTONS;
-#endif
 	
 	if( _MenuState.bFadeScreen ) {
 		// fade the screen in before allowing the user to make a selection
@@ -4809,32 +4823,6 @@ static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 		return WPR_DATATYPES_NAV_CODE_NOTHING;	
 	}
 
-#if defined(MA_PC_INPUT)
-	if( _bPcCoopMenu ) {
-		if( _MenuState.nControllerIndex < 0 ) {
-			_MenuState.nControllerIndex = wpr_system_FindActiveControllerPort( TRUE, TRUE, TRUE );
-		}
-		const s32 nController = _MenuState.nControllerIndex;
-		if( nController < 0 ) return WPR_DATATYPES_NAV_CODE_NOTHING;
-		if( _CheckBackButtons( nController ) ) return WPR_DATATYPES_NAV_CODE_BACK;
-		if( _CheckAcceptButtons( nController ) ) return WPR_DATATYPES_NAV_CODE_FORWARD;
-		const _UpDown_e nMove = _CheckUpDownAxis( nController );
-		if( nMove == _UP && _MenuState.nCurItemIndex > 0 ) --_MenuState.nCurItemIndex;
-		if( nMove == _DOWN && _MenuState.nCurItemIndex < _PC_COOP_COUNT - 1 ) ++_MenuState.nCurItemIndex;
-		const _LeftRight_e nAdjust = _CheckLeftRightAxis( nController );
-		if( nAdjust != _NOT_LEFT_OR_RIGHT ) {
-			if( _MenuState.nCurItemIndex == _PC_COOP_PLAYERS ) {
-				if( nAdjust == _LEFT && _nPcCoopPlayers > 2 ) --_nPcCoopPlayers;
-				if( nAdjust == _RIGHT && _nPcCoopPlayers < MAX_PLAYERS ) ++_nPcCoopPlayers;
-			} else if( _MenuState.nCurItemIndex == _PC_COOP_INPUT ) {
-				_pcCoopLayout = _pcCoopLayout == PCINPUT_LAYOUT_SHARED ? PCINPUT_LAYOUT_SEPARATE : PCINPUT_LAYOUT_SHARED;
-			}
-		}
-		const s32 nHover = _MouseHoverSelect( nController, _PC_COOP_COUNT - 1 );
-		if( nHover >= 0 ) _MenuState.nCurItemIndex = (s8)nHover;
-		return WPR_DATATYPES_NAV_CODE_NOTHING;
-	}
-#endif
 	// see if we have a valid controller index, if not see if a controller has been pressed
 	s32 nControllerIndex = _MenuState.nControllerIndex;
 	if( nControllerIndex < 0 ) {
@@ -4894,62 +4882,152 @@ static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 }
 
 #if defined(MA_PC_INPUT)
-static void _PcMainMenuLabel( s32 nItem, cwchar *pwszLabel, f32 fScreenY,
-	f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
-	const f32 fX = 0.125f, fY = fScreenY * 0.75f;
-	// The retail labels are meshes. Use the game's angular display font with
-	// a blue rim and gold bevel for new labels, without shipping retail artwork.
-	const f32 fPixelX = 1.0f / (2.0f * fHalfXRes);
-	const f32 fPixelY = 0.75f / (2.0f * fHalfYRes);
-	const f32 afOffsets[8][2] = { {-2,-2}, {0,-2}, {2,-2}, {-2,0}, {2,0}, {-2,2}, {0,2}, {2,2} };
-	for( u32 i = 0; i < 8; ++i ) {
-		ftext_Printf( fX + afOffsets[i][0] * fPixelX, fY + afOffsets[i][1] * fPixelY,
-			L"~f3~w0~aL~t+04~i1~s1.00~C10203599%ls", pwszLabel );
+// The PC main-menu entries (Co-op, Close Game) in the retail menu art. The retail entries are quads
+// onto the tehmalogo$ atlas, which holds "Campaign", "MultiPlayer" and an unused "Game Demos" in the
+// menu's gold italic lettering; these labels are assembled from those letters at draw time (the
+// port ships no art), at the retail quads' scale, on the MultiPlayer line's left edge. The atlas has
+// no Q or k, hence "Close Game". Measurements are atlas pixels: x runs along the 0.17 italic slant
+// (x at the line's reference row), rows are atlas rows.
+#define _PCMENU_SLANT			( 0.17f )
+#define _PCMENU_ATLAS_PX		( 512.0f )
+#define _PCMENU_PX_TO_ORTHO		( 0.44115f * 1.15f )	// retail quad: 0.8823 model units per 2 atlas px, drawn at scale 1.15
+#define _PCMENU_MP_CENTER_X		( 222.0f )				// the MultiPlayer quad's centre in the atlas
+#define _PCMENU_MP_CENTER_Y		( 286.0f )
+#define _PCMENU_MP_REF_Y		( 290.5f )				// MultiPlayer line: slant reference row and baseline
+#define _PCMENU_MP_BASELINE		( 302.0f )
+#define _PCMENU_MP_FILL_LEFT	( 52.4f )				// where the M's gold starts
+
+typedef struct {
+	f32 fLeft, fRight;		// slice, slant-corrected atlas x
+	f32 fTop, fBottom;		// slice rows
+	f32 fRefY, fBaseline;	// its line's slant reference row and baseline
+	f32 fDrawWidth;			// 0: natural width; else stretched to this
+	f32 fDrop;				// rows below its line position (the hyphen sits at mid x-height)
+} _PcMenuGlyph_t;
+
+// Lines: Campaign (reference row 216.5, baseline 228, rows 190-242), MultiPlayer (290.5, 302,
+// 264-317), Game Demos (356, 373, 335-377). Slices end at gap centres or 2.8 px past a letter's gold.
+static const _PcMenuGlyph_t _PcMenuGlyph_C =		{  97.9f, 140.45f, 190.0f, 242.0f, 216.5f, 228.0f, 0.0f, 0.0f };
+static const _PcMenuGlyph_t _PcMenuGlyph_p =		{ 217.3f, 254.0f,  190.0f, 242.0f, 216.5f, 228.0f, 0.0f, 0.0f };
+static const _PcMenuGlyph_t _PcMenuGlyph_l =		{ 129.3f, 142.5f,  264.0f, 317.0f, 290.5f, 302.0f, 0.0f, 0.0f };
+static const _PcMenuGlyph_t _PcMenuGlyph_o =		{ 354.4f, 389.8f,  335.0f, 377.0f, 356.0f, 373.0f, 0.0f, 0.0f };
+static const _PcMenuGlyph_t _PcMenuGlyph_s =		{ 391.9f, 427.4f,  335.0f, 377.0f, 356.0f, 373.0f, 0.0f, 0.0f };
+static const _PcMenuGlyph_t _PcMenuGlyph_e =		{ 169.0f, 206.8f,  335.0f, 377.0f, 356.0f, 373.0f, 0.0f, 0.0f };
+static const _PcMenuGlyph_t _PcMenuGlyph_Game =		{  48.2f, 206.8f,  335.0f, 377.0f, 356.0f, 373.0f, 0.0f, 0.0f };
+// A hyphen: the i dot of "Campaign" (rows 195.5-208), its middle column stretched, dropped to mid x-height.
+static const _PcMenuGlyph_t _PcMenuGlyph_HyphenL =	{ 292.7f, 298.5f,  195.5f, 208.0f, 216.5f, 228.0f, 0.0f, 11.0f };
+static const _PcMenuGlyph_t _PcMenuGlyph_HyphenM =	{ 298.5f, 299.5f,  195.5f, 208.0f, 216.5f, 228.0f, 11.0f, 11.0f };
+static const _PcMenuGlyph_t _PcMenuGlyph_HyphenR =	{ 299.5f, 305.5f,  195.5f, 208.0f, 216.5f, 228.0f, 0.0f, 11.0f };
+
+typedef struct {
+	const _PcMenuGlyph_t *pGlyph;	// NULL: a blank of fBlank px (the list ends with a negative blank)
+	f32 fBlank;
+} _PcMenuPiece_t;
+
+static const _PcMenuPiece_t _aPcMenuCoop[] = {
+	{ &_PcMenuGlyph_C, 0.0f }, { &_PcMenuGlyph_o, 0.0f }, { &_PcMenuGlyph_HyphenL, 0.0f }, { &_PcMenuGlyph_HyphenM, 0.0f },
+	{ &_PcMenuGlyph_HyphenR, 0.0f }, { &_PcMenuGlyph_o, 0.0f }, { &_PcMenuGlyph_p, 0.0f }, { NULL, -1.0f } };
+static const _PcMenuPiece_t _aPcMenuCloseGame[] = {
+	{ &_PcMenuGlyph_C, 0.0f }, { &_PcMenuGlyph_l, 0.0f }, { &_PcMenuGlyph_o, 0.0f }, { &_PcMenuGlyph_s, 0.0f },
+	{ &_PcMenuGlyph_e, 0.0f }, { NULL, 26.0f }, { &_PcMenuGlyph_Game, 0.0f }, { NULL, -1.0f } };
+
+static CFTexInst _PcMenuLabelTex;
+static BOOL _bPcMenuLabelTexTried = FALSE;
+
+// Lays out (and with bDraw, draws) a label whose MultiPlayer-line quad centre is at ortho
+// (fCenterX, fCenterY), tinted by fBrightness (the menu's fade-in). Returns the gold's bounds in ortho
+// px (y up).
+static void _PcMenuArtLabel( const _PcMenuPiece_t *pPieces, f32 fCenterX, f32 fCenterY, BOOL bDraw, f32 fBrightness,
+	f32 fScaleMultiplier, f32 *pfMinX, f32 *pfMaxX, f32 *pfMinY, f32 *pfMaxY ) {
+	// The retail entries' meshes are drawn scaled by the menu's resolution multiplier too.
+	const f32 fK = _PCMENU_PX_TO_ORTHO * fScaleMultiplier;
+	// Start so the first letter's gold lines up with the M of MultiPlayer (every first letter here is C).
+	f32 fPen = _PCMENU_MP_FILL_LEFT - (102.9f - _PcMenuGlyph_C.fLeft);
+	*pfMinX = fCenterX + (fPen - _PCMENU_MP_CENTER_X) * fK;
+	*pfMaxX = *pfMinX;
+	*pfMaxY = fCenterY - ((_PCMENU_MP_BASELINE - 34.0f) - _PCMENU_MP_CENTER_Y) * fK;	// cap height 34
+	*pfMinY = fCenterY - (_PCMENU_MP_BASELINE - _PCMENU_MP_CENTER_Y) * fK;
+
+	if( bDraw ) {
+		if( !_bPcMenuLabelTexTried ) {
+			_bPcMenuLabelTexTried = TRUE;
+			_PcMenuLabelTex.SetTexDef( (FTexDef_t *)fresload_Load( FTEX_RESNAME, "tehmalogo$" ) );
+			_PcMenuLabelTex.ClearFlag( CFTexInst::FLAG_WRAP_S | CFTexInst::FLAG_WRAP_T | CFTexInst::FLAG_WRAP_U );
+		}
+		if( !_PcMenuLabelTex.GetTexDef() ) {
+			bDraw = FALSE;
+		} else {
+			fdraw_SetTexture( &_PcMenuLabelTex );
+			fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
+			fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+		}
 	}
-	ftext_Printf( fX, fY + 2 * fPixelY, L"~f3~w0~aL~t+04~i1~s1.00~C50330099%ls", pwszLabel );
-	ftext_Printf( fX, fY, L"~f3~w0~aL~t+04~i1~s1.00~C99851099%ls", pwszLabel );
-	_MouseAddItem( nItem );
+
+	for( ; pPieces->pGlyph || pPieces->fBlank >= 0.0f; ++pPieces ) {
+		const _PcMenuGlyph_t *pG = pPieces->pGlyph;
+		if( !pG ) {
+			fPen += pPieces->fBlank;
+			continue;
+		}
+		const f32 fWidth = pG->fDrawWidth > 0.0f ? pG->fDrawWidth : (pG->fRight - pG->fLeft);
+		const f32 fShiftY = (_PCMENU_MP_BASELINE - pG->fBaseline) + pG->fDrop;
+		if( pG != &_PcMenuGlyph_HyphenL && pG != &_PcMenuGlyph_HyphenM && pG != &_PcMenuGlyph_HyphenR ) {
+			*pfMaxX = fCenterX + (fPen + fWidth - _PCMENU_MP_CENTER_X) * fK;
+		}
+		if( bDraw ) {
+			// corners: 0 top-left, 1 top-right, 2 bottom-right, 3 bottom-left
+			const f32 afSrcX[4] = { pG->fLeft, pG->fRight, pG->fRight, pG->fLeft };
+			const f32 afSrcY[4] = { pG->fTop, pG->fTop, pG->fBottom, pG->fBottom };
+			const f32 afDstX[4] = { fPen, fPen + fWidth, fPen + fWidth, fPen };
+			FDrawVtx_t aVtx[4];
+			for( u32 i = 0; i < 4; ++i ) {
+				const f32 fDstY = afSrcY[i] + fShiftY;
+				const f32 fTexX = afSrcX[i] + _PCMENU_SLANT * (pG->fRefY - afSrcY[i]);
+				const f32 fOutX = afDstX[i] + _PCMENU_SLANT * (_PCMENU_MP_REF_Y - fDstY);
+				aVtx[i].Pos_MS.Set( fCenterX + (fOutX - _PCMENU_MP_CENTER_X) * fK, fCenterY - (fDstY - _PCMENU_MP_CENTER_Y) * fK, 1.0f );
+				aVtx[i].ColorRGBA.Set( fBrightness, fBrightness, fBrightness, 1.0f );
+				aVtx[i].ST.Set( fTexX / _PCMENU_ATLAS_PX, afSrcY[i] / _PCMENU_ATLAS_PX );
+			}
+			FDrawVtx_t aTris[6] = { aVtx[0], aVtx[1], aVtx[2], aVtx[0], aVtx[2], aVtx[3] };
+			fdraw_PrimList( FDRAW_PRIMTYPE_TRILIST, aTris, 6 );
+		}
+		fPen += fWidth;
+	}
+}
+
+// Draw side (ortho pass): the retail highlight behind a selected label and its mouse box.
+static void _PcMainMenuArtItem( s32 nItem, const _PcMenuPiece_t *pPieces, f32 fBiPolarY,
+	f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
+	f32 fMinX, fMaxX, fMinY, fMaxY;
+	_PcMenuArtLabel( pPieces, -0.5f * fHalfXRes, fBiPolarY * fHalfYRes, FALSE, 1.0f, fScaleMultiplier, &fMinX, &fMaxX, &fMinY, &fMaxY );
 	if( _MenuState.nCurItemIndex == nItem ) {
-		f32 fLeft, fTop, fRight, fBottom;
 		Wpr_DataTypes_MeshLayout_t Highlight;
 		Highlight.pMeshInst = wpr_datatypes_FindMeshInst( "gfh_logo05", _nNumMeshes, _paMeshInsts );
-		if( Highlight.pMeshInst && ftext_GetLastPrintBounds( &fLeft, &fTop, &fRight, &fBottom ) ) {
-			Highlight.fBiPolarUnitX = fLeft + fRight - 1.0f;
-			Highlight.fBiPolarUnitY = 1.0f - fTop - fBottom;
-			Highlight.fDrawZ = 1.15f + WPR_DATATYPES_LAYER_Z;
+		if( Highlight.pMeshInst ) {
+			// As retail: the highlight at the entry's position and scale, centred on the word.
+			Highlight.fBiPolarUnitX = 0.5f * (fMinX + fMaxX) / fHalfXRes;
+			Highlight.fBiPolarUnitY = 0.5f * (fMinY + fMaxY) / fHalfYRes;
+			Highlight.fDrawZ = 1.0f + WPR_DATATYPES_LAYER_Z;
 			Highlight.fScale = 1.15f;
 			wpr_drawutils_DrawMesh_WithRot( &Highlight, fScaleMultiplier, fHalfXRes, fHalfYRes, 0, 0, 0 );
 		}
 	}
+	// ortho px (y up, origin at the centre) -> screen fractions (y down)
+	const f32 fPad = 4.0f;
+	_MouseAddBox( nItem, _MOUSE_ITEM_ACCEPT,
+		((fMinX - fPad) / fHalfXRes + 1.0f) * 0.5f, (1.0f - (fMaxY + fPad) / fHalfYRes) * 0.5f,
+		((fMaxX + fPad) / fHalfXRes + 1.0f) * 0.5f, (1.0f - (fMinY - fPad) / fHalfYRes) * 0.5f );
 }
+
+// The MultiPlayer entry sits at -0.45 (retail -0.65, raised 0.20 for the PC entries); these follow
+// at the retail 0.15 spacing.
+#define _PCMENU_COOP_Y		( -0.60f )
+#define _PCMENU_QUIT_Y		( -0.75f )
 #endif
 
 static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
 	Wpr_DataTypes_ScreenData_t *pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_MAIN_MENU];
 
-#if defined(MA_PC_INPUT)
-	if( _bPcCoopMenu ) {
-		ftext_Printf( 0.18f, 0.20f * 0.75f, L"~f1~C45759599~w0~aL~s1.50Co-op Campaign" );
-		ftext_Printf( 0.18f, 0.28f * 0.75f, L"~f1~C99999999~w0~aL~s0.80Experimental local play - 2 to 4 players" );
-		ftext_Printf( 0.18f, 0.34f * 0.75f, L"~f1~C99999999~w0~aL~s0.60%ls", _pcCoopLayout == PCINPUT_LAYOUT_SHARED ?
-			L"Controllers 1-4 control players 1-4. Keyboard is optional." :
-			L"Keyboard / mouse: player 1. Controllers: players 2-4." );
-		ftext_Printf( 0.18f, 0.39f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Starts a new campaign. Progress is not saved." );
-		ftext_Printf( 0.18f, 0.44f * 0.75f, L"~f1~C99999999~w0~aL~s0.60Some missions and cutscenes may not work correctly." );
-		for( s32 nItem = 0; nItem < _PC_COOP_COUNT; ++nItem ) {
-			wchar wszLabel[96];
-			if( nItem == _PC_COOP_PLAYERS ) _snwprintf( wszLabel, 96, L"Players: %u", (u32)_nPcCoopPlayers );
-			else if( nItem == _PC_COOP_INPUT ) _snwprintf( wszLabel, 96, L"Controls: %ls",
-				_pcCoopLayout == PCINPUT_LAYOUT_SHARED ? L"Controllers" : L"Keyboard + controllers" );
-			else _snwprintf( wszLabel, 96, L"%ls", nItem == _PC_COOP_START ? L"Start Local Co-op" : L"Back" );
-			ftext_Printf( 0.18f, (0.50f + nItem * 0.06f) * 0.75f, L"~f1~C99999999~w0~aL~s0.85~C%ls%ls",
-				nItem == _MenuState.nCurItemIndex ? L"40994099" : L"85858599", wszLabel );
-			_MouseAddItem( nItem );
-		}
-		ftext_Printf( 0.18f, 0.76f * 0.75f, L"~f1~C60809099~w0~aL~s0.53Network play: planned, not available" );
-		return;
-	}
-#endif
 #if defined(MA_PC_INPUT)
 	// Make room for the desktop entries without changing the loaded retail layout.
 	Wpr_DataTypes_ScreenData_t DesktopScreen = *pScreen;
@@ -4984,8 +5062,8 @@ static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 		FALSE,
         fScaleMultiplier, fHalfXRes, fHalfYRes );
 #if defined(MA_PC_INPUT)
-	_PcMainMenuLabel( _MENU_ITEMS_MM_COOP, L"Co-op", 0.79f, fScaleMultiplier, fHalfXRes, fHalfYRes );
-	_PcMainMenuLabel( _MENU_ITEMS_MM_QUIT, L"Quit to Desktop", 0.865f, fScaleMultiplier, fHalfXRes, fHalfYRes );
+	_PcMainMenuArtItem( _MENU_ITEMS_MM_COOP, _aPcMenuCoop, _PCMENU_COOP_Y, fScaleMultiplier, fHalfXRes, fHalfYRes );
+	_PcMainMenuArtItem( _MENU_ITEMS_MM_QUIT, _aPcMenuCloseGame, _PCMENU_QUIT_Y, fScaleMultiplier, fHalfXRes, fHalfYRes );
 	// the retail items are 3D text meshes
 	for( s32 nItem=0; nItem < _MENU_ITEMS_MM_COUNT; nItem++ ) {
 		if( _MENU_ITEMS_MM_START_OFFSET + nItem < (s32)pScreen->nNumMeshElements ) {
@@ -5007,56 +5085,27 @@ static void _MainMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfY
 
 static void _MainMenu_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
 #if defined(MA_PC_INPUT)
-	// Text is flushed later; dim only the animated scene behind this page.
-	if( _bPcCoopMenu ) {
-		game_DrawSolidFullScreenOverlay( 0.30f, 0.0f );
-		// Frame the generated co-op controls like the retail blue menu panels.
-		const f32 fLeft = -0.72f * fHalfXRes, fRight = 0.72f * fHalfXRes;
-		const f32 fTop = 0.66f * fHalfYRes, fBottom = -0.60f * fHalfYRes;
-		CFVec3 a( fLeft, fTop, 1.0f ), b( fRight, fTop, 1.0f );
-		CFVec3 c( fRight, fBottom, 1.0f ), d( fLeft, fBottom, 1.0f );
-		const CFColorRGBA Body( 0.015f, 0.035f, 0.075f, 0.88f );
-		const CFColorRGBA Edge( 0.20f, 0.44f, 0.84f, 0.95f );
+	{
+		// The PC entries' letters, over the retail highlight drawn in the ortho pass.
+		f32 fBrightness = 1.0f;
+		if( _MenuState.bFadeScreen ) {
+			fBrightness = FMATH_MIN( _MenuState.fModeTimer * (1.0f/_TOTAL_FADE_IN_TIME), 1.0f );
+		}
+		f32 fMinX, fMaxX, fMinY, fMaxY;
 		fdraw_Depth_EnableWriting( FALSE );
 		fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
-		fdraw_SetTexture( NULL );
-		fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
-		fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
-		const FDrawCullDir_e nOldCull = fdraw_GetCullDir();
+		const FDrawCullDir_e nOldLabelCull = fdraw_GetCullDir();
 		fdraw_SetCullDir( FDRAW_CULLDIR_NONE );
-		fdraw_SolidQuad( &a, &b, &c, &d, &Body );
-		fdraw_SolidLine( &a, &b, &Edge ); fdraw_SolidLine( &b, &c, &Edge );
-		fdraw_SolidLine( &c, &d, &Edge ); fdraw_SolidLine( &d, &a, &Edge );
-		fdraw_SetCullDir( nOldCull );
+		_PcMenuArtLabel( _aPcMenuCoop, -0.5f * fHalfXRes, _PCMENU_COOP_Y * fHalfYRes, TRUE, fBrightness, fScaleMultiplier, &fMinX, &fMaxX, &fMinY, &fMaxY );
+		_PcMenuArtLabel( _aPcMenuCloseGame, -0.5f * fHalfXRes, _PCMENU_QUIT_Y * fHalfYRes, TRUE, fBrightness, fScaleMultiplier, &fMinX, &fMaxX, &fMinY, &fMaxY );
+		fdraw_SetCullDir( nOldLabelCull );
 	}
 #endif
 }
 
 static void _MainMenu_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 #if defined(MA_PC_INPUT)
-	DEVPRINTF( "PC main menu: navigation %d, selected %d, co-op page %d.\n", nNavCode, _MenuState.nCurItemIndex, _bPcCoopMenu );
-	if( _bPcCoopMenu ) {
-		if( nNavCode == WPR_DATATYPES_NAV_CODE_BACK ||
-			(nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD && _MenuState.nCurItemIndex == _PC_COOP_BACK) ) {
-			_bPcCoopMenu = FALSE;
-			_MenuState.nCurItemIndex = _MENU_ITEMS_MM_COOP;
-			_MenuState.fModeTimer = 0.0f;
-		} else if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD && _MenuState.nCurItemIndex == _PC_COOP_PLAYERS ) {
-			_nPcCoopPlayers = _nPcCoopPlayers < MAX_PLAYERS ? _nPcCoopPlayers + 1 : 2;
-		} else if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD && _MenuState.nCurItemIndex == _PC_COOP_INPUT ) {
-			_pcCoopLayout = _pcCoopLayout == PCINPUT_LAYOUT_SHARED ? PCINPUT_LAYOUT_SEPARATE : PCINPUT_LAYOUT_SHARED;
-		} else if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD && _MenuState.nCurItemIndex == _PC_COOP_START ) {
-			_bPcCoopMenu = FALSE;
-			_bPcCoopLaunch = TRUE;
-			// The no-save launch must not inherit a previous profile's device check.
-			_paProfiles[0].m_SaveInfo.nStorageDeviceID = FSTORAGE_DEVICE_ID_NONE;
-			_MenuState.nMode = WPR_DATATYPES_MODES_SINGLE_PLAYER;
-			_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_NONE;
-			_MenuState.nStartGameMethod = _START_METHOD_NEW;
-			_MenuState.fModeTimer = 0.0f;
-		}
-		return;
-	}
+	DEVPRINTF( "PC main menu: navigation %d, selected %d.\n", nNavCode, _MenuState.nCurItemIndex );
 #endif
 
 	switch( nNavCode ) {
@@ -5124,9 +5173,20 @@ static void _MainMenu_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 			gameloop_ScheduleExit();
 			break;
 		case _MENU_ITEMS_MM_COOP:
-			_bPcCoopMenu = TRUE;
+			// The retail Players Join In screen, in co-op mode: the keyboard/mouse gets player 1's box
+			// and controllers are dealt to players 2-4 (so a keyboard player and pad players can join).
+			pcinput_SetLocalCoopSession( true, PCINPUT_LAYOUT_AUTO, MAX_PLAYERS );
+			_bPcCoopJoin = TRUE;
+			_fPcCoopNeedPlayersTimer = 0.0f;
+			for( u32 nSection = 0; nSection < MAX_PLAYERS; ++nSection ) {
+				_anPcCoopColor[nSection] = GAMESAVE_MP_COLORS_YELLOW;
+				_anPcCoopLastState[nSection] = _MULTI_JOIN_STATE_ENTER;
+			}
+			_MenuState.nMode = WPR_DATATYPES_MODES_MULTIPLAYER;
 			_MenuState.nCurItemIndex = 0;
-			_MenuState.fModeTimer = 0.0f;
+			_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_MULTI_JOIN;
+			_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_MAIN_MENU;
+			_MJ_InitJoinInfoAndSections( &_MenuState.MJJoinInfo, _MenuState.aMJSections, MAX_PLAYERS );
 			fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_SUCCESS] );
 			break;
 #endif
@@ -5613,6 +5673,7 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 	s32 nASItemCount = _MENU_ITEMS_AS_COUNT;
 #if defined(MA_PC_INPUT)
 	if( !_bPcInputOptionsAdded ) nASItemCount -= 2;
+	else if( _MenuState.nControllerIndex != (s32)pcinput_KeyboardPort() ) nASItemCount -= 1;	// no mouse row
 #endif
 
 #if defined(MA_PC_INPUT)
@@ -5803,6 +5864,14 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 		if( !fclib_wcsicmp( pScreen->pText[i].pwszText, L"None" ) ) {
 			continue;
 		}
+#if defined(MA_PC_INPUT)
+		// Mouse sensitivity belongs to the keyboard/mouse player; a controller-only player's
+		// settings end at Button Prompts.
+		if( _bPcInputOptionsAdded && i == _MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_MOUSE_SENSITIVITY &&
+			_MenuState.nControllerIndex != (s32)pcinput_KeyboardPort() ) {
+			continue;
+		}
+#endif
 
 		if( i == (_MenuState.nCurItemIndex + _MENU_ITEMS_AS_START_OFFSET) ) {
 			bSelected = TRUE;
@@ -8329,6 +8398,12 @@ static Wpr_DataTypes_NavCode_e _MultiJoin_Work( void ) {
 	u32 i, nFirstPlayerToExit;
 	BOOL bBack, bForward;
 
+#if defined(MA_PC_INPUT)
+	if( _fPcCoopNeedPlayersTimer > 0.0f ) {
+		_fPcCoopNeedPlayersTimer -= FLoop_fPreviousLoopSecs;
+	}
+#endif
+
 	// first update the join info
     _MJ_UpdateJoinInfo( &_MenuState.MJJoinInfo, FALSE );
 
@@ -8371,6 +8446,60 @@ static Wpr_DataTypes_NavCode_e _MultiJoin_Work( void ) {
 		}
 	}
 
+#if defined(MA_PC_INPUT)
+	if( _bPcCoopJoin ) {
+		// Co-op colours: a player who becomes ready starts on their profile's colour (or the next
+		// one nobody ready has), then left/right on their own controls cycles through the free ones.
+		for( i=0; i < MAX_PLAYERS; i++ ) {
+			_MultiJoin_SectionData_t *pSection = &_MenuState.aMJSections[i];
+			if( pSection->nState != _MULTI_JOIN_STATE_WAIT ) {
+				_anPcCoopLastState[i] = pSection->nState;
+				continue;
+			}
+			s32 nStep = 0;
+			u32 nColor = _anPcCoopColor[i];
+			if( _anPcCoopLastState[i] != _MULTI_JOIN_STATE_WAIT ) {
+				nColor = pSection->pProfile->m_Data.nColorIndex;
+				if( nColor >= GAMESAVE_MP_COLORS_COUNT ) {
+					nColor = GAMESAVE_MP_COLORS_YELLOW;
+				}
+				nStep = 1;
+			} else {
+				const _LeftRight_e nLR = _CheckLeftRightAxis( pSection->pProfile->m_nControllerIndex );
+				if( nLR == _LEFT ) {
+					nStep = -1;
+					nColor = (nColor + GAMESAVE_MP_COLORS_COUNT - 1) % GAMESAVE_MP_COLORS_COUNT;
+				} else if( nLR == _RIGHT ) {
+					nStep = 1;
+					nColor = (nColor + 1) % GAMESAVE_MP_COLORS_COUNT;
+				}
+			}
+			if( nStep ) {
+				// skip colours another ready player has
+				for( u32 nTry = 0; nTry < GAMESAVE_MP_COLORS_COUNT; ++nTry ) {
+					BOOL bTaken = FALSE;
+					for( u32 j=0; j < MAX_PLAYERS; j++ ) {
+						if( j != i && _MenuState.aMJSections[j].nState == _MULTI_JOIN_STATE_WAIT &&
+							_anPcCoopLastState[j] == _MULTI_JOIN_STATE_WAIT && _anPcCoopColor[j] == nColor ) {
+							bTaken = TRUE;
+							break;
+						}
+					}
+					if( !bTaken ) {
+						break;
+					}
+					nColor = (nColor + GAMESAVE_MP_COLORS_COUNT + nStep) % GAMESAVE_MP_COLORS_COUNT;
+				}
+				if( _anPcCoopLastState[i] == _MULTI_JOIN_STATE_WAIT && nColor != _anPcCoopColor[i] ) {
+					fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CURSOR_MOVED] );
+				}
+				_anPcCoopColor[i] = (u8)nColor;
+			}
+			_anPcCoopLastState[i] = _MULTI_JOIN_STATE_WAIT;
+		}
+	}
+#endif
+
 	// update our waiting for other players var
 	_MenuState.MJJoinInfo.bWaitingForOtherPlayers = FALSE;
 	for( i=0; i < MAX_PLAYERS; i++ ) {
@@ -8392,9 +8521,18 @@ static Wpr_DataTypes_NavCode_e _MultiJoin_Work( void ) {
 					_MenuState.nMPPlayerMask |= (1 << i);
 					_MenuState.nMPNumPlayers++;
 					// record how many levels have been unlocked
-					_MenuState.nMLNumUnlockedLevels = FMATH_MAX( _MenuState.nMLNumUnlockedLevels, _MenuState.aMJSections[i].pProfile->m_Data.nNumMPLevelsUnlocked );					
+					_MenuState.nMLNumUnlockedLevels = FMATH_MAX( _MenuState.nMLNumUnlockedLevels, _MenuState.aMJSections[i].pProfile->m_Data.nNumMPLevelsUnlocked );
 				}
 			}
+#if defined(MA_PC_INPUT)
+			if( _bPcCoopJoin && _MenuState.nMPNumPlayers < 2 ) {
+				// Co-op needs a partner.
+				_fPcCoopNeedPlayersTimer = 3.0f;
+				fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_NO_CAN_DO] );
+				_MenuState.nButtonDrawMask = WPR_DATATYPES_DRAW_AB_BUTTONS;
+				return WPR_DATATYPES_NAV_CODE_NOTHING;
+			}
+#endif
 			_MenuState.nControllerIndex = nFirstPlayerToExit;
 			fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_SUCCESS] );
 			return WPR_DATATYPES_NAV_CODE_FORWARD;
@@ -8412,11 +8550,37 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 	u32 i, nDeviceIndex;
 	Wpr_DataTypes_ScreenData_t *pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_MULTI_JOIN];
 	Wpr_DataTypes_TextLayout_t *pTextLayout;
-	
-	wpr_system_DrawBasicScreen( pScreen, 
+
+#if defined(MA_PC_INPUT)
+	// Co-op: the same screen, retitled, with a note where the retail screen is empty.
+	Wpr_DataTypes_ScreenData_t CoopScreen;
+	Wpr_DataTypes_TextLayout_t aCoopText[16];
+	if( _bPcCoopJoin && pScreen->nNumTextElements > 0 && pScreen->nNumTextElements <= 16 ) {
+		CoopScreen = *pScreen;
+		for( i=0; i < pScreen->nNumTextElements; i++ ) {
+			aCoopText[i] = pScreen->pText[i];
+		}
+		aCoopText[0].pwszText = L"Co-op";
+		CoopScreen.pText = aCoopText;
+		pScreen = &CoopScreen;
+	}
+#endif
+
+	wpr_system_DrawBasicScreen( pScreen,
 		-1,
 		FALSE,
         fScaleMultiplier, fHalfXRes, fHalfYRes );
+
+#if defined(MA_PC_INPUT)
+	if( _bPcCoopJoin && pScreen->nNumTextElements > 1 ) {
+		// right of "Players Join In", in the instruction colour
+		const Wpr_DataTypes_TextLayout_t *pSubtitle = &pScreen->pText[1];
+		// right-aligned on the player boxes' right edge
+		ftext_Printf( 0.84f, pSubtitle->fUnitY + 0.012f, L"~f8~C%ls~w0~aR~s%.2f%ls",
+			WprDataTypes_pwszInstructionTextColor, pSubtitle->fScale * 0.70f,
+			_fPcCoopNeedPlayersTimer > 0.0f ? L"Needs two players" : L"Progress is not saved" );
+	}
+#endif
 
 	// draw the state specific text
 	for( i=0; i < MAX_PLAYERS; i++ ) {
@@ -8491,6 +8655,20 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 				pTextLayout->fScale + 0.02f,
 				_MenuState.aMJSections[i].pProfile->m_SaveInfo.wszProfileName );
 
+#if defined(MA_PC_INPUT)
+			if( _bPcCoopJoin && _anPcCoopColor[i] < GAMESAVE_MP_COLORS_COUNT ) {
+				// the co-op colour, in its colour, between the retail selection braces
+				ftext_Printf( pTextLayout->fUnitX,
+					pTextLayout->fUnitY + 0.095f,
+					L"~f1~w0~ac~s%.2f~C%ls{ ~C%ls%ls ~C%ls}",
+					pTextLayout->fScale,
+					WprDataTypes_pwszBlueTextColor,
+					_apwszPcCoopColorCodes[_anPcCoopColor[i]],
+					_apwszPcCoopColorNames[_anPcCoopColor[i]],
+					WprDataTypes_pwszBlueTextColor );
+			}
+#endif
+
 			// print the instructions to move on
 			if( !_MenuState.MJJoinInfo.bWaitingForOtherPlayers ) {
 				ftext_Printf( pTextLayout->fUnitX,
@@ -8535,6 +8713,30 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 }
 
 static void _MultiJoin_MP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
+
+#if defined(MA_PC_INPUT)
+	if( _bPcCoopJoin ) {
+		_bPcCoopJoin = FALSE;
+		_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_MULTI_JOIN;
+		if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD ) {
+			// everyone in _MenuState.nMPPlayerMask plays the campaign (see _bPcCoopLaunch)
+			_bPcCoopLaunch = TRUE;
+			_MenuState.nMode = WPR_DATATYPES_MODES_SINGLE_PLAYER;
+			_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_NONE;
+			_MenuState.nStartGameMethod = _START_METHOD_NEW;
+			_MenuState.fModeTimer = 0.0f;
+		} else {
+			// back to the main menu, on Co-op, with the normal controller layout
+			pcinput_SetLocalCoopSession( false );
+			_MenuState.nMode = WPR_DATATYPES_MODES_MAIN_MENU;
+			_MenuState.fModeTimer = 0.0f;
+			_MenuState.nCurItemIndex = _MENU_ITEMS_MM_COOP;
+			_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_MAIN_MENU;
+			_MenuState.nControllerIndex = WPR_SYSTEM_CONTROLLER_PORT_UNKNOWN;
+		}
+		return;
+	}
+#endif
 
 	switch( nNavCode ) {
 		
@@ -10618,22 +10820,43 @@ static Wpr_DataTypes_NavCode_e _PrepareToLoad_Work( void ) {
 
 #if defined(MA_PC_INPUT)
 		if( _bPcCoopLaunch ) {
-			// Campaign rules with virtual profiles for the wrapper completion screens.
-			_GameInitInfo.nNumPlayers = _nPcCoopPlayers;
+			// Campaign rules for everyone who joined on the co-op Players Join In screen. Each keeps
+			// their profile's settings and multiplayer colour; everything else starts new, and the
+			// profile is a virtual copy, so nothing is written back to anyone's save.
+			u32 nPlayers = 0, nPorts = 0;
+			for( u32 nPort = 0; nPort < MAX_PLAYERS; ++nPort ) {
+				if( !(_MenuState.nMPPlayerMask & (1 << nPort)) ) {
+					continue;
+				}
+				CPlayerProfile *pProfile = &_paProfiles[nPort];
+				const GameSave_ProfileData_t Chosen = pProfile->m_Data;
+				wchar wszName[FSTORAGE_MAX_NAME_LEN];
+				fclib_wcsncpy( wszName, pProfile->m_SaveInfo.wszProfileName, FSTORAGE_MAX_NAME_LEN - 1 );
+				wszName[FSTORAGE_MAX_NAME_LEN - 1] = 0;
+				pProfile->InitNewProfile( TRUE );
+				const u32 nSettingFlags = GAMESAVE_PROFILE_FLAGS_INVERT_ANALOG | GAMESAVE_PROFILE_FLAGS_AUTO_CENTER |
+					GAMESAVE_PROFILE_FLAGS_ASSISTED_TARGETING | GAMESAVE_PROFILE_FLAGS_FOUR_WAY_QUICK_SELECT;
+				pProfile->m_Data.nFlags = (pProfile->m_Data.nFlags & ~nSettingFlags) | (Chosen.nFlags & nSettingFlags) | GAMESAVE_PROFILE_FLAGS_VIRTUAL_PROFILE;
+				pProfile->m_Data.nControllerConfigIndex = Chosen.nControllerConfigIndex;
+				pProfile->m_Data.nColorIndex = _anPcCoopColor[nPort];	// chosen on the join screen
+				pProfile->m_Data.fUnitVibrationIntensity = Chosen.fUnitVibrationIntensity;
+				pProfile->m_Data.fUnitLookSensitivity = Chosen.fUnitLookSensitivity;
+				fang_MemZero( &pProfile->m_SaveInfo, sizeof( GameSave_SaveInfo_t ) );
+				pProfile->m_SaveInfo.nStorageDeviceID = FSTORAGE_DEVICE_ID_NONE;
+				fclib_wcsncpy( pProfile->m_SaveInfo.wszProfileName, wszName, FSTORAGE_MAX_NAME_LEN - 1 );
+				pProfile->m_nControllerIndex = nPort;
+				_GameInitInfo.apProfile[nPlayers++] = pProfile;
+				nPorts = nPort + 1;
+			}
+			_GameInitInfo.nNumPlayers = (u8)nPlayers;
 			_GameInitInfo.bSinglePlayer = TRUE;
 			_GameInitInfo.bNewGame = TRUE;
 			_GameInitInfo.nLevelToPlay = 0;
 			_GameInitInfo.nDifficultyLevel = GAMESAVE_DIFFICULTY_NORMAL;
-			for( u32 nPlayer = 0; nPlayer < _nPcCoopPlayers; ++nPlayer ) {
-				_paProfiles[nPlayer].InitNewProfile( TRUE );
-				fang_MemZero( &_paProfiles[nPlayer].m_SaveInfo, sizeof( GameSave_SaveInfo_t ) );
-				_paProfiles[nPlayer].m_SaveInfo.nStorageDeviceID = FSTORAGE_DEVICE_ID_NONE;
-				_paProfiles[nPlayer].m_nControllerIndex = nPlayer;
-				_GameInitInfo.apProfile[nPlayer] = &_paProfiles[nPlayer];
-			}
-			pcinput_SetLocalCoopSession( true, _pcCoopLayout );
-			DEVPRINTF( "Campaign co-op menu: %u local players, %s input, no profile saves.\n", (u32)_nPcCoopPlayers,
-				_pcCoopLayout == PCINPUT_LAYOUT_SHARED ? "controllers" : "keyboard + controllers" );
+			// Keep the controllers as they were dealt on the join screen, for the ports in play.
+			pcinput_SetLocalCoopPlayers( nPorts );
+			DEVPRINTF( "Campaign co-op menu: %u local players (ports mask 0x%x), automatic controls (%u controllers connected), no profile saves.\n",
+				nPlayers, (u32)_MenuState.nMPPlayerMask, pcinput_ConnectedPadCount() );
 		} else
 #endif
 		if( _MenuState.nMode == WPR_DATATYPES_MODES_SINGLE_PLAYER ) {

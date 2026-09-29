@@ -1,9 +1,9 @@
 """Run the game for a test and summarize what its log says.
 
 Runs build/<config>/ma_port.exe from the repository root with the retail data in gamedata/files. Test runs
-are muted and keep Discord off (the user often has their own game open), log with -port-diag to
-build/logs/<name>.log, present without vsync (so frame times show the real cost), and are closed after
---seconds. Only the process this script started is closed; never the user's own game.
+keep audio enabled and Discord off, log with -port-diag to build/logs/<name>.log, present without vsync
+(so frame times show the real cost), and are closed after --seconds. Pass --mute only for tests where
+silent playback is intentional. Only the process this script started is closed; never the user's own game.
 
 usage: python tools/port_run.py [options] [-- extra game arguments]
   --config Release|Debug   which build (default Release: the one to play; Debug has the engine asserts)
@@ -16,7 +16,8 @@ usage: python tools/port_run.py [options] [-- extra game arguments]
                            "30:0x0D" presses Enter 30 s after launch (no g: from process start)
   --stall-ms MS            log the game thread's stack for frames longer than MS (default 100)
   --vsync                  keep vsync on
-  --audio                  play audio (only when the user asked to hear something)
+  --audio                  explicit; audio is enabled by default
+  --mute                   play the test silently (Bink audio is disabled too)
   --save-dir DIR           save directory for the test (default: build/test-saves/NAME)
   --keep                   start the game and return at once, printing its PID (drive it with
                            tools/menu_drive.py --pid PID ..., then run --stop PID --name NAME)
@@ -177,7 +178,9 @@ def main():
     parser.add_argument("--test-keys")
     parser.add_argument("--stall-ms", type=int)
     parser.add_argument("--vsync", action="store_true")
-    parser.add_argument("--audio", action="store_true")
+    audio_group = parser.add_mutually_exclusive_group()
+    audio_group.add_argument("--audio", action="store_true", help="enable audio (the default)")
+    audio_group.add_argument("--mute", action="store_true", help="run silently; disables Bink audio too")
     parser.add_argument("--save-dir")
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--stop", type=int)
@@ -211,7 +214,7 @@ def main():
         command += ["-coop", str(args.coop)]
     if not args.vsync:
         command.append("-no-vsync")
-    if not args.audio:
+    if args.mute:
         command.append("-mute")
     if args.shots:
         shot_dir = os.path.join(ROOT, "build", "shots", name)

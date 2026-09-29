@@ -22,6 +22,7 @@
 #include "eproj.h"
 #include "iteminst.h"
 #include "fresload.h"
+#include "fparticle.h"
 #include "fsndfx.h"
 #include "bot.h"
 #include "ai/aigameutils.h"
@@ -69,6 +70,10 @@ BOOL CWeaponEMPBuilder::InterpretTable( void ) {
 
 CWeaponEMP::_UserProps_t CWeaponEMP::m_aUserProps[EUK_COUNT_EMP];
 CEProjPool::PoolHandle_t CWeaponEMP::m_ahProjPool[EUK_COUNT_EMP];
+#if FANG_WINGC
+CEProjPool::PoolHandle_t CWeaponEMP::m_hPortWaterPool = EPROJPOOL_NULL_HANDLE;
+FParticle_DefHandle_t CWeaponEMP::m_hPortWaterSplash = FPARTICLE_INVALID_HANDLE;
+#endif
 SmokeTrailAttrib_t CWeaponEMP::m_SmokeTrailAttrib;
 CFTexInst CWeaponEMP::m_StreamerTexInst;
 
@@ -287,6 +292,16 @@ BOOL CWeaponEMP::InitSystem( void ) {
 	m_StreamerTexInst.SetTexDef( pTexDef );
 	m_StreamerTexInst.SetFlags( CFTexInst::FLAG_WRAP_S | CFTexInst::FLAG_WRAP_T );
 
+#if FANG_WINGC
+	// Water Grenade (cut content): its own pool of the unused gp_swater model and the water blast
+	// particle liquid surfaces use. Failure only disables the Water Grenade.
+	m_hPortWaterPool = CEProjPool::Create( CEProj::PROJTYPE_GRENADE, "gp_swater", 4 );
+	if( m_hPortWaterPool == EPROJPOOL_NULL_HANDLE ) {
+		DEVPRINTF( "CWeaponEMP::InitSystem(): Could not create the Water Grenade projectile pool.\n" );
+	}
+	m_hPortWaterSplash = (FParticle_DefHandle_t)fresload_Load( FPARTICLE_RESTYPE, "e_wtrexpl01" );
+#endif
+
 	// Success...
 
 	return TRUE;
@@ -408,7 +423,22 @@ void CWeaponEMP::_ClearDataMembers( void ) {
 	m_pResourceData = NULL;
 	m_fSecondsCountdownTimer = 0.0f;
 	m_pProjToThrow = NULL;
+#if FANG_WINGC
+	m_bPortWater = FALSE;
+#endif
 }
+
+#if FANG_WINGC
+// Water Grenade detonation: a water blast where it bursts; the EMP shutdown effect itself still runs.
+BOOL CWeaponEMP::_PortWaterDetonated( CEProj *pProj, BOOL bMakeEffect, CEProj::Event_e nEvent, const FCollImpact_t *pImpact ) {
+	DEVPRINTF( "Port: Water Grenade burst at (%.0f, %.0f, %.0f).\n", pProj->MtxToWorld()->m_vPos.x, pProj->MtxToWorld()->m_vPos.y, pProj->MtxToWorld()->m_vPos.z );
+	if( m_hPortWaterSplash != FPARTICLE_INVALID_HANDLE ) {
+		const CFVec3 Up( 0.0f, 1.0f, 0.0f );
+		fparticle_SpawnEmitter( m_hPortWaterSplash, pProj->MtxToWorld()->m_vPos.v3, &Up, 1.0f );
+	}
+	return TRUE;
+}
+#endif
 
 
 void CWeaponEMP::ClassHierarchyRemoveFromWorld( void ) {
@@ -472,7 +502,12 @@ BOOL CWeaponEMP::_GetProjectileFromPoolAndInit( void ) {
 	}
 
 	// Get a free projectile...
+#if FANG_WINGC
+	const BOOL bWater = m_bPortWater && m_hPortWaterPool != EPROJPOOL_NULL_HANDLE;
+	m_pProjToThrow = CEProjPool::GetProjectileFromFreePool( bWater ? m_hPortWaterPool : m_ahProjPool[m_nUpgradeLevel] );
+#else
 	m_pProjToThrow = CEProjPool::GetProjectileFromFreePool( m_ahProjPool[m_nUpgradeLevel] );
+#endif
 	if( m_pProjToThrow == NULL ) {
 		// No more projectiles...
 		return FALSE;
@@ -494,6 +529,13 @@ BOOL CWeaponEMP::_GetProjectileFromPoolAndInit( void ) {
 	GrenadeParams.fDetonationRadius = pUserProps->fDetonationRadius;
 	GrenadeParams.fDetonationLife = pUserProps->fDetonationLife;
 	GrenadeParams.fShutdownTime = pUserProps->fShutdownTime;
+#if FANG_WINGC
+	if( bWater ) {
+		// Soaked circuits stay shorted half as long again, and the burst reaches a little further.
+		GrenadeParams.fShutdownTime *= 1.5f;
+		GrenadeParams.fDetonationRadius *= 1.25f;
+	}
+#endif
 	GrenadeParams.pSoundGroupBounce = pUserProps->pSoundGroupBounce;
 	GrenadeParams.pSoundGroupEMPEffect = pUserProps->pSoundGroupEffect;
 
@@ -503,6 +545,9 @@ BOOL CWeaponEMP::_GetProjectileFromPoolAndInit( void ) {
 	m_pProjToThrow->SetExplosionGroup( pUserProps->hExplosionGroup );
 	m_pProjToThrow->SetGrenadeParams( &GrenadeParams );
 	m_pProjToThrow->Relocate_RotXlatFromUnitMtx_WS_NewScale_WS( &CFMtx43A::m_IdentityMtx, pUserProps->fGrenadeMeshScale, FALSE );
+#if FANG_WINGC
+	m_pProjToThrow->SetDetonateCallback( bWater ? _PortWaterDetonated : NULL );
+#endif
 
 	return TRUE;
 }

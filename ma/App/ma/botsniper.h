@@ -364,6 +364,10 @@ private:
 
 	static TracerGroupHandle_t		m_hTracerGroup;				// tracer group
 	static TracerDef_t				m_TracerDef;				// Tracer definition for guns
+#if FANG_WINGC
+	static CDamageProfile			*m_pPortShotDamageNPC;		// PC port: retail has no Sniper shot profile (RivetL2)
+	static CDamageProfile			*m_pPortShotDamagePlayer;	// ... and when a player controls the Sniper (RivetL3)
+#endif
 	static CFTexInst				m_TracerTexInst;			// tracer texture
 	static BulletTrail_t			*m_paBulletTrails;			// bullet trails
 	static u32						m_uNumActiveBulletTrails;
@@ -397,6 +401,10 @@ private:
 
 	// weapons
 	f32 m_fFireTimer;
+#if FANG_WINGC
+	f32 m_fPortDiagTimer;			// -port-diag status log interval
+	BOOL m_bPortDiagDeathLogged;
+#endif
 	f32 m_fUnitAim;
 	CFQuatA m_qArmAim;
 
@@ -452,7 +460,9 @@ public:
 
 	virtual const CFVec3A *GetApproxEyePoint( void ) const;
 
-	virtual void AppendTrackerSkipList();			
+	// PC port: this was the old no-argument form, which no longer overrode CEntity's (which adds
+	// nothing), so the Sniper's collision hit its own mesh: it never landed and was flung away.
+	virtual void AppendTrackerSkipList( u32& nTrackerSkipListCount=FWorld_nTrackerSkipListCount, CFWorldTracker **apTrackerSkipList=&FWorld_apTrackerSkipList[0] );
 
 	//virtual BOOL CheckpointSave( void );
 	//virtual void CheckpointRestore( void );
@@ -460,7 +470,7 @@ public:
 
 	virtual void UserAnim_BatchUpdateTapBoneMask( UserAnimBoneMask_e nBoneMaskGroup );
 
-	virtual FINLINE void ComputeMtxPalette( void ) { FASSERT( IsCreated() ); FASSERT( m_Anim.m_pAnimCombiner != NULL ); m_pCBSniper = this; m_Anim.m_pAnimCombiner->ComputeMtxPalette(); m_pCBSniper = NULL; };
+	virtual FINLINE void ComputeMtxPalette( BOOL bApplyOffscreenOptimizations ) { FASSERT( IsCreated() ); FASSERT( m_Anim.m_pAnimCombiner != NULL ); m_pCBSniper = this; m_Anim.m_pAnimCombiner->ComputeMtxPalette( bApplyOffscreenOptimizations ); m_pCBSniper = NULL; };
 
 	static void DebugDraw(  CBotSniper *pSniper  );
 

@@ -420,9 +420,35 @@ void CFLiquidVolume::Init()
 	}
 		
 	m_pData = &m_DataPool[(LiquidSystem.m_nNumLiquidVolume-1)%LV_POOLSIZE]; //for now
-	
+
 	InitData();
 	m_bInit = TRUE;
+
+#if FANG_PLATFORM_WIN
+	if( Fang_bPortDiag ) {
+		static cchar *_apszType[] = { "water", "mercury", "molten", "oil", "texture" };
+		cchar *pszType = (u32)m_nType < 5 ? _apszType[m_nType] : "?";
+		if( m_bProcedural ) {
+			// A world mesh drawn with a liquid surface shader; this volume only animates its bump map.
+			const CFMeshInst *pMesh = m_pParentMesh;
+			CFVec3A vCen;
+			vCen.Zero();
+			if( pMesh ) {
+				vCen.Set( pMesh->m_BoundSphere_MS.m_Pos );
+				pMesh->m_Xfm.m_MtxF.MulPoint( vCen );
+			}
+			DEVPRINTF( "PORT-LIQ volume %u: %s (procedural) mesh '%s' center (%.1f, %.1f, %.1f) radius %.1f\n",
+					   LiquidSystem.m_nNumLiquidVolume - 1, pszType, pMesh && pMesh->m_pMesh ? pMesh->m_pMesh->szName : "?",
+					   vCen.x, vCen.y, vCen.z, pMesh ? pMesh->m_BoundSphere_MS.m_fRadius : 0.0f );
+		} else {
+			DEVPRINTF( "PORT-LIQ volume %u: %s surface (%.1f, %.1f, %.1f) extent (%.1f, %.1f, %.1f) plane %u layers '%s' '%s'\n",
+					   LiquidSystem.m_nNumLiquidVolume - 1, pszType, m_vSurfaceCen.x, m_vSurfaceCen.y, m_vSurfaceCen.z,
+					   m_vExt.x, m_vExt.y, m_vExt.z, m_nRenderPlaneID,
+					   m_pTexInst[0] && m_pTexInst[0]->GetTexDef() ? m_pTexInst[0]->GetTexDef()->TexInfo.szName : "(none)",
+					   m_pTexInst[1] && m_pTexInst[1]->GetTexDef() ? m_pTexInst[1]->GetTexDef()->TexInfo.szName : "(none)" );
+		}
+	}
+#endif
 	
 	if (m_nType != LT_MOLTEN)
 	{
@@ -1474,6 +1500,9 @@ void CFLiquidSystem::Work()
 void CFLiquidSystem::Render()
 {
 	u32 i;
+#if FANG_PLATFORM_WIN
+	u32 nPortDrawn = 0, nPortDrawnMask = 0;
+#endif
 
 	if (m_nNumLiquidVolume)
 	{
@@ -1482,9 +1511,23 @@ void CFLiquidSystem::Render()
 			if (m_LiquidVolumes[i]->m_bRender && !m_LiquidVolumes[i]->m_bProcedural)
 			{
 				m_LiquidVolumes[i]->Render();
+#if FANG_PLATFORM_WIN
+				nPortDrawn++;
+				if (m_LiquidVolumes[i]->m_nRenderPlaneID < 32) nPortDrawnMask |= 1u << m_LiquidVolumes[i]->m_nRenderPlaneID;
+#endif
 			}
 		}
 	}
+
+#if FANG_PLATFORM_WIN
+	// Log when the set of drawn liquid surfaces changes, so a run shows each pool coming into view.
+	static u32 _nPortLastMask = 0xffffffff;
+	if( Fang_bPortDiag && nPortDrawnMask != _nPortLastMask ) {
+		_nPortLastMask = nPortDrawnMask;
+		DEVPRINTF( "PORT-LIQ frame %u: drawing %u of %u volumes (plane mask 0x%x), %u meshes\n",
+				   FVid_nFrameCounter, nPortDrawn, m_nNumLiquidVolume, nPortDrawnMask, m_nNumLiquidMesh );
+	}
+#endif
 
 	if (m_nNumLiquidMesh)
 	{

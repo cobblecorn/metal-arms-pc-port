@@ -57,6 +57,9 @@
 #include "gamecam.h"
 #include "gamepad.h"
 #include "player.h"
+#if FANG_WINGC
+#include "MultiplayerMgr.h"
+#endif
 #include "FCheckPoint.h"
 #include "spawnsys.h"
 #include "fperf.h"
@@ -87,6 +90,7 @@
 #include "BotAAGun.h"
 #include "botscientist.h"
 #include "botsnarq.h"
+#include "botsniper.h"
 #include "botzombieboss.h"
 #include "difficulty.h"
 
@@ -4271,6 +4275,10 @@ void CEntity::_CheckMovedEntityAgainstTripwires( const CFVec3A *pPrevPos_WS, con
 					if( pTripwire->m_pOwnerEntity->IsCollectable() ) {
 						// It's a collectable...
 						pTripwire->m_pOwnerEntity->GetCollected( this );
+#if FANG_WINGC
+					} else if( pTripwireEntity->_CoopHoldTripwireEnter( this ) ) {
+						// Local co-op: held (or already fired) until every standing player has arrived.
+#endif
 					} else {
 						// It's not a collectable...
 						pTripwire->OnEnter( this );
@@ -4298,6 +4306,179 @@ void CEntity::_CheckMovedEntityAgainstTripwires( const CFVec3A *pPrevPos_WS, con
 		}
 	}
 }
+
+
+#if FANG_WINGC
+// Local co-op: an enter event a player trips on a tripwire (an elevator start, a buddy's "follow me",
+// a script beat) waits until every standing player has arrived in the tripwire, in any order; a
+// player who is down is not waited for. Arrival is sticky, so a thin trigger the players cross one
+// at a time still releases. Collectables and kill volumes are never held; an attached door still
+// opens for whoever arrives first.
+#define _COOP_MAX_HELD_TRIPWIRES	16
+
+typedef struct {
+	CEntity *pTripwireEntity;
+	u32 nArrivedMask;		// players (bit per player index) who have been inside
+} _CoopHeldTripwire_t;
+
+static _CoopHeldTripwire_t _aCoopHeldTripwires[_COOP_MAX_HELD_TRIPWIRES];
+static u32 _nCoopHeldTripwires;
+
+static BOOL _CoopTripwireGateActive( void ) {
+	return MultiplayerMgr.IsSinglePlayer() && (CPlayer::m_nPlayerCount >= 2);
+}
+
+// Players whose current entity is up: in the world and not dead or dying.
+static u32 _CoopStandingPlayerMask( void ) {
+	u32 nMask = 0;
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
+		CEntity *pEntity = Player_aPlayer[i].m_pEntityCurrent;
+		if( !pEntity || !pEntity->IsInWorld() ) {
+			continue;
+		}
+		if( (pEntity->TypeBits() & ENTITY_BIT_BOT) && ((CBot *)pEntity)->IsDeadOrDying() ) {
+			continue;
+		}
+		nMask |= (1 << i);
+	}
+	return nMask;
+}
+
+static s32 _CoopPlayerOfEntity( const CEntity *pEntity ) {
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
+		if( Player_aPlayer[i].m_pEntityCurrent == pEntity ) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// The retail scripts were written for player 1 as the tripper; use them when they are up.
+static CEntity *_CoopReleaseTripper( CEntity *pFallback ) {
+	if( _CoopStandingPlayerMask() & 1 ) {
+		return Player_aPlayer[0].m_pEntityCurrent;
+	}
+	return pFallback;
+}
+
+u32 CEntity::_CoopPlayersInsideMask( void ) {
+	u32 nMask = 0;
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
+		CEntity *pEntity = Player_aPlayer[i].m_pEntityCurrent;
+		if( !pEntity || !pEntity->IsInWorld() ) {
+			continue;
+		}
+		const CFVec3A *pPos_WS = &pEntity->MtxToWorld()->m_vPos;
+		if( TripwireCollisionTest( pPos_WS, pPos_WS ) & TRIPWIRE_COLLFLAG_NEWPOS_INSIDE ) {
+			nMask |= (1 << i);
+		}
+	}
+	return nMask;
+}
+
+void CEntity::_CoopFireTripwireEnter( CEntity *pTripper ) {
+	SCRIPT_MESSAGE( "TRIPWIRE ENTER EVENT tripwire='%s' tripper='%s' (co-op: every player arrived)", Name() ? Name() : "unknown", pTripper->Name() ? pTripper->Name() : "unknown" );
+	DEVPRINTF( "Co-op: tripwire '%s' released, every player arrived.\n", Name() ? Name() : "unknown" );
+	m_pTripwire->OnEnter( pTripper );
+	if( m_pTripwire->m_pDoorToOpen ) {
+		m_pTripwire->m_pDoorToOpen->GotoPos( 1, CDoorEntity::GOTOREASON_DESTINATION );
+	}
+	if( m_pTripwire->m_nTripwireTriggerMode == TRIPWIRE_TRIGGER_MODE_ONCE ) {
+		RemoveFromWorld();
+	}
+}
+
+// Called for this tripwire's enter event from pTripper. Returns TRUE when the retail handling must
+// not run: the event is held for the others, or this arrival completed the team and it was fired.
+BOOL CEntity::_CoopHoldTripwireEnter( CEntity *pTripper ) {
+	if( !_CoopTripwireGateActive() || (m_pTripwire->m_eKillMode != CTripwire::TRIPWIRE_KILLMODE_NONE) ) {
+		return FALSE;
+	}
+	const s32 nPlayer = _CoopPlayerOfEntity( pTripper );
+	if( nPlayer < 0 ) {
+		// Not a player: retail handling.
+		return FALSE;
+	}
+
+	_CoopHeldTripwire_t *pHeld = NULL;
+	for( u32 i=0; i < _nCoopHeldTripwires; i++ ) {
+		if( _aCoopHeldTripwires[i].pTripwireEntity == this ) {
+			pHeld = &_aCoopHeldTripwires[i];
+			break;
+		}
+	}
+	const u32 nStanding = _CoopStandingPlayerMask();
+	u32 nArrived = (1 << nPlayer) | _CoopPlayersInsideMask() | (pHeld ? pHeld->nArrivedMask : 0);
+	if( (nArrived & nStanding) == nStanding ) {
+		// Everyone has arrived (or this player is the only one up).
+		if( pHeld ) {
+			*pHeld = _aCoopHeldTripwires[--_nCoopHeldTripwires];
+		}
+		_CoopFireTripwireEnter( _CoopReleaseTripper( pTripper ) );
+		return TRUE;
+	}
+	if( !pHeld ) {
+		if( _nCoopHeldTripwires >= _COOP_MAX_HELD_TRIPWIRES ) {
+			return FALSE;
+		}
+		pHeld = &_aCoopHeldTripwires[_nCoopHeldTripwires++];
+		pHeld->pTripwireEntity = this;
+		DEVPRINTF( "Co-op: tripwire '%s' waits for every player (player %d arrived first).\n", Name() ? Name() : "unknown", nPlayer + 1 );
+		if( m_pTripwire->m_pDoorToOpen ) {
+			m_pTripwire->m_pDoorToOpen->GotoPos( 1, CDoorEntity::GOTOREASON_DESTINATION );
+		}
+	}
+	pHeld->nArrivedMask = nArrived;
+	return TRUE;
+}
+
+void CEntity::CoopTripwireWork( void ) {
+	if( !_nCoopHeldTripwires ) {
+		return;
+	}
+	if( !_CoopTripwireGateActive() ) {
+		_nCoopHeldTripwires = 0;
+		return;
+	}
+	const u32 nStanding = _CoopStandingPlayerMask();
+	for( s32 i = (s32)_nCoopHeldTripwires - 1; i >= 0; --i ) {
+		_CoopHeldTripwire_t *pHeld = &_aCoopHeldTripwires[i];
+		CEntity *pTripwireEntity = pHeld->pTripwireEntity;
+		if( !pTripwireEntity->IsTripwire() || !pTripwireEntity->IsInWorld() || !pTripwireEntity->IsTripwireArmed() ) {
+			*pHeld = _aCoopHeldTripwires[--_nCoopHeldTripwires];
+			continue;
+		}
+		pHeld->nArrivedMask |= pTripwireEntity->_CoopPlayersInsideMask();
+		if( nStanding && ((pHeld->nArrivedMask & nStanding) == nStanding) ) {
+			CEntity *pTripper = NULL;
+			for( s32 nPlayer=0; nPlayer < CPlayer::m_nPlayerCount && !pTripper; nPlayer++ ) {
+				if( nStanding & (1 << nPlayer) ) {
+					pTripper = Player_aPlayer[nPlayer].m_pEntityCurrent;
+				}
+			}
+			*pHeld = _aCoopHeldTripwires[--_nCoopHeldTripwires];
+			pTripwireEntity->_CoopFireTripwireEnter( _CoopReleaseTripper( pTripper ) );
+		}
+	}
+}
+
+void CEntity::CoopTripwireReset( void ) {
+	_nCoopHeldTripwires = 0;
+}
+
+BOOL CEntity::CoopTripwireWaiting( const CEntity *pPlayerEntity ) {
+	const s32 nPlayer = _CoopPlayerOfEntity( pPlayerEntity );
+	if( nPlayer < 0 ) {
+		return FALSE;
+	}
+	for( u32 i=0; i < _nCoopHeldTripwires; i++ ) {
+		if( _aCoopHeldTripwires[i].nArrivedMask & (1 << nPlayer) ) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+#endif
 
 
 // Called when the entity is removed from the world.
@@ -5093,6 +5274,51 @@ void CEntity::_AttachWorldShape( CEntity *pChildEntity, CFWorldShapeInit *pShape
 }
 
 
+#if FANG_WINGC
+// PC port: the cut Mil Sniper (CBotSniper) returns in place of some world-placed Grunts.
+// - Grunts named "sniper<digits>" (wewjjourn02's script-spawned sniper1-3) are the retail sniper roles.
+// - -snipers-every N also turns about one Grunt in N into a Sniper. The pick hashes the level and the
+//   placement's position, so the same Grunts become Snipers every time a level loads.
+extern "C" int port_GetSnipersEvery( void );
+extern "C" int port_GetCutEnemies( void );
+
+static BOOL _PortGruntBecomesSniper( cchar *pszWorldResName, const CFWorldShapeInit *pShapeInit, cchar *pszName ) {
+	if( !port_GetCutEnemies() ) {
+		return FALSE;
+	}
+	if( pszName && !fclib_strnicmp( pszName, "sniper", 6 ) && pszName[6] >= '0' && pszName[6] <= '9' ) {
+		cchar *psz = pszName + 6;
+		while( *psz >= '0' && *psz <= '9' ) {
+			++psz;
+		}
+		if( !*psz ) {
+			DEVPRINTF( "Port: '%s' in %s is a Mil Sniper (retail sniper role).\n", pszName, pszWorldResName ? pszWorldResName : "?" );
+			return TRUE;
+		}
+	}
+	const int nEvery = port_GetSnipersEvery();
+	if( nEvery < 1 || !pShapeInit ) {
+		return FALSE;
+	}
+	u32 nHash = 2166136261u;
+	for( cchar *psz = pszWorldResName; psz && *psz; ++psz ) {
+		nHash = (nHash ^ (u8)fclib_tolower( *psz )) * 16777619u;
+	}
+	const s32 anPos[3] = { (s32)pShapeInit->m_Mtx43.m_vPos.x, (s32)pShapeInit->m_Mtx43.m_vPos.y, (s32)pShapeInit->m_Mtx43.m_vPos.z };
+	for( u32 i = 0; i < 3; ++i ) {
+		for( u32 nByte = 0; nByte < 4; ++nByte ) {
+			nHash = (nHash ^ ((u32)anPos[i] >> (nByte * 8) & 0xFF)) * 16777619u;
+		}
+	}
+	if( (nHash % (u32)nEvery) != 0 ) {
+		return FALSE;
+	}
+	DEVPRINTF( "Port: Grunt '%s' at (%d, %d, %d) in %s is a Mil Sniper (1 in %d).\n", pszName ? pszName : "?",
+			   anPos[0], anPos[1], anPos[2], pszWorldResName ? pszWorldResName : "?", nEvery );
+	return TRUE;
+}
+#endif
+
 CEntity *CEntity::_CreateWorldShape( cchar *pszWorldResName, CFWorldShapeInit *pShapeInit, const void *pFixupOffsetBase ) {
 	const CFWorldShapeMesh *pShapeMesh = pShapeInit->m_pMesh;
 	CEntity *pEntity;
@@ -5172,8 +5398,16 @@ CEntity *CEntity::_CreateWorldShape( cchar *pszWorldResName, CFWorldShapeInit *p
 			_SET_ENTITY_TYPE( CBotGlitch, "CBotGlitch" );
 
 		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_BOTGRUNT ) ) {
-			pEntity = fnew CBotGrunt;
-			_SET_ENTITY_TYPE( CBotGrunt, "CBotGrunt" );
+#if FANG_WINGC
+			if( _PortGruntBecomesSniper( pszWorldResName, pShapeInit, CEntityParser::m_pszEntityName ) ) {
+				pEntity = fnew CBotSniper;
+				_SET_ENTITY_TYPE( CBotSniper, "CBotSniper" );
+			} else
+#endif
+			{
+				pEntity = fnew CBotGrunt;
+				_SET_ENTITY_TYPE( CBotGrunt, "CBotGrunt" );
+			}
 
 		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_DOOR ) || !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_LIFT ) ) {
 			pEntity = fnew CDoorEntity;
@@ -5311,6 +5545,10 @@ CEntity *CEntity::_CreateWorldShape( cchar *pszWorldResName, CFWorldShapeInit *p
 		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_BOTSNARQ ) ) {
 			pEntity = fnew CBotSnarq;
 			_SET_ENTITY_TYPE( CBotSnarq, "CBotSnarq" );
+
+		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_BOTSNIPER ) ) {
+			pEntity = fnew CBotSniper;
+			_SET_ENTITY_TYPE( CBotSniper, "CBotSniper" );
 		
 		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_BOTZOMBIEBOSS) ) {
 			pEntity = fnew CBotZombieBoss;

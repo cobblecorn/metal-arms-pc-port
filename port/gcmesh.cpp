@@ -10,13 +10,19 @@
 #include "fshaders.h"
 #include "fres.h"
 #include "fvis.h"
+#include "gcdata.h"
 #include "gc/fGCmesh.h"
 #include "gc/fGCdisplaylist.h"
 
+#include <ctype.h>
+#include <direct.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <vector>
 
 namespace
@@ -34,6 +40,7 @@ struct DLPlan_t
 	u32 nDiffuseIndexOffset; // Retained: u16 GameCube diffuse index per vertex (color stream remap)
 	s32 nVertexFormat;
 	u32 nSegmentIdx;
+	u8 nRigidBoneIndex;
 	u8 anSegBones[FDATA_VW_COUNT_PER_VTX]; // Bone order of the bound segment (weighted formats only)
 	u32 nSegBoneCount;
 	BOOL bWeighted;
@@ -79,6 +86,322 @@ struct ParseStats_t
 	BOOL bSkinned;
 	f32 afBoneWeight[256]; // Skinned only: accumulated weight per bone over the display list
 };
+
+static BOOL _IsWorldMeshExportTarget(cchar *pszResName)
+{
+	const char *pszWorld = getenv("MA_WORLD_EXPORT");
+	if (!pszWorld || !*pszWorld || !pszResName)
+		return FALSE;
+
+	const size_t nWorldLength = strlen(pszWorld);
+	if (nWorldLength == 0 || strlen(pszResName) != nWorldLength + 3)
+		return FALSE;
+	for (size_t i = 0; i < nWorldLength; i++)
+	{
+		const unsigned char cWorld = (unsigned char)pszWorld[i];
+		const unsigned char cResource = (unsigned char)pszResName[i];
+		if (tolower(cWorld) != tolower(cResource))
+			return FALSE;
+	}
+	for (size_t i = nWorldLength; i < nWorldLength + 3; i++)
+		if (pszResName[i] < '0' || pszResName[i] > '9')
+			return FALSE;
+	return TRUE;
+}
+
+static BOOL _FindWorldMaterialTexture(const u8 *pData, u32 nBytes, const FMeshMaterial_t *pMaterial,
+									 std::string &TextureName)
+{
+	if (!pData || !pMaterial || pMaterial->nSurfaceShaderIdx >= FSHADERS_SHADER_COUNT)
+		return FALSE;
+
+	const u32 nSurfaceOffset = (u32)(uintptr_t)pMaterial->pnShSurfaceRegisters;
+	const FShaderReg_t &Desc = FShaders_aShaderRegs[pMaterial->nSurfaceShaderIdx];
+	if (nSurfaceOffset > nBytes || Desc.nRegisterCount > (nBytes - nSurfaceOffset) / sizeof(u32))
+		return FALSE;
+	const u32 *pSurface = (const u32 *)(pData + nSurfaceOffset);
+	const u8 anPreferredLayers[] = {FSHADERS_REG_LAYER0, FSHADERS_REG_LAYER1, FSHADERS_REG_LAYER2, FSHADERS_REG_LAYER3};
+	for (u32 Layer = 0; Layer < sizeof(anPreferredLayers); Layer++)
+	{
+		for (u32 i = 0; i < Desc.nRegisterCount; i++)
+		{
+			if (Desc.anRegType[i] != anPreferredLayers[Layer] || !pSurface[i])
+				continue;
+			const u32 nTexInstOffset = pSurface[i];
+			if (nTexInstOffset > nBytes || sizeof(FShTexInst_t) > nBytes - nTexInstOffset)
+				continue;
+			const FShTexInst_t *pTexInst = (const FShTexInst_t *)(pData + nTexInstOffset);
+			const u32 nNameOffset = pTexInst->nTextureNameOffset;
+			if (!nNameOffset || nNameOffset >= nBytes)
+				continue;
+			const char *pszName = (const char *)(pData + nNameOffset);
+			u32 nLength = 0;
+			while (nLength < FDATA_TEXNAME_LEN + 1 && nNameOffset + nLength < nBytes && pszName[nLength])
+				nLength++;
+			if (!nLength || nLength > FDATA_TEXNAME_LEN || nNameOffset + nLength >= nBytes || pszName[nLength])
+				continue;
+			TextureName.assign(pszName, nLength);
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static BOOL _ExportWorldTexture(const std::string &TextureName, cchar *pszOutputDir)
+{
+	const char *pszTextureDir = getenv("MA_CHARACTER_TEXTURE_DIR");
+	if (!pszTextureDir || !*pszTextureDir)
+		pszTextureDir = getenv("MA_WORLD_TEXTURE_DIR");
+	if (!pszTextureDir || !*pszTextureDir || TextureName.empty() || TextureName.size() > FDATA_TEXNAME_LEN)
+		return FALSE;
+	for (size_t i = 0; i < TextureName.size(); i++)
+		if (!isalnum((unsigned char)TextureName[i]) && TextureName[i] != '_' && TextureName[i] != '-')
+			return FALSE;
+
+	char szSource[1024], szOutput[1024];
+	int nChars = snprintf(szSource, sizeof(szSource), "%s\\%s.tga", pszTextureDir, TextureName.c_str());
+	if (nChars < 0 || (size_t)nChars >= sizeof(szSource))
+		return FALSE;
+	nChars = snprintf(szOutput, sizeof(szOutput), "%s\\textures\\%s.tga", pszOutputDir, TextureName.c_str());
+	if (nChars < 0 || (size_t)nChars >= sizeof(szOutput))
+		return FALSE;
+	FILE *pExisting = fopen(szOutput, "rb");
+	if (pExisting)
+	{
+		fclose(pExisting);
+		return TRUE;
+	}
+
+	FILE *pInput = fopen(szSource, "rb");
+	if (!pInput)
+		return FALSE;
+	if (fseek(pInput, 0, SEEK_END) != 0)
+	{
+		fclose(pInput);
+		return FALSE;
+	}
+	const long nSourceBytes = ftell(pInput);
+	if (nSourceBytes <= 0 || (unsigned long)nSourceBytes > 0xfffffffful || fseek(pInput, 0, SEEK_SET) != 0)
+	{
+		fclose(pInput);
+		return FALSE;
+	}
+	std::vector<u8> Source((size_t)nSourceBytes);
+	const BOOL bRead = fread(&Source[0], 1, Source.size(), pInput) == Source.size();
+	fclose(pInput);
+	if (!bRead)
+		return FALSE;
+
+	FTexInfo_t TexInfo = {};
+	void *pPixels = NULL;
+	u32 nDecodedBytes = 0;
+	const FMemFrame_t Frame = fmem_GetFrame();
+	const BOOL bDecoded = gcdata_DecodeTga(&Source[0], (u32)Source.size(), &TexInfo, &pPixels, &nDecodedBytes);
+	if (!bDecoded)
+	{
+		fmem_ReleaseFrame(Frame);
+		return FALSE;
+	}
+	const u32 nWidth = TexInfo.nTexelsAcross;
+	const u32 nHeight = TexInfo.nTexelsDown;
+	if (!nWidth || !nHeight || nWidth > 65535 || nHeight > 65535 || nWidth > 0xffffffffu / nHeight / 4 ||
+		nDecodedBytes < nWidth * nHeight * 4)
+	{
+		fmem_ReleaseFrame(Frame);
+		return FALSE;
+	}
+
+	u8 anHeader[18] = {};
+	anHeader[2] = 2; // Uncompressed true-color TGA.
+	anHeader[12] = (u8)nWidth;
+	anHeader[13] = (u8)(nWidth >> 8);
+	anHeader[14] = (u8)nHeight;
+	anHeader[15] = (u8)(nHeight >> 8);
+	anHeader[16] = 32;
+	anHeader[17] = 0x28; // Top-left origin, 8 alpha bits.
+	FILE *pOutput = fopen(szOutput, "wb");
+	const BOOL bWrote = pOutput && fwrite(anHeader, 1, sizeof(anHeader), pOutput) == sizeof(anHeader) &&
+		fwrite(pPixels, 1, nWidth * nHeight * 4, pOutput) == nWidth * nHeight * 4;
+	if (pOutput)
+		fclose(pOutput);
+	fmem_ReleaseFrame(Frame);
+	if (!bWrote)
+	{
+		remove(szOutput);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static void _ExportWorldMaterials(cchar *pszResName, cchar *pszOutputDir, const u8 *pOutput, u32 nOutputBytes,
+								 FMeshMaterial_t *pMaterials, u32 nMaterialCount)
+{
+	char szPath[1024];
+	const int nChars = snprintf(szPath, sizeof(szPath), "%s\\%s.mtl", pszOutputDir, getenv("MA_WORLD_EXPORT"));
+	if (nChars < 0 || (size_t)nChars >= sizeof(szPath))
+		return;
+	FILE *pFile = fopen(szPath, "ab");
+	if (!pFile)
+	{
+		DEVPRINTF("gcmesh: could not create world material library '%s'.\n", szPath);
+		return;
+	}
+	fprintf(pFile, "\n# Materials from %s; first surface texture exported for OBJ compatibility.\n", pszResName);
+	for (u32 i = 0; i < nMaterialCount; i++)
+	{
+		std::string TextureName;
+		const BOOL bHasTexture = _FindWorldMaterialTexture(pOutput, nOutputBytes, &pMaterials[i], TextureName);
+		const BOOL bExportedTexture = bHasTexture && _ExportWorldTexture(TextureName, pszOutputDir);
+		fprintf(pFile, "newmtl %s_mat_%u\nKd 1 1 1\nKa 0.2 0.2 0.2\nillum 1\n", pszResName, i);
+		if (bExportedTexture)
+			fprintf(pFile, "map_Kd textures/%s.tga\n", TextureName.c_str());
+		fprintf(pFile, "\n");
+	}
+	fclose(pFile);
+}
+
+static void _ExportWorldMeshObj(cchar *pszResName, const std::vector<DLPlan_t> &Plans, const u8 *pOutput,
+								u32 nOutputBytes, FMeshMaterial_t *pMaterials, u32 nMaterialCount)
+{
+	if (!_IsWorldMeshExportTarget(pszResName) || !pOutput)
+		return;
+
+	const char *pszOutputDir = getenv("MA_WORLD_EXPORT_DIR");
+	if (!pszOutputDir || !*pszOutputDir)
+	{
+		DEVPRINTF("gcmesh: MA_WORLD_EXPORT is set but MA_WORLD_EXPORT_DIR is missing.\n");
+		return;
+	}
+
+	char szPath[1024];
+	const int nPathChars = snprintf(szPath, sizeof(szPath), "%s\\meshes\\%s.obj", pszOutputDir, pszResName);
+	if (nPathChars < 0 || (size_t)nPathChars >= sizeof(szPath))
+	{
+		DEVPRINTF("gcmesh: world OBJ output path is too long for '%s'.\n", pszResName);
+		return;
+	}
+
+	FILE *pFile = fopen(szPath, "wb");
+	if (!pFile)
+	{
+		DEVPRINTF("gcmesh: could not create world OBJ '%s'.\n", szPath);
+		return;
+	}
+	_ExportWorldMaterials(pszResName, pszOutputDir, pOutput, nOutputBytes, pMaterials, nMaterialCount);
+
+	fprintf(pFile, "# Metal Arms static world geometry: %s\n", pszResName);
+	fprintf(pFile, "# Coordinates and vertex UVs are retained from the native level mesh.\n");
+	fprintf(pFile, "mtllib ../%s.mtl\n", getenv("MA_WORLD_EXPORT"));
+	u32 nVertexBase = 1;
+	u32 nTexCoordBase = 1;
+	u32 nNormalBase = 1;
+	BOOL bFailed = FALSE;
+	for (u32 p = 0; p < Plans.size() && !bFailed; p++)
+	{
+		const DLPlan_t &Plan = Plans[p];
+		if (Plan.nVertexFormat < 0 || Plan.nVertexFormat >= FDX8VB_TYPE_COUNT || Plan.bWeighted)
+			continue;
+		const FDX8VB_Info_t &Info = FDX8VB_InfoTable[Plan.nVertexFormat];
+		const u8 *pVertices = pOutput + Plan.nVertexOffset;
+		const u16 *pIndices = (const u16 *)(pOutput + Plan.nIndexOffset);
+		const BOOL bHasNormals = Info.nNormalCount > 0 && Info.nOffsetNorm != 255;
+		const BOOL bHasTexCoords = Info.nTCCount > 0 && Info.nOffsetTC != 255;
+
+		fprintf(pFile, "\no %s_part_%u\ng material_%u\nusemtl %s_mat_%u\n", pszResName, p,
+				Plan.nMaterialIndex, pszResName, Plan.nMaterialIndex);
+		for (u32 v = 0; v < Plan.nVertexCount; v++)
+		{
+			const u8 *pVertex = pVertices + v * Info.nVtxBytes;
+			f32 afPos[3];
+			memcpy(afPos, pVertex + Info.nOffsetPos, sizeof(afPos));
+			if (!isfinite(afPos[0]) || !isfinite(afPos[1]) || !isfinite(afPos[2]))
+			{
+				bFailed = TRUE;
+				break;
+			}
+			fprintf(pFile, "v %.9g %.9g %.9g\n", afPos[0], afPos[1], afPos[2]);
+		}
+		if (bFailed)
+			break;
+
+		if (bHasTexCoords)
+		{
+			for (u32 v = 0; v < Plan.nVertexCount; v++)
+			{
+				const u8 *pVertex = pVertices + v * Info.nVtxBytes;
+				f32 afUV[2];
+				memcpy(afUV, pVertex + Info.nOffsetTC, sizeof(afUV));
+				if (!isfinite(afUV[0]) || !isfinite(afUV[1]))
+				{
+					bFailed = TRUE;
+					break;
+				}
+				fprintf(pFile, "vt %.9g %.9g\n", afUV[0], afUV[1]);
+			}
+		}
+		if (bFailed)
+			break;
+
+		if (bHasNormals)
+		{
+			for (u32 v = 0; v < Plan.nVertexCount; v++)
+			{
+				const u8 *pVertex = pVertices + v * Info.nVtxBytes;
+				f32 afNormal[3];
+				memcpy(afNormal, pVertex + Info.nOffsetNorm, sizeof(afNormal));
+				if (!isfinite(afNormal[0]) || !isfinite(afNormal[1]) || !isfinite(afNormal[2]))
+				{
+					bFailed = TRUE;
+					break;
+				}
+				fprintf(pFile, "vn %.9g %.9g %.9g\n", afNormal[0], afNormal[1], afNormal[2]);
+			}
+		}
+		if (bFailed)
+			break;
+
+		if (Plan.nIndexCount % 3 != 0)
+		{
+			bFailed = TRUE;
+			break;
+		}
+		for (u32 i = 0; i < Plan.nIndexCount; i += 3)
+		{
+			if (pIndices[i] >= Plan.nVertexCount || pIndices[i + 1] >= Plan.nVertexCount ||
+				pIndices[i + 2] >= Plan.nVertexCount)
+			{
+				bFailed = TRUE;
+				break;
+			}
+			const u32 a = nVertexBase + pIndices[i];
+			const u32 b = nVertexBase + pIndices[i + 1];
+			const u32 c = nVertexBase + pIndices[i + 2];
+			if (bHasTexCoords && bHasNormals)
+				fprintf(pFile, "f %u/%u/%u %u/%u/%u %u/%u/%u\n", a, nTexCoordBase + pIndices[i], nNormalBase + pIndices[i],
+						b, nTexCoordBase + pIndices[i + 1], nNormalBase + pIndices[i + 1],
+						c, nTexCoordBase + pIndices[i + 2], nNormalBase + pIndices[i + 2]);
+			else if (bHasTexCoords)
+				fprintf(pFile, "f %u/%u %u/%u %u/%u\n", a, nTexCoordBase + pIndices[i], b,
+						nTexCoordBase + pIndices[i + 1], c, nTexCoordBase + pIndices[i + 2]);
+			else if (bHasNormals)
+				fprintf(pFile, "f %u//%u %u//%u %u//%u\n", a, nNormalBase + pIndices[i], b,
+						nNormalBase + pIndices[i + 1], c, nNormalBase + pIndices[i + 2]);
+			else
+				fprintf(pFile, "f %u %u %u\n", a, b, c);
+		}
+		if (bFailed)
+			break;
+		nVertexBase += Plan.nVertexCount;
+		if (bHasTexCoords)
+			nTexCoordBase += Plan.nVertexCount;
+		if (bHasNormals)
+			nNormalBase += Plan.nVertexCount;
+	}
+	if (fclose(pFile) != 0)
+		bFailed = TRUE;
+	if (bFailed)
+		DEVPRINTF("gcmesh: world OBJ export stopped on invalid geometry in '%s'.\n", pszResName);
+}
 
 struct WriteContext_t
 {
@@ -137,6 +460,240 @@ static void *_At(void *pData, u32 nOffset)
 static const void *_At(const void *pData, u32 nOffset)
 {
 	return nOffset ? (const u8 *)pData + nOffset : NULL;
+}
+
+static void _WriteJsonString(FILE *pFile, const char *pszText)
+{
+	fputc('"', pFile);
+	for (const unsigned char *p = (const unsigned char *)(pszText ? pszText : ""); *p; p++)
+	{
+		if (*p == '"' || *p == '\\')
+		{
+			fputc('\\', pFile);
+			fputc(*p, pFile);
+		}
+		else if (*p < 0x20)
+			fprintf(pFile, "\\u%04x", *p);
+		else
+			fputc(*p, pFile);
+	}
+	fputc('"', pFile);
+}
+
+static void _WriteJsonVec3(FILE *pFile, const CFVec3A &V)
+{
+	fprintf(pFile, "[%.9g,%.9g,%.9g]", V.x, V.y, V.z);
+}
+
+static void _WriteJsonMatrix43(FILE *pFile, const CFMtx43A &M)
+{
+	// Three basis columns followed by translation. This keeps the source's native axes intact.
+	fprintf(pFile, "[");
+	_WriteJsonVec3(pFile, M.m_vRight);
+	fputc(',', pFile);
+	_WriteJsonVec3(pFile, M.m_vUp);
+	fputc(',', pFile);
+	_WriteJsonVec3(pFile, M.m_vFront);
+	fputc(',', pFile);
+	_WriteJsonVec3(pFile, M.m_vPos);
+	fputc(']', pFile);
+}
+
+static void _TransformPointByBone(const CFMtx43A &M, f32 afPoint[3])
+{
+	const f32 x = afPoint[0], y = afPoint[1], z = afPoint[2];
+	afPoint[0] = M.m_vRight.x * x + M.m_vUp.x * y + M.m_vFront.x * z + M.m_vPos.x;
+	afPoint[1] = M.m_vRight.y * x + M.m_vUp.y * y + M.m_vFront.y * z + M.m_vPos.y;
+	afPoint[2] = M.m_vRight.z * x + M.m_vUp.z * y + M.m_vFront.z * z + M.m_vPos.z;
+}
+
+static void _TransformNormalByBone(const CFMtx43A &M, f32 afNormal[3])
+{
+	const f32 x = afNormal[0], y = afNormal[1], z = afNormal[2];
+	afNormal[0] = M.m_vRight.x * x + M.m_vUp.x * y + M.m_vFront.x * z;
+	afNormal[1] = M.m_vRight.y * x + M.m_vUp.y * y + M.m_vFront.y * z;
+	afNormal[2] = M.m_vRight.z * x + M.m_vUp.z * y + M.m_vFront.z * z;
+	const f32 fLength = sqrtf(afNormal[0] * afNormal[0] + afNormal[1] * afNormal[1] + afNormal[2] * afNormal[2]);
+	if (fLength > 0.000001f)
+	{
+		afNormal[0] /= fLength;
+		afNormal[1] /= fLength;
+		afNormal[2] /= fLength;
+	}
+}
+
+static void _ExportCharacterModel(cchar *pszResName, const std::vector<DLPlan_t> &Plans, const u8 *pOutput,
+								  u32 nOutputBytes, FMesh_t *pMesh, FMeshMaterial_t *pMaterials, u32 nMaterialCount)
+{
+	const char *pszOutputDir = getenv("MA_CHARACTER_EXPORT_DIR");
+	if (!pszOutputDir || !*pszOutputDir || !pszResName || !pOutput || !pMesh || !pMesh->nBoneCount)
+		return;
+	for (const char *p = pszResName; *p; p++)
+		if (!isalnum((unsigned char)*p) && *p != '_' && *p != '-')
+			return;
+
+	const u32 nBoneOffset = _Offset(pMesh->pBoneArray);
+	if (!pMesh->pBoneArray || !_RangeArray(nBoneOffset, pMesh->nBoneCount, sizeof(FMeshBone_t), nOutputBytes))
+		return;
+	FMeshBone_t *pBones = (FMeshBone_t *)(pOutput + nBoneOffset);
+	char szPath[1024];
+	const int nPathChars = snprintf(szPath, sizeof(szPath), "%s\\%s.json", pszOutputDir, pszResName);
+	if (nPathChars < 0 || (size_t)nPathChars >= sizeof(szPath))
+		return;
+	FILE *pFile = fopen(szPath, "wb");
+	if (!pFile)
+	{
+		DEVPRINTF("gcmesh: could not create character export '%s'.\n", szPath);
+		return;
+	}
+
+	fprintf(pFile, "{\"schema_version\":1,\"resource\":");
+	_WriteJsonString(pFile, pszResName);
+	fprintf(pFile, ",\"root_bone\":%u,\"bones\":[", (u32)pMesh->nRootBoneIndex);
+	for (u32 i = 0; i < pMesh->nBoneCount; i++)
+	{
+		if (i)
+			fputc(',', pFile);
+		fprintf(pFile, "{\"name\":");
+		_WriteJsonString(pFile, pBones[i].szName);
+		fprintf(pFile, ",\"parent\":%u,\"flags\":%u,\"bone_to_model\":",
+				(u32)pBones[i].Skeleton.nParentBoneIndex, (u32)pBones[i].nFlags);
+		_WriteJsonMatrix43(pFile, pBones[i].AtRestBoneToModelMtx);
+		fprintf(pFile, ",\"bone_to_parent\":");
+		_WriteJsonMatrix43(pFile, pBones[i].AtRestBoneToParentMtx);
+		fprintf(pFile, ",\"model_to_bone\":");
+		_WriteJsonMatrix43(pFile, pBones[i].AtRestModelToBoneMtx);
+		fputc('}', pFile);
+	}
+	fprintf(pFile, "],\"materials\":[");
+	for (u32 i = 0; i < nMaterialCount; i++)
+	{
+		if (i)
+			fputc(',', pFile);
+		std::string TextureName;
+		const BOOL bHasTexture = _FindWorldMaterialTexture(pOutput, nOutputBytes, &pMaterials[i], TextureName);
+		if (bHasTexture)
+			_ExportWorldTexture(TextureName, pszOutputDir);
+		fprintf(pFile, "{\"index\":%u,\"texture\":", i);
+		if (bHasTexture)
+			_WriteJsonString(pFile, TextureName.c_str());
+		else
+			fputs("null", pFile);
+		fputc('}', pFile);
+	}
+	fprintf(pFile, "],\"parts\":[");
+	BOOL bFirstPart = TRUE;
+	BOOL bFailed = FALSE;
+	for (u32 p = 0; p < Plans.size() && !bFailed; p++)
+	{
+		const DLPlan_t &Plan = Plans[p];
+		if (Plan.nVertexFormat < 0 || Plan.nVertexFormat >= FDX8VB_TYPE_COUNT ||
+			!_RangeArray(Plan.nVertexOffset, Plan.nVertexCount, FDX8VB_InfoTable[Plan.nVertexFormat].nVtxBytes, nOutputBytes) ||
+			!_RangeArray(Plan.nIndexOffset, Plan.nIndexCount, sizeof(u16), nOutputBytes))
+		{
+			bFailed = TRUE;
+			break;
+		}
+		const FDX8VB_Info_t &Info = FDX8VB_InfoTable[Plan.nVertexFormat];
+		if (Plan.bWeighted && (Info.nWeightCount < 3 || Info.nOffsetWeight == 255 || Plan.nSegBoneCount < 2))
+		{
+			bFailed = TRUE;
+			break;
+		}
+		const u8 *pVertices = pOutput + Plan.nVertexOffset;
+		const u16 *pIndices = (const u16 *)(pOutput + Plan.nIndexOffset);
+		u32 nRigidBone = Plan.nRigidBoneIndex;
+		if (nRigidBone >= pMesh->nUsedBoneCount || nRigidBone >= pMesh->nBoneCount)
+			nRigidBone = pMesh->nRootBoneIndex;
+		if (nRigidBone >= pMesh->nBoneCount)
+			nRigidBone = 0;
+
+		if (!bFirstPart)
+			fputc(',', pFile);
+		bFirstPart = FALSE;
+		fprintf(pFile, "{\"material\":%u,\"weighted\":%s,\"rigid_bone\":%u,\"vertices\":[",
+				Plan.nMaterialIndex, Plan.bWeighted ? "true" : "false", nRigidBone);
+		for (u32 v = 0; v < Plan.nVertexCount; v++)
+		{
+			const u8 *pVertex = pVertices + v * Info.nVtxBytes;
+			f32 afPos[3] = {}, afNormal[3] = {}, afUV[2] = {};
+			memcpy(afPos, pVertex + Info.nOffsetPos, sizeof(afPos));
+			if (Info.nOffsetNorm != 255)
+				memcpy(afNormal, pVertex + Info.nOffsetNorm, sizeof(afNormal));
+			if (Info.nOffsetTC != 255)
+				memcpy(afUV, pVertex + Info.nOffsetTC, sizeof(afUV));
+			if (!Plan.bWeighted)
+			{
+				_TransformPointByBone(pBones[nRigidBone].AtRestBoneToModelMtx, afPos);
+				_TransformNormalByBone(pBones[nRigidBone].AtRestBoneToModelMtx, afNormal);
+			}
+			for (u32 k = 0; k < 3; k++)
+				if (!isfinite(afPos[k]) || !isfinite(afNormal[k]))
+					bFailed = TRUE;
+			if (!isfinite(afUV[0]) || !isfinite(afUV[1]))
+				bFailed = TRUE;
+			if (bFailed)
+				break;
+
+			f32 afWeight[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+			u32 anBone[4] = {nRigidBone, nRigidBone, nRigidBone, nRigidBone};
+			if (Plan.bWeighted)
+			{
+				memcpy(afWeight, pVertex + Info.nOffsetWeight, 3 * sizeof(f32));
+				f32 fSum = 0.0f;
+				for (u32 k = 0; k < 3; k++)
+				{
+					if (!isfinite(afWeight[k]) || afWeight[k] < 0.0f)
+						afWeight[k] = 0.0f;
+					if (Plan.anSegBones[k] < pMesh->nBoneCount)
+						anBone[k] = Plan.anSegBones[k];
+					else
+						anBone[k] = nRigidBone;
+					fSum += afWeight[k];
+				}
+				if (fSum > 1.0f && fSum > 0.000001f)
+				{
+					for (u32 k = 0; k < 3; k++)
+						afWeight[k] /= fSum;
+					fSum = 1.0f;
+				}
+				afWeight[3] = 1.0f - fSum;
+				if (Plan.nSegBoneCount >= 4 && Plan.anSegBones[3] < pMesh->nBoneCount)
+					anBone[3] = Plan.anSegBones[3];
+				else
+					afWeight[3] = 0.0f;
+			}
+			if (v)
+				fputc(',', pFile);
+			fprintf(pFile, "[%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%u,%u,%u,%u,%.9g,%.9g,%.9g,%.9g]",
+				afPos[0], afPos[1], afPos[2], afNormal[0], afNormal[1], afNormal[2], afUV[0], afUV[1],
+				anBone[0], anBone[1], anBone[2], anBone[3], afWeight[0], afWeight[1], afWeight[2], afWeight[3]);
+		}
+		if (bFailed)
+			break;
+		fprintf(pFile, "],\"indices\":[");
+		for (u32 i = 0; i < Plan.nIndexCount; i++)
+		{
+			if (pIndices[i] >= Plan.nVertexCount)
+			{
+				bFailed = TRUE;
+				break;
+			}
+			if (i)
+				fputc(',', pFile);
+			fprintf(pFile, "%u", (u32)pIndices[i]);
+		}
+		if (bFailed)
+			break;
+		fprintf(pFile, "]}");
+	}
+	fprintf(pFile, "]}\n");
+	fclose(pFile);
+	if (bFailed)
+	{
+		remove(szPath);
+		DEVPRINTF("gcmesh: skipped invalid character export for '%s'.\n", pszResName);
+	}
 }
 
 static BOOL _Align4Checked(u32 nValue, u32 *pnAligned)
@@ -1156,6 +1713,18 @@ static BOOL _BindSegment(const FMesh_t *pMesh, const FMeshSeg_t *pSrcSegs, std::
 }
 } // namespace
 
+// Asset tooling (-export-character-meshes list lines "tex:NAME"): decode one retail texture from
+// MA_CHARACTER_TEXTURE_DIR into MA_CHARACTER_EXPORT_DIR/textures/NAME.tga.
+BOOL gcmesh_ExportTextureByName(cchar *pszName)
+{
+	const char *pszOutputDir = getenv("MA_CHARACTER_EXPORT_DIR");
+	if (!pszOutputDir || !*pszOutputDir || !pszName || !*pszName)
+		return FALSE;
+	std::string Dir = std::string(pszOutputDir) + "\\textures";
+	_mkdir(Dir.c_str());
+	return _ExportWorldTexture(std::string(pszName), pszOutputDir);
+}
+
 BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData, u32 *pnDxBytes, cchar *pszResName)
 {
 	if (ppDxData)
@@ -1232,6 +1801,7 @@ BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData
 			DLPlan_t Plan = {};
 			Plan.nMaterialIndex = i;
 			Plan.nDLIndex = j;
+			Plan.nRigidBoneIndex = pDL->nMatrixIdx;
 			Plan.nVertexCount = Stats.nVertexCount;
 			Plan.nIndexCount = Stats.nIndexCount;
 			if (!_BindSegment(pMesh, pSrcSegs, NewSegs, pGCMesh->AtRestBoundSphere_MS, pDL, Stats, &Plan,
@@ -1508,6 +2078,8 @@ BOOL gcmesh_ConvertToDx(void *pGameCubeData, u32 nGameCubeBytes, void **ppDxData
 
 		*ppDxData = pOutput;
 		*pnDxBytes = nOutputBytes;
+		_ExportWorldMeshObj(pszResName, Plans, pOutput, nGameCubeBytes, pMaterials, nMaterialCount);
+		_ExportCharacterModel(pszResName, Plans, pOutput, nOutputBytes, pMesh, pMaterials, nMaterialCount);
 		DEVPRINTF("gcmesh: converted '%s' (%u vertices, %u triangles, %u materials, %u skinned DLs, %u segs, "
 				  "%u coll trees / %u leaves).\n",
 				  pszResName ? pszResName : "(unnamed)", nTotalVertices, nTotalIndices / 3, nMaterialCount,

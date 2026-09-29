@@ -33,6 +33,9 @@
 #include "wpr_system.h"
 #include "e3menu.h"
 #include "wpr_languageselect.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 //====================
 // private definitions
@@ -688,10 +691,18 @@ static BOOL _StartQuickSkipLevel( BOOL bLoadTestMode ) {
 					_CampaignCoopInit.nLevelToPlay = (u8)mission.nLevel;
 					_CampaignCoopInit.nDifficultyLevel = GAMESAVE_DIFFICULTY_NORMAL;
 					pGameInit = &_CampaignCoopInit;
+#if defined(MA_PC_INPUT)
+					// As the menu's co-op: keyboard/mouse player 1, controllers dealt as they connect.
+					pcinput_SetLocalCoopSession( true, PCINPUT_LAYOUT_AUTO, nCampaignPlayers );
+#endif
 					DEVPRINTF( "Campaign co-op prototype: %u local players, campaign rules, no profile saves.\n",
 						nCampaignPlayers );
 				}
-				if( !game_LoadLevel( mission.pszTitle, FALSE, pGameInit ) ) return FALSE;
+				// Load behind the retail loading screen and level heading, as a campaign start does.
+				if( !wpr_system_CreateLoadHeading( (u8)mission.nLevel, _wszLoadHeading, 64 ) ) {
+					_wszLoadHeading[0] = 0;
+				}
+				if( !game_LoadLevel( mission.pszTitle, TRUE, pGameInit, _wszLoadHeading[0] ? _wszLoadHeading : NULL ) ) return FALSE;
 				gameloop_ShowFPS( TRUE );
 				return TRUE;
 			}

@@ -795,6 +795,13 @@ void checkpoint_Work( void )
 	if( _bSaveCheckpoint )
 	{
 		_bSaveCheckpoint = FALSE;
+#if FANG_WINGC
+		// Local co-op: downed players come back at a mid-level checkpoint, before it is saved so
+		// the saved state has them standing.
+		if( _nCheckpoint > 0 ) {
+			CPlayer::CoopReviveForCheckpoint();
+		}
+#endif
 		_checkpoint_Save( _nCheckpoint, _bPrintText );
 	}
 	else if( _bRestoreCheckpoint )

@@ -253,6 +253,7 @@ BOOL8 CPauseScreen::m_bMsgBoxActive	= FALSE;
 BOOL CPauseScreen::m_bShowMonitors;
 BOOL CPauseScreen::m_bIgnoreControlsNextFrame = FALSE;
 BOOL CPauseScreen::m_bQuitNextFrame = FALSE;
+u32 CPauseScreen::m_nPlayer = 0;
 
 BOOL CPauseScreen::m_bPauseAudio=TRUE;
 #if defined(MA_PC_INPUT)
@@ -973,9 +974,13 @@ BOOL CPauseScreen::Start(CInventory *pInventory )
 		return(FALSE);
 	}
 
+	// The player who paused (game.cpp sets the current player before calling): in local co-op the
+	// menu shows that player's HUD mode, prompts and settings.
+	m_nPlayer = (u32)CPlayer::m_nCurrent;
+
 #if _4_SCREEN_SETUP
-	if( (CHud2::GetHudForPlayer(0)->m_eCurHudMode == HUDMODE_MIL) ||
-		(CHud2::GetHudForPlayer(0)->m_eCurHudMode == HUDMODE_DROIDFRIEND) ) {
+	if( (CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode == HUDMODE_MIL) ||
+		(CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode == HUDMODE_DROIDFRIEND) ) {
 		m_MenuMgr.SetCurrent(&m_aMS[3]);
 		m_aMS[3].m_apNext[0] = NULL;
 		m_aMS[3].m_apNext[1] = NULL;
@@ -984,7 +989,7 @@ BOOL CPauseScreen::Start(CInventory *pInventory )
 		m_aMS[3].m_apNext[1] = &m_aMS[0];
 	}
 #else
-	if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_GLITCH) {
+	if( CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode != HUDMODE_GLITCH) {
 		// disable the items inventory screen
 		m_MenuMgr.SetCurrent(&m_aMS[0]);
 		m_aMS[0].m_apNext[0] = NULL;// left
@@ -1083,7 +1088,7 @@ BOOL CPauseScreen::Start(CInventory *pInventory )
 		}
 
 		//ME well, this isn't pretty, but if you're possessing a mil, you probably don't have currently selected inventory
-		if(CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL) {
+		if(CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode != HUDMODE_MIL) {
 			RefreshSelected(pInventory);
 		}
 
@@ -1108,8 +1113,8 @@ BOOL CPauseScreen::Start(CInventory *pInventory )
 		//
 		////
 
-		m_bHUDEnabled = CHud2::GetHudForPlayer(0)->IsDrawEnabled();
-		CHud2::GetHudForPlayer(0)->SetDrawEnabled(FALSE);
+		m_bHUDEnabled = CHud2::GetHudForPlayer(m_nPlayer)->IsDrawEnabled();
+		CHud2::GetHudForPlayer(m_nPlayer)->SetDrawEnabled(FALSE);
 
 		m_uButtons |= PSINPUT_START;
 
@@ -1140,7 +1145,7 @@ BOOL CPauseScreen::ExitPause( void ) {
 	m_eState = PSSTATE_INACTIVE;
 	
 	if( m_bHUDEnabled ) {
-		CHud2::GetHudForPlayer(0)->SetDrawEnabled(TRUE);
+		CHud2::GetHudForPlayer(m_nPlayer)->SetDrawEnabled(TRUE);
 	}
 
 	floop_PauseGame( FALSE );
@@ -1608,7 +1613,7 @@ void CPauseScreen::GetControls()
 
 	m_uButtons = 0;
 
-	if( Gamepad_aapSample[ Player_aPlayer[CPlayer::m_nCurrent].m_nControllerIndex ][GAMEPAD_MAIN_PAUSE]->uLatches & FPAD_LATCH_ON ) {
+	if( Gamepad_aapSample[ Player_aPlayer[m_nPlayer].m_nControllerIndex ][GAMEPAD_MAIN_PAUSE]->uLatches & FPAD_LATCH_ON ) {
 		m_uButtons |= PSINPUT_START;
 	}
 
@@ -1796,10 +1801,10 @@ void CPauseScreen::DrawFrame()
 				}
 
 				#if defined(MA_PC_INPUT)
-				if( pcinput_UseKeyboardPromptsForPort( Player_aPlayer[0].m_nControllerIndex ) ) {
+				if( pcinput_UseKeyboardPromptsForPort( Player_aPlayer[m_nPlayer].m_nControllerIndex ) ) {
 					// Space selects (Enter is START, which resumes); Escape resumes or backs out
 					_DrawSlotKeyCap( nButtonIndex == 0 ? L"Space" : L"Esc", &(m_avtxButton[6 * nButtonIndex]), L'R', 0.62f );
-				} else if( pcinput_UsePlayStationPromptsForPort( Player_aPlayer[0].m_nControllerIndex ) ) {
+				} else if( pcinput_UsePlayStationPromptsForPort( Player_aPlayer[m_nPlayer].m_nControllerIndex ) ) {
 					const FDrawVtx_t *pButton = &(m_avtxButton[6 * nButtonIndex]);
 					const f32 fCenterX = 0.5f * (pButton[0].Pos_MS.x + pButton[5].Pos_MS.x);
 					const f32 fCenterY = 0.5f * (pButton[0].Pos_MS.y + pButton[5].Pos_MS.y);
@@ -1832,13 +1837,13 @@ void CPauseScreen::DrawFrame()
 
 		if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
 #if defined(MA_PC_INPUT)
-			if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL && pcinput_UseKeyboardPromptsForPort( Player_aPlayer[0].m_nControllerIndex ) ) {
+			if( CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode != HUDMODE_MIL && pcinput_UseKeyboardPromptsForPort( Player_aPlayer[m_nPlayer].m_nControllerIndex ) ) {
 				// Both the letter shortcuts and the Tab alternatives are read by the pause menu.
 				_DrawSlotKeyCap( L"Q/Shift+Tab", &(m_avtxButton[6 * 2]), L'C', 0.54f );
 				_DrawSlotKeyCap( L"E/Tab", &(m_avtxButton[6 * 3]), L'C', 0.62f );
 				fdraw_SetTexture( &m_texControls );
 				fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
-			} else if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL && pcinput_UsePlayStationPromptsForPort( Player_aPlayer[0].m_nControllerIndex ) ) {
+			} else if( CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode != HUDMODE_MIL && pcinput_UsePlayStationPromptsForPort( Player_aPlayer[m_nPlayer].m_nControllerIndex ) ) {
 				// These pause-page actions map to analog triggers, which are L2/R2 on PlayStation pads.
 				_DrawSlotKeyCap( L"L2", &(m_avtxButton[6 * 2]), L'C', 0.80f );
 				_DrawSlotKeyCap( L"R2", &(m_avtxButton[6 * 3]), L'C', 0.80f );
@@ -1846,7 +1851,7 @@ void CPauseScreen::DrawFrame()
 				fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
 			} else
 #endif
-			if( CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_MIL ) {
+			if( CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode != HUDMODE_MIL ) {
 				fdraw_SetTexture(&m_texControls);
 				u32 i;
 				f32 fAlpha;
@@ -1892,7 +1897,7 @@ void CPauseScreen::WeaponCallback(MenuItemCallbackReason_e eReason, CMenuItem *p
 						return;
 					}
 
-					if(CHud2::GetHudForPlayer(0)->m_eCurHudMode != HUDMODE_GLITCH)
+					if(CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode != HUDMODE_GLITCH)
 					{
 						return;
 					}

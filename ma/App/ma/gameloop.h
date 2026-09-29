@@ -106,6 +106,8 @@ typedef struct {
 	BOOL bInstallAudio;
 	BOOL bLoadRegisteredMission; // Port: resolve quick-launch world through the mission registry.
 	BOOL bLoadWorldOnly; // Port diagnostic: load a world resource, then exit before localized game setup.
+	BOOL bExportCharacterMeshes; // Port asset tool: load named mesh resources and export rigged character data.
+	cchar *pszCharacterMeshList; // One MESH resource name per line; consumed only by the export tool.
 	BOOL bPlayerDeath;
 	BOOL bDebugAI;
 	u32 nLegServoLevel;

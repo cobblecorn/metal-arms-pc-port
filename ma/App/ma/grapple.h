@@ -167,7 +167,7 @@ protected:
 private:
 	static BOOL _InitSharedData( void );
 	static void _DestroySharedData( void );
-	static BOOL _IntersectingTrackerCallback( CFWorldTracker *pTracker );
+	static u32 _IntersectingTrackerCallback( CFWorldTracker *pTracker );
 
 	void _ClearDataMembers( void );
 

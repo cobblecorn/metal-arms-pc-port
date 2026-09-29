@@ -11,6 +11,9 @@ the diagnostic commands, what is open, and how this user works. Other documents:
 | `docs/handoff-history.md` | Every earlier HANDOFF, chronological (sections 1-25), for the reasoning behind past decisions. |
 | `docs/coop-audit.md` | Campaign co-op: what is done, what single-player assumptions remain. |
 | `docs/mouse-menus-design.md` | Design for mouse-driven front-end menus. |
+| `docs/world-export.md` | Export a level's static world meshes to OBJ, Blender, and Roblox Studio. |
+| `docs/character-export.md` | Export character rigs, packed textures, and matched animations to Blender. |
+| `docs/vendor-robot-porting.md` | Shady/Slim models, clip map, behavior, and source code pointers. |
 
 ## Goal
 
@@ -19,7 +22,286 @@ A working native Windows build of *Metal Arms: Glitch in the System* that runs t
 co-op. The whole campaign is playable today; the work now is polish, the remaining log errors, and
 co-op.
 
-## Latest local pass (2026-09-27)
+## Latest local pass (2026-09-29)
+
+- **Liquids confirmed drawing.** `-port-diag` now logs `PORT-LIQ` lines: each liquid volume's type,
+  surface centre, extent and layer textures at load (procedural ones name their world mesh), and each
+  change in how many are drawn. `WEDMmines01` has a procedural texture liquid on the world mesh and two
+  molten volumes (`tedt_lava`/`tf_lava`) at (673, -507, 355) and (1643, -687, 1152). A Release run with
+  `-start-at 623,-449,400,90` (a walkway over the first lava river) drew the lava textured and glowing
+  (`build/shots/liq_lava1/`); the user also saw it. Not yet looked at: the second pool (a ledge at
+  `-start-at 1580,-654,1142,90`), water (reflect/refract with full-screen targets: `WECRruins01`,
+  `WERMmorbot1`, `WERRreactr1`), mercury (`wedmmines02`), slime (`WEWJjourn01`), and liquid meshes.
+- **Mines music vs. dialogue, measured.** `preopen_streams` is a retail-only table the source never
+  reads. The level script plays `L02_Rager` (the ambience track with screams) at 0.40 in `WEDMmines01`
+  and `L02_Rager3` at 0.50 in `WEDTtown_01`/`wediinvas01`. Decoded, those tracks are no hotter than the
+  action music (-12 dBFS RMS vs `Mil_Action1` -12), so after the retail volumes they sit about 6 dB under
+  the level music and about 12 dB under speech. No per-track fix is needed.
+- **Gun loudness (user: "the gun audio and stuff is quite loud").** Every retail MusyX SoundMacro (all
+  1,363) is StartSample/WaitMs/StopSample/End with velocity 127, so the retail data has no per-sound
+  volume beyond the game's own emitter volumes, which the port applies through the GameCube chain. The
+  player's laser (`SWDMl2lfire`, 2D, volume 0.6) peaks near -14 dB output, about dialogue level and
+  about 8 dB over the music: that is the retail balance unless the chain itself is wrong. The chain has
+  not changed since `6cfcd81` (2026-09-26). One untested suspect: MusyX's centre-pan law. The GameCube
+  pans 2D effects and mono speech to the centre, while stereo music is panned hard left/right; the port
+  plays mono sounds at full level on both speakers. `main.dol` has no pan table (only the DLS volume
+  table at file offset 0x3de80c and a second curve at 0x3e0478, used near 0x8035fa6c), so MusyX computes
+  the pan law in code.
+- **PC mix: dialogue over effects (user asked for it).** Mission dialogue and bot chatter are bank sound
+  effects on the same Sound Effects level as gunfire. With a -6 dB player trim the user still found
+  effects too loud, and liked them at 3 of 18 slider pegs (master 0.17, about -11 dB), but that made
+  mission 1's dialogue (`DM*` in `level_02d`) hard to hear. `fdx8audio.cpp` `_PortSfxGain` now:
+  dialogue waves (`_PortIsDialogueWave`: level dialogue banks `level_NNd`, barter/buddy/b_intro/multi/
+  grunt_26/`mg_*` banks, bot remarks `br*`, speaker lines like `ca_08o_010`, announcer `*_ann*`) keep the
+  retail level; every other effect is -11 dB (`-sfx-db`, `MA_PORT_SFX_DB`); the player's own 2D `sw`/`sr`/`sd`
+  sounds a further -6 dB (`-player-sfx-db`, `MA_PORT_PLAYER_SFX_DB`). 0/0 is the retail mix. Streams are
+  untouched. `PORT-MIX` lines show each sound's trim. The rule was checked against every retail wave
+  name; a muted Mines run logged dialogue at 0 dB, effects -11, player footsteps -17. User confirmed in
+  play (2026-09-29): "sounds good now"; they turn Sound Effects down a little from full and consider the
+  loud top end retail-like, so leave the defaults unless they ask.
+
+### Loading screens (2026-09-29, latest)
+
+- **They never showed before.** `level_Load` asked for `load620x340.bik`; the retail data renamed it and
+  `main.dol`'s level_Load (call at 0x801b0c24) plays `gc_loading.bik` (496x272, Glitch walking past the
+  moon) with the level heading. The front end's `wpr_system` `_Init` (call at 0x80157578, closed at
+  0x80157e2c/0x80157ee8) plays `gc_loading2.bik` (512x272, Glitch running) with no heading; the source
+  only set a reset-check callback there. With the movie missing, `loadingscreen_Update` drew nothing and
+  the last frame stayed up. Both now play under `FANG_WINGC` (`level.cpp`, `wpr_system.cpp`). Retail's
+  `loadingscreen_Init` has a third flag, set only for the front end, that polls a GameCube device while
+  loading; the port does not need it.
+- **`-mission` now loads behind the loading screen** with the campaign heading
+  (`wpr_system_CreateLoadHeading`, new optional `pwszLoadHeading` on `game_LoadLevel`). The dev level
+  picker and `-level` still load without one, as in the source.
+- **Movie placement** (`fdx8movie2.cpp` `_BltWinFrame`): movies were all stretched to the 4:3 area,
+  which suited only the 512x448 cutscenes. The GameCube centred smaller movies unscaled inside its
+  512x448 full-screen texture, so the port now scales a 512x448 canvas to the 4:3 area and places the
+  movie in it at its own size. The canvas grows to fit larger (for example upscaled) movies. The
+  back-buffer size check now applies only to the unscaled fallback copy.
+- Verified with captures: `build/loadscr_level_sheet.png` (Mines load, about 1.8 s) and
+  `build/loadfront_sheet.png` (front-end load, about 1.2 s, then the logos). Level loads take 1.5-2 s here.
+- **Movie copies for the user's upscaling:** all 39 `.bik` files copied to
+  `D:\Documents\Metal Arms Movies` (outside the repo; retail data). 37 are 512x448 at 29.97 fps,
+  one Bink audio track each. `$` in a name marks a localized movie. `for upscaling\` holds an H.264 MP4
+  of each (CRF 12, same frames and rate, verified by packet count) and `audio\NAME.wav` originals, with a
+  README on converting back through RAD Video Tools (Bink 1; round-trip one short movie first, since
+  the port's runtime is Bink 1.5r and every retail movie is revision `BIKi`).
+
+### Local co-op pass (2026-09-29, with the user testing 1-3 players)
+
+- **Controls are dealt automatically** (`PCINPUT_LAYOUT_AUTO`, `pc_input.cpp` `UpdateAutoPadAssignment`),
+  for the Co-op menu and `-mission W -coop N` alike. The keyboard/mouse is always player 1. With a pad
+  per player they go in XInput order (player 1 keeps the keyboard too); otherwise players 2-N get pads
+  first. A pad keeps its player until it disconnects; pads connected later go to players 2-N, then to
+  player 1, so player 1 can switch between keyboard and a pad at any time. The first deal happens in
+  `pcinput_SetLocalCoopSession`, so the level's first frame already has everyone. `PC co-op controls:`
+  log lines record each deal. The Co-op page lost its Controls row; it lists each player's device
+  live and refuses Start (with a message) without a pad for every player after the first.
+- **Reconnect prompt:** it can no longer trap a keyboard player. Esc or B at "Please reconnect the
+  controller" leaves for the menus, shown as a footer (`CMsgBox::SetPcFooter`; the retail box data has
+  no buttons). The reconnect check uses the input layer's live state (`game.cpp` `_PortsOnline`), not
+  the sample history, which trailed a deal by a few frames.
+- **Pause menu and settings follow the player who paused** (`CPauseScreen::m_nPlayer`): prompts,
+  HUD-mode pages, the controls chart and Advanced Settings (look sensitivity, invert and vibration are
+  per player). A controller-only player never sees keyboard keys, and Mouse Sensitivity is hidden for
+  them. User confirmed pad and keyboard pauses.
+- **Cutscenes:** in-game cutscenes letterbox and freeze every player, so anyone's Start skips; Bink
+  movies (`cutscene.cpp`) take any player's A/Start/Back.
+- **No friendly fire:** player-to-player damage is refused (`CBot::InflictDamageResult`), and Glitch's
+  melee no longer breaks a partner's limbs directly (`CBotGlitch` melee), which had left partners as legs.
+- **Deaths:** a downed player stays down, with "Waiting for a checkpoint", while a partner stands. The
+  next mid-level checkpoint revives them beside a partner, just before it is saved
+  (`CPlayer::CoopReviveForCheckpoint` from `checkpoint_Work`): Resurrect, parts rebuilt, controls back.
+  If everyone is down, the retail checkpoint restore brings all of them back. Revive not yet tested live.
+- **Tripwire gate** (`entity.cpp`, `CEntity::_CoopHoldTripwireEnter` / `CoopTripwireWork`): a
+  player-tripped enter event waits until every standing player has arrived (sticky, any order), then
+  fires once with player 1 as the tripper. Collectables and kill volumes are never held; an attached
+  door still opens at once. The waiting player sees "Waiting for your partners". Verified in
+  `WEDMmines01`: `alloy`, `buddygo1` and `elevup` held for player 1 alone; `alloy` released when
+  player 2 arrived.
+- **Main-menu Co-op / Close Game entries in the retail art** (`wpr_system.cpp` `_PcMenuArtLabel`): the
+  retail entries are quads onto `tehmalogo$` (Campaign / MultiPlayer / an unused Game Demos, gold
+  italic, 0.17 slant). The two PC labels are cut from those letters at draw time along the slant
+  (slice table in atlas pixels; the port ships no art): "Co-op" = C o [i-dot hyphen] o p, "Close Game"
+  = C l o s e + "Game". No Q or k exists in the art, hence "Close Game". Same scale as the retail quads
+  (0.8823 model units per 2 atlas px, scale 1.15, times the menu's scale multiplier), left-aligned with
+  MultiPlayer at the retail 0.15 spacing, retail `gfh_logo05` highlight centred on the word (it is a
+  glow bar narrower than the word, as on the retail entries), fading in with the menu.
+  `build/menuart_zoom.png` shows it.
+- **Co-op menu is the retail "Players Join In" screen** (`_bPcCoopJoin` in `wpr_system.cpp`), retitled
+  "Co-op" with a "Progress is not saved" note. Entering it starts an AUTO session for four ports
+  (keyboard alone on player 1's box, pads on 2-4); each player joins and picks a profile as in
+  multiplayer; two or more are required. The launch copies each chosen profile's settings (invert,
+  auto-centre, assisted targeting, four-way select, controller config, look sensitivity, vibration)
+  and multiplayer colour into a virtual profile, so nothing is written to anyone's save, and keeps
+  the join screen's pad deal (`pcinput_SetLocalCoopPlayers`). The old generated Co-op page is gone.
+- **Player colours:** `CMultiplayerMgr::SetupPlayer` tints each co-op Glitch with the profile colour
+  (made unique, as in multiplayer; no profile = yellow, blue, ...), and `Multiplayer_PlayerColor`
+  returns it for HUD/radar use. Co-op Glitches load the multiplayer mesh `GRDGgltchMP` (its paint
+  takes the colour; the campaign mesh `grdggltch00` has baked yellow paint, which a tint only muddied),
+  chosen by `CMultiplayerMgr::IsLocalCoop()` (set in `PreLoadInitLevel`, before the world's bots are
+  built); level-specific Glitch meshes are kept. User confirmed the colours look right.
+- **Colour choice on the co-op join screen:** a ready player's box shows `{ Colour }` in that colour
+  (`_anPcCoopColor`); left/right on their own controls cycles it, skipping colours another ready
+  player has. It starts on the profile's colour and is what the launch copies into the play profile.
+  `build/coopcolorpick_sheet.png` shows Yellow then Blue after Right.
+- **Pause menu runs as the player who paused** (`game.cpp`, `CPauseScreen::PausingPlayer()`): it was
+  worked after the player loop with the last player current and player 1's inventory, so the last
+  player's controller drove everyone's pause menu (player 1's Esc could not unpause).
+- Not done: co-op saves; online (user chose Parsec); revive-at-checkpoint and a join-screen launch
+  with two real players untested live; texture upscaling needs a texture-replacement loader.
+- Test windows take focus when they open, so the user's controllers drive them: `menuart2` went into
+  co-op by itself. Warn the user before a capture run while they hold a pad.
+
+### Console-limit audit, debug shortcuts, results music (2026-09-29, later)
+
+- **PC graphics limits lifted** (all `FANG_WINGC`, Release-tested on Mines 1/2, Ruins 1, Journey 1: no
+  crash/assert, 126-141 fps unlocked):
+  - Anisotropic filtering: `port/compat/d3d8_compat.cpp` turns every LINEAR minification into ANISOTROPIC,
+    16x or the GPU cap (`-aniso N`, `MA_PORT_ANISO`; 1 = off). The consoles had bilinear/trilinear only.
+  - Shadow buffers (`fdx8shadow.cpp` `_PORT_SHADOW_*`): 1024/512/256 texels, were 256/256/128 (even the
+    "512" pool was 256). Render-target viewports follow the texture size; each pool's shared depth
+    buffer is created at the same size.
+  - Liquid reflection cube 512 (was 128), dynamic sphere reflections 256 (was 128) in `fdx8sh.cpp`.
+  - Sniper scope target `FSRT` (`game.cpp`): 2048x1024, was 512x256 stretched over the whole screen.
+  - Particles (`fparticle.cpp` `CalculatePercentOfParticlesToDraw`): no distance thinning between the
+    skip-draw and cull distances; near-camera thinning kept.
+  - Placed objects with an authored cull distance (`meshentity.cpp`) draw twice as far.
+  - Decals: 1,000 / 16,000 vertices (`fang.cpp`); `wedmmines02` still ran out at 400/6,000. **Built into
+    the next build only** (not yet compiled when the user's session was relaunched).
+  - Checked and left alone: per-level `far_plane` tables (authored with each level's fog), 8 hardware
+    lights, mip bias 0, particle/emitter budgets (500 emitters, 3,000 particles; usage far below).
+  - **MSAA not enabled.** The engine supports it (`FVidWin_t::fUnitFSAA`), but Bink frames reach the
+    back buffer by `StretchRect` from a plain surface (`fdx8movie2.cpp`), which D3D9 refuses into a
+    multisampled back buffer, and the fallback locks the back buffer (also refused), as do the port's
+    screenshots and `CopyRects` readbacks and the engine's `D3DPRESENTFLAG_LOCKABLE_BACKBUFFER`. The clean
+    route is an MSAA render target resolved into the ordinary back buffer before movies/Present.
+- **Debug shortcuts off player 1's controls.** On Windows `Gamepad_nDebugPortIndex` is port 0, the
+  player's own controls (the consoles used a second pad). Right mouse (secondary fire) toggled the
+  script monitors (`MAScriptTypes.cpp` `CMAST_BotWrapper::Work`: the "NONETRIPWIRE ENTER EVENT" lines
+  the user saw), quick-select up/down cycled the perf overlay, and the dev level-win cheat sequence was
+  live. All three now need `-debug-info`. The AI and checkpoint debug shortcuts were already gated.
+- **Results-screen music fixed.** `MA_Theme` was created and `Play()`ed at once while the stream still
+  loaded on the worker, so the request was dropped. `_SP_Work` now starts it when the stream reports
+  STOPPED (ready), at the menus' 0.25, like `wpr_system.cpp`. Verified in a log: `PORT-SND stream 'MA_Theme'`.
+- `-test-win-level S` (`gamepad.cpp`): completes the level after S seconds of unpaused play through the
+  level-win path. Use it to reach the results screen and the next level in tests.
+- User note (not pursued): one ambience track with destruction/explosion sounds "sorta sounds out of
+  place" (likely `L02_Rager`); low priority.
+- Another work session was active in this checkout at the same time (cut-content revival:
+  `botsniper.cpp`, `grapple.cpp`, `CMakeLists.txt`, `-spawn-sniper-test`, `docs/cut-content-revival-audit.md`).
+  Check `git diff` for its changes before committing either session's work.
+
+### Cut-content Mil Sniper in the campaign (2026-09-29)
+
+- From `docs/cut-content-revival-audit.md` / `docs/enemy-revival-map.md`: the Mil Sniper is the only cut
+  enemy with enough code to revive. Queen, Water/Nuke grenades, grenade launcher and the visual-only models
+  would need new gameplay invented; not attempted.
+- **Spawning** (`entity.cpp` `_PortGruntBecomesSniper`): world Grunts named `sniper<digits>` (wewjjourn02's
+  script-spawned `sniper1-3`) become `CBotSniper`; so does about 1 Grunt in 8 elsewhere (`-snipers-every N`,
+  default 8, 0 = only the retail roles), picked by a hash of level and position so the same ones every load.
+  `-cut-enemies off` restores all Grunts. The reused `snipergrunt1` template name in the Space Stations is
+  not a sniper role and is not matched by name.
+- **AI** (`AIBuilder.cpp`, Sniper branch): single aimed shots, stop-and-shoot, long sight, no vehicles or
+  grenades.
+- **Bugs fixed in the recovered actor** (`botsniper.cpp/.h`):
+  - `AppendTrackerSkipList()` used the old no-argument signature, so it no longer overrode `CEntity`'s (which
+    adds nothing): the Sniper collided with its own mesh, never landed, piled up fall speed and was flung
+    (the "floating, flung away" report). Now the current signature.
+  - `_CalcLaserPt` guarded with the bullet-trail count, and `DrawEffects` (which resets the laser-sight
+    count) was never called: `m_avLaserPt[20]` overflowed every frame and corrupted statics (crashes in
+    `tracer.cpp` `_GroupWork` and `CDamage::Work`). Guard fixed; `game.cpp` now calls
+    `CBotSniper::DrawEffects()` beside the Scout/Elite beams (trails, laser sights, grapple cable).
+  - The tracer's kill callback was empty, so shots did no damage. It now submits impact damage like the
+    Snarq's, with retail `RivetL2` (NPC) / `RivetL3` (player-controlled); retail has no Sniper profile.
+  - The retail `b_sniper` gen table names `None_Im_Invincible` armor; PC uses the Grunt's.
+  - `_TracerMovedCB` bound check was off by one.
+- **Verified:** Release Mines 1 fight (`build/shots/sniper_fight2/`): Snipers land, close in, fire 14
+  aimed shots, drain Glitch's battery and destroy him. Debug fight 80 s, 19 shots, no assert. Debug sweep
+  (`snipersweep_*`: Comm 1 14 Snipers, Journey 2's 3 retail roles, Reactor 1 8, City 1 3), each completed with
+  `-test-win-level 60` through the results screen: no crash/assert/new errors. `-port-diag` logs
+  `PORT-SNIPER` status every second and each shot.
+- **Not verified:** possessing a Sniper (it has a data port from the gen table, so possession should reach
+  its rifle, scope and grapple), the AI ever grappling (no AI grapple decision exists), and Journey 2's
+  snipers after their script spawns them. `tools/mission_parallel.py --game-args "..."` passes extra
+  game arguments to every instance.
+
+### Cut throwables: Nuke and Water Grenades (2026-09-29, stopped mid-test at the user's request)
+
+- The unused pickup models `gp_snuke`/`gp_swater` now have items and behaviour, built on existing weapons:
+  - **Nuke Grenade** = Coring Charge (`weapon_gren.cpp`, `m_bPortNuke`): own projectile pool of `gp_snuke`;
+    detonate callback adds `HugeRatExplosion` at the centre plus a ring of six coring blasts 12 units out.
+  - **Water Grenade** = EMP Grenade (`weapon_emp.cpp`, `m_bPortWater`): pool of `gp_swater`, EMP shutdown
+    x1.5 and radius x1.25, `e_wtrexpl01` water blast particle.
+  - Items appended in `ItemRepository.cpp` (clones of the Coring Charge/EMP entries; retail indices do not
+    move); `Item.cpp` MakeWeapon/GetWeaponName; collectable types `COLLECTABLE_WEAPON_NUKE/WATER` (IDs are
+    not saved) cloned from the retail pickups with one grenade each.
+  - About 1 in 4 level Coring Charge pickups and 1 in 3 EMP pickups become them (position hash; drops roll
+    the same odds). Gated by `-cut-enemies`.
+- `-test-give ITEM` (player.cpp) gives and selects a weapon; `-export-character-meshes` lists accept
+  `tex:NAME` to decode a retail texture (gcmesh `gcmesh_ExportTextureByName`).
+- **Verified:** Release build; Comm 1 and Mines 2 convert pickups with no crash; Mines 2 `-test-give "nuke
+  grenade"` threw one and logged `Nuke Grenade detonated`. **Not verified:** how the blast/pickup box look
+  (no icon art exists: HUD reuses the Coring Charge/EMP icons), Water Grenade thrown in play, Debug asserts,
+  pickups by walking into them, save/load with these items in the inventory.
+- Not feasible with retail data: grenade launcher/key models (textures missing), hang glider (no vehicle
+  code), Swarmer Queen (disabled prototype, no arena).
+
+## Earlier local pass (2026-09-28)
+
+- Added `tools/export_characters.py`, a character catalog, a `.mtx` animation reader, and a Blender
+  scene importer. The clean Blender package is under
+  `build/export/character_porting_kit_20260928/`: the full collection has 29 rigs, 29 meshes, 96,695
+  triangles, 107 packed textures, and 586 animation actions; a focused Shady/Slim vendor file has 2
+  rigs and 43 actions; an enemy sample has 8 rigs and 199 actions. The importer converts Y-up rigs to
+  Blender Z-up, centers/grounds each model, packs items by their measured bounds, and keeps character
+  surfaces opaque. Blender reopened all three files; no ground-plane overlaps, alpha-to-opacity
+  links, missing animation curves, or ungrounded models were found. The `ARDH`/`ARDI` vendor
+  animations are now catalogued, including Slim's `arditable02` fold-table clip referenced by source
+  code. The extraction-only game process uses `-no-audio`; it does not alter normal game audio. See
+  `docs/character-export.md` and `docs/vendor-robot-porting.md` for details.
+- Added an opt-in static world OBJ exporter in `port/gcmesh.cpp`, run with
+  `python tools/export_world_obj.py wedmmines01`. The world-only loader exported all 46 embedded
+  `wedmmines01` mesh chunks: 119,233 vertices and 55,813 triangles. The output has a combined scene
+  OBJ, 46 individually importable mesh chunks, 530 materials, 41 decoded game textures, a manifest,
+  and loader logs under ignored `build/export/`. The export uses the game's texture decoder and MTL
+  diffuse maps; Blender 5.2 imported the combined OBJ as 861 mesh objects with 55,813 faces, resolved
+  all image paths, and saved a native `.blend` in Material Preview mode with view clipping scaled to
+  the level bounds. Exported chunks retain native level-space coordinates, normals, and UVs. Only the
+  first available surface texture is mapped;
+  shader layering, lightmaps, placed world-shape objects, collision data, runtime liquids, and gameplay
+  behavior are not reproduced. See `docs/world-export.md`. The Release build, full world-only export,
+  and Blender import passed.
+- Exported all 14 multiplayer world resources present in the retail master (`we01multi01`–`we12multi12`,
+  `we14multi14`, and `we15multi15`) to `build/export/multiplayer_maps_20260928_030038/`. Each has a
+  combined OBJ, per-resource chunks, MTL and decoded textures, manifest/logs, and a Blender 5.2 file
+  framed with the map-scaled viewport clip range. `we13multi13` is not present in the master index.
+- The Windows launcher now sets `bPlayerDeath=TRUE`, matching the original launcher. This lets
+  players and Droid allies reach the existing death/respawn paths; recruited-friendly damage and
+  multiplayer friendly-fire rules were left unchanged. Debug and Release builds pass. An interactive
+  enemy-kills-player and enemy-kills-ally check remains.
+- The end-of-level results screen now starts `MA_Theme` after unloading the completed level and
+  destroys the stream when leaving the screen. This uses the existing front-end theme because the
+  retail `we_1victory` world has no music entry; the intended victory cue is not present in the data
+  audit. The results screen still needs an audible runtime check.
+- Windows now runs the liquid system from the visibility pass; that call had been compiled out for
+  Windows, leaving liquid volumes and meshes unrendered. The Direct3D liquid plane and mesh code is
+  enabled on Windows. The user will visually review the result in-game; this change has only been
+  build-verified so far, so falling meshes and molten surfaces remain unconfirmed.
+- PC gameplay meshes now stay on LOD 0 while shadow rendering keeps its existing LOD bias. This
+  avoids the visibly pointy distance models. A 50-second Mines run and a 55-second Research Facility
+  run show rendered gameplay frames with no asserts; close-range bots remain detailed.
+- The screenshot assertion is at `fdx8math.inl:131`, the nonnegative-input check in `fmath_Sqrt`;
+  it is distinct from older `FloatToU32` tracer-alpha asserts already fixed by commit `1b6210b`.
+  Current Debug runs did not reproduce it. Invalid square-root inputs now log their value, and
+  Fang assertions capture a symbolized stack to the run log before showing the dialog. A sentinel
+  cannon also falls back to its barrel axis if its target-to-muzzle aim vector is degenerate; that
+  candidate has not been tied to the reported assertion.
+- `tools/port_run.py` and `tools/mission_parallel.py` now leave audio enabled by default. Use `--mute`
+  only for a deliberately silent test; `--no-audio` remains available when audio setup itself should
+  be skipped. All test windows are labeled with their audio mode.
+
+## Previous local pass (2026-09-27)
 
 - `SetDamageable=false` on four inactive grunts in `WEDMmines01` now sets the existing invincibility
   flag. `NoLiftBlockChecking=true` on two lifts in that world skips only the bot blockage check during
@@ -88,7 +370,7 @@ co-op.
 | `port/pc_input.cpp` | Keyboard/mouse and XInput mapped onto Fang's pads; mouse look; menu pointer; typed text; input layouts; prompt style. |
 | `port/discord_rpc.cpp` | Discord Rich Presence over the IPC pipe (no SDK). |
 | `port/compat/` | Direct3D 8 API on top of D3D9Ex (`d3d8_compat.cpp`), minimal D3DX. |
-| `tools/` | Test runners, log tools, retail-data tools (see Diagnostics). |
+| `tools/` | Test runners, log tools, retail-data tools, and the opt-in `export_world_obj.py` level exporter. |
 | `gamedata/` (ignored) | `sys/main.dol`, `files/` (`mettlearms_gc.mst`, `Movies/*.bik`, `*.wvs`), `mst/` (extracted files). |
 | `build/` (ignored) | Build output; `build/logs/` test logs; `build/shots/` captures; `build/test-saves/` test profiles. |
 
@@ -120,13 +402,17 @@ Visual Studio 2022 (x86 tools), CMake 3.20+, Python 3 (Pillow for screenshot hel
 | `-level WORLD` / `-world-only WORLD` | debug-launch a world / load a world and exit |
 | `-dev-menu` | boot into the development level picker instead of the retail front end |
 | `-res WxH`, `-fullscreen`, `-no-vsync` | window size (default 1280x960), fullscreen, present without vsync (for measuring) |
-| `-mute` | all audio runs (so audio errors are logged) but plays silently; **use for every test run** |
+| `-mute` | keep audio active but silence game and Bink output; use only when silent playback is intentional |
 | `-no-audio` | skip audio setup entirely (faster loads; audio errors are then meaningless) |
 | `-log FILE`, `-asset-log FILE`, `-console` | engine log, resource-loading log, a console window showing the log |
 | `-port-diag` | the port's `PORT-*` diagnostics (perf, hitches, stalls, audio mix); also `MA_PORT_DIAG=1` |
 | `-debug-info` | the game's on-screen debug overlays (script messages/errors, fps, AI and checkpoint drawing) |
 | `-shots DIR -shot-every N` | save the back buffer as `DIR\shot_NNN.bmp` every N frames (default 300) |
 | `-test-keys "S:VK,..."` | press virtual key VK S seconds after launch; `gS` counts from the first gameplay frame. Works without focus |
+| `-cut-enemies on\|off`, `-snipers-every N` | recovered Mil Snipers in levels (default on, about 1 Grunt in 8; 0 = only retail sniper roles) |
+| `-sfx-db N` | trim in dB for sound effects other than dialogue; default -11, 0 = retail mix |
+| `-player-sfx-db N` | further trim in dB for the player's own 2D sounds (weapons, footsteps); default -6, 0 = retail mix |
+| `-start-at X,Y,Z[,YAW]` | move player 1 to a world position (yaw in degrees) half a second after they get control; find spots with `PORT-LIQ` lines or a `tools/export_world_obj.py` export (native coordinates) |
 | `-discord-app-id ID\|off` | Rich Presence application (default: the port's own); `off` for tests |
 | `-input-layout shared\|separate`, `-button-prompts auto\|keyboard\|xbox\|playstation`, `-mouse-sensitivity N`, `-aim-assist auto\|on\|off`, `-save-dir DIR`, `-instance-label NAME` | input, prompts, saves, a window-title label |
 
@@ -524,7 +810,8 @@ Warnings that remain in the logs (all reproduce retail data the source does not 
 
 ## Diagnostics cookbook
 
-Everything here is muted and keeps Discord off unless it says otherwise. Logs go to `build/logs/`.
+Tests here keep Discord off. Audio is on by default; pass `--mute` only for intentionally silent runs.
+Logs go to `build/logs/`.
 
 **One private test run, summarized** (Release by default; `--config Debug` for asserts):
 
@@ -537,7 +824,7 @@ The summary lists `PORT-PERF` lines (fps, worst frame, work before Present), the
 **Screenshots** (engine captures of the back buffer; cost frame time, never in the user's session):
 
     python tools/port_run.py --mission WEDTtown_01 --seconds 40 --shots 120
-    build\Release\ma_port.exe -data gamedata\files -mission wedmmines01 -mute -discord-app-id off -shots build\shots\mines -shot-every 150
+    build\Release\ma_port.exe -data gamedata\files -mission wedmmines01 -discord-app-id off -shots build\shots\mines -shot-every 150
 
 `port_run.py --shots N` clears `build/shots/NAME/`, and saves the newest frame as `latest.png`.
 Read the PNG/BMP to look at it.
@@ -587,7 +874,8 @@ the game thread and log its symbolized stack as `PORT-STALL`; `--stall-ms 50` lo
 - `-port-diag` logs `PORT-MIX` snapshots every 2 s: active and voiced emitters, free voices, pause
   levels, each sound's level, and in-range playing emitters that have no voice ("voiceless"). Also
   `PORT-SND`, `PORT-TALK` (bot dialog), `PORT-DUCK`.
-- Is a process audible? Start it with `--audio` (only when the user expects sound) and meter it:
+- Is a process audible? Test tools now enable audio by default; pass `--mute` only for intentional
+  silence, then meter it:
   `powershell -ExecutionPolicy Bypass -File tools\audio_meter.ps1 -ProcessId PID -Seconds 30`.
   A `-mute` run meters 0 by design; so does `-no-audio`.
 
@@ -639,11 +927,10 @@ No MSVC, no retail data, no game runs or logs. What works:
   cannot read logs. Their session is Release, audible, with Discord on, launched like:
   `build\Release\ma_port.exe -data gamedata\files -mission WORLD -port-diag -log build\logs\play_NAME.log`
   (`-port-diag` so you can read what happened in their session afterwards).
-- **Every one of your own test instances is muted** (`-mute`, or `-no-audio` when audio doesn't
-  matter) with `-discord-app-id off`. The tools do this by default. Muted windows say
-  `[TEST RUN - MUTED]` / `[TEST RUN - NO AUDIO]` in their title. An unmuted test window blasts
-  default-volume audio over the user's game; a muted one looks like "no audio" to the user if they
-  pick it up, so close your test windows when done.
+- **Test instances keep audio enabled by default** with `-discord-app-id off`; this user asked that
+  play tests not be muted. The test tools now follow that preference. Pass `--mute` only for a run
+  where silent playback is intentional, or `--no-audio` if testing without audio setup. Window titles
+  identify the audio mode. Close test windows when their check is done.
 - Never kill the user's game except to relink its exe: then stop that exact PID, rebuild, and relaunch
   it for them without being asked (they asked for this). Tools only ever close the PIDs they started.
 - The user prefers less time on visual checks: capture a frame when a change is visual, don't iterate
@@ -679,11 +966,11 @@ No MSVC, no retail data, no game runs or logs. What works:
 
 - Don't re-investigate solved problems: fonts, skinned meshes, the world-origin bone, world collision,
   dark legs (normal sphere), gameplay audio after the intro (paused voiceless emitters).
-- "No audio" reports: first check whether the window is one of your muted test windows (title), then
+- "No audio" reports: first check whether the process was launched with `-mute`/`-no-audio` (title), then
   the in-game volume (Back used to cancel settings changes), then `PORT-MIX` voiced vs. voiceless.
 - The `we01multi01` restart loop was never explained (it is a multiplayer map launched through the
   debug path); test with campaign levels (`-mission`) instead.
-- Sweeps with `-no-audio` hide every audio error; sweep with `-mute`.
+- Sweeps with `-no-audio` cannot diagnose audio; normal runs and sweeps are audible by default.
 - A backgrounded shell loop outlived its task and kept opening windows: use the tools, which close
   their own processes.
 - Retail data drift is the usual cause of "wrong text/sound/value": the retail tables were reordered

@@ -153,6 +153,13 @@ public:
 	static BOOL IsInitialized( void ) { return m_bSystemInitialized; }
 	static BOOL IsActive( void ) { return m_bSystemActive; }
 
+#if defined(MA_PC_INPUT)
+	// PC: one line drawn under the current box (for example a key a box's retail data has no button
+	// for). Display() clears it; the caller keeps the string alive.
+	static void SetPcFooter( cwchar *pwszFooter ) { m_pwszPcFooter = pwszFooter; }
+	static cwchar *m_pwszPcFooter;
+#endif
+
 
 	// see whether a button was pressed
 	static Button_e CheckForButtonPress( BOOL bClearOnPress=FALSE )	{ return m_eButton; }

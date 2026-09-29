@@ -50,13 +50,15 @@ whole load now), and movies waiting on Bink's file reads (Bink gets a 16 MB read
 `-test-keys "62:0x1B,70:0x51"` presses those virtual keys (Escape, Q) that many seconds after start;
 `g8:0x1B` presses Escape eight seconds after the first gameplay frame. These work without the window
 having focus, so a test never takes the keyboard from the desktop. (`MA_PORT_TEST_KEYS` is the same.)
-`-no-audio` disables game audio and mutes Bink movie tracks by volume while keeping the video clock
-running. The test window title includes `[TEST RUN - NO AUDIO]`.
+`-no-audio` skips game audio setup and mutes Bink movie tracks while keeping the video clock running.
+The test window title includes `[TEST RUN - NO AUDIO]`; `-mute` keeps the audio path active but silences
+game and Bink output. `port_run.py` and `mission_parallel.py` now leave audio on by default; pass `--mute`
+only when a silent run is intentional.
 
 For concurrent mission checks, use `python tools/mission_parallel.py --config Debug --seconds 75 --jobs 4 wewchold_01 wedttown_01 WEWHchase01 WEWJjourn01`.
 Each instance gets separate engine, asset, and save paths. It reports load completion, script events
 and errors, data warnings, allocations, asserts, crashes, frame timing, and stalls. `--jobs` caps the
-number of simultaneous windows; `-no-audio` and Discord-off are defaults.
+number of simultaneous windows; audio is enabled by default and Discord is off.
 
 Discord Rich Presence is on by default: "In the menus", or the level ("Level 4: Clean Up") with
 "Campaign" / "Multiplayer: <game type> (N players)" and the elapsed time, under the port's own Discord

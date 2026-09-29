@@ -358,6 +358,9 @@ static const _MapInfo_t _aMapInfo[GAMEPAD_MAP_COUNT] = {
 };
 
 void _HandleCheatCodes( void );
+#if FANG_WINGC
+extern "C" float port_GetTestWinLevelSecs( void );	// main_win.cpp: -test-win-level
+#endif
 
 
 BOOL gamepad_InitSystem( void ) {
@@ -410,9 +413,57 @@ void gamepad_Sample( void )
 	// which unpaused, which reopened it (the list flickered open and shut).
 	pcinput_BeginFrame( _anCurrentMap[pcinput_KeyboardPort()] == GAMEPAD_MAP_MAIN1 && !pausescreen_IsActive() );
 	game_PcPromptWork();
+	{
+		// Local co-op deals controllers as they connect (PCINPUT_LAYOUT_AUTO); log each new deal.
+		static u32 _nLoggedPadAssignment = 0;
+		const u32 nPadAssignment = pcinput_PadAssignmentSerial();
+		if( pcinput_Layout() == PCINPUT_LAYOUT_AUTO && nPadAssignment != _nLoggedPadAssignment ) {
+			_nLoggedPadAssignment = nPadAssignment;
+			char szLine[160];
+			int nLength = _snprintf( szLine, sizeof( szLine ), "PC co-op controls:" );
+			for( u32 nPort = 0; nPort < 4 && nLength > 0 && nLength < (int)sizeof( szLine ); ++nPort ) {
+				const int nPad = pcinput_PadForPort( PCINPUT_LAYOUT_AUTO, nPort );
+				const int nWritten = _snprintf( szLine + nLength, sizeof( szLine ) - nLength, " P%u %s%s", nPort + 1,
+					nPort == pcinput_KeyboardPort() ? "keyboard/mouse" : "", nPad >= 0 ? "" : (nPort == pcinput_KeyboardPort() ? ";" : "none;") );
+				if( nWritten < 0 ) break;
+				nLength += nWritten;
+				if( nPad >= 0 ) {
+					const int nPadWritten = _snprintf( szLine + nLength, sizeof( szLine ) - nLength, "%scontroller %d;",
+						nPort == pcinput_KeyboardPort() ? " + " : "", nPad + 1 );
+					if( nPadWritten < 0 ) break;
+					nLength += nPadWritten;
+				}
+			}
+			szLine[sizeof( szLine ) - 1] = 0;
+			DEVPRINTF( "%s\n", szLine );
+		}
+	}
 #endif
 
+#if FANG_WINGC
+	// The development cheats (a level-win sequence on fire/action/jump/weapon-list buttons) are entered
+	// on player 1's own controls on PC; only honour them when debug overlays were asked for (-debug-info).
+	if( Gameloop_bDrawDebugInfo )
+#endif
 	_HandleCheatCodes();
+
+#if FANG_WINGC
+	// Test aid (-test-win-level S): complete the level once after S seconds of unpaused gameplay, through
+	// the level-win cheat's path, so a test reaches the results screen and the next level.
+	{
+		static f32 _fPortWinTimer = 0.0f;
+		static BOOL _bPortWinDone = FALSE;
+		const f32 fWinSecs = port_GetTestWinLevelSecs();
+		if( fWinSecs > 0.0f && !_bPortWinDone && _anCurrentMap[pcinput_KeyboardPort()] == GAMEPAD_MAP_MAIN1 && !pausescreen_IsActive() ) {
+			_fPortWinTimer += FLoop_fPreviousLoopSecs;
+			if( _fPortWinTimer >= fWinSecs ) {
+				_bPortWinDone = TRUE;
+				DEVPRINTF( "Port: -test-win-level completing the level after %.1f s of play.\n", _fPortWinTimer );
+				game_GotoLevel( "next" );
+			}
+		}
+	}
+#endif
 
 #if LAUNCHER_GO_DIRECTLY_TO_E3_WRAPPERS
 	if ( Launcher_bDemoLaunched ) {
@@ -445,7 +496,9 @@ void gamepad_Sample( void )
 #endif
 
 #if !FANG_PRODUCTION_BUILD
-	if ( Gamepad_aapSample[Gamepad_nDebugPortIndex][GAMEPAD_MAIN_QUICK_SELECT_UP_DOWN]->fCurrentState
+	// PC: the debug port is player 1's own controls, so cycle the perf overlay only under -debug-info.
+	if ( (!FANG_WINGC || Gameloop_bDrawDebugInfo) &&
+		Gamepad_aapSample[Gamepad_nDebugPortIndex][GAMEPAD_MAIN_QUICK_SELECT_UP_DOWN]->fCurrentState
 		&& (Gamepad_aapSample[Gamepad_nDebugPortIndex][GAMEPAD_MAIN_QUICK_SELECT_UP_DOWN]->uLatches & FPAD_LATCH_CHANGED) )
 	{
 		FPerf_nDisplayPerfType = (FPerf_Display_Type_e)(FPerf_nDisplayPerfType + 1);

@@ -463,8 +463,40 @@ HRESULT IDirect3DDevice8::SetRenderState( D3DRENDERSTATETYPE nState, DWORD nValu
 	return m_pDev->SetRenderState( nState, nValue );
 }
 
+// PC: anisotropic filtering. The consoles only had bilinear/trilinear minification, which smears floors
+// and walls seen at a glancing angle. Every LINEAR minification the engine asks for becomes ANISOTROPIC
+// at up to 16x (the device's limit); -aniso N / MA_PORT_ANISO sets the level, 1 turns it off.
+static DWORD _PortAnisotropy( IDirect3DDevice9 *pDev )
+{
+	static DWORD s_nAniso = 0;
+	if( !s_nAniso )
+	{
+		DWORD nWant = 16;
+		char szValue[16];
+		const DWORD nLength = GetEnvironmentVariableA( "MA_PORT_ANISO", szValue, sizeof(szValue) );
+		if( nLength > 0 && nLength < sizeof(szValue) )
+			nWant = (DWORD)atoi( szValue );
+		D3DCAPS9 Caps;
+		if( FAILED( pDev->GetDeviceCaps( &Caps ) ) || !(Caps.TextureFilterCaps & D3DPTFILTERCAPS_MINFANISOTROPIC) )
+			nWant = 1;
+		else if( nWant > Caps.MaxAnisotropy )
+			nWant = Caps.MaxAnisotropy;
+		s_nAniso = nWant < 1 ? 1 : nWant;
+	}
+	return s_nAniso;
+}
+
 HRESULT IDirect3DDevice8::SetTextureStageState( DWORD nStage, DWORD nType, DWORD nValue )
 {
+	if( nType == D3DTSS_MINFILTER && nValue == D3DTEXF_LINEAR )
+	{
+		const DWORD nAniso = _PortAnisotropy( m_pDev );
+		if( nAniso > 1 )
+		{
+			m_pDev->SetSamplerState( nStage, D3DSAMP_MAXANISOTROPY, nAniso );
+			return m_pDev->SetSamplerState( nStage, D3DSAMP_MINFILTER, D3DTEXF_ANISOTROPIC );
+		}
+	}
 	switch( nType )
 	{
 	case D3DTSS_ADDRESSU:		return m_pDev->SetSamplerState( nStage, D3DSAMP_ADDRESSU, nValue );

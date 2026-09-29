@@ -19,6 +19,9 @@
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
 #include "gameloop.h"
+#if FANG_WINGC
+BOOL gcmesh_ExportTextureByName( cchar *pszName );	// port/gcmesh.cpp (asset tooling)
+#endif
 #include "fresload.h"
 #include "fworld.h"
 #if FANG_PLATFORM_WIN
@@ -148,6 +151,8 @@
 #include "mg_holdyourground.h"
 #include "msgbox.h"
 #include "botsnarq.h"
+#include "botsniper.h"
+#include "grapple.h"
 #include "edebris.h"
 #include "difficulty.h"
 
@@ -274,6 +279,7 @@ static const _SystemFunctions_t _aSystemFunctionArray[] = {
 	CEProjPool::InitSystem,				CEProjPool::UninitSystem,				_NAME_TO_STRING( EProjPool )
     pspool_InitSystem,					pspool_UninitSystem,					_NAME_TO_STRING( pspool )
 	tracer_InitSystem,					tracer_UninitSystem,					_NAME_TO_STRING( tracer )
+	CGrapple::InitSystem,				CGrapple::UninitSystem,					_NAME_TO_STRING( Grapple )
 //	potmark_InitSystem,					potmark_UninitSystem,					_NAME_TO_STRING( potmark )
 	CFScriptSystem::InitSystem,			CFScriptSystem::UninitSystem,			_NAME_TO_STRING( FScriptSystem )
 	CWorkable::InitSystem,				CWorkable::UninitSystem,				_NAME_TO_STRING( Workable )
@@ -361,6 +367,7 @@ static const _SystemFunctions_t _aLocalizedSystemFunctionArray[] = {
 	CItemRepository::InitSystem,		CItemRepository::UninitSystem,			_NAME_TO_STRING( ItemRepository )
 	CCollectable::InitSystem,			CCollectable::UninitSystem,				_NAME_TO_STRING( CCollectables ) // MRS, collectibles now rely on ItemRespository::InitSystem
 	CBot::InitSystem,					CBot::UninitSystem,						_NAME_TO_STRING( Bot ) 
+	CBotSniper::InitSystem,			CBotSniper::UninitSystem,				_NAME_TO_STRING( BotSniper )
 	CMenuMgr::InitSystem,				CMenuMgr::UninitSystem,					_NAME_TO_STRING( MenuMgr )
 	CPauseScreen::InitSystem,			CPauseScreen::UninitSystem,				_NAME_TO_STRING( PauseScreen )
 	CHud2::InitSystem,					CHud2::UninitSystem,					_NAME_TO_STRING( Hud2 )
@@ -753,6 +760,68 @@ static BOOL _GameInit( void *pParameter ) {
 	if( !_InitGameSystems() ) {
 		// Trouble initializing a game system...
 		goto _ExitGameInitWithError;
+	}
+
+	if( pParm->bExportCharacterMeshes ) {
+		FILE *pList = pParm->pszCharacterMeshList ? fopen( pParm->pszCharacterMeshList, "rb" ) : NULL;
+		if( !pList ) {
+			DEVPRINTF( "Character mesh export could not open its model list.\n" );
+			goto _ExitGameInitWithError;
+		}
+		u32 nRequested = 0, nLoaded = 0, nFailed = 0;
+		char szResource[128];
+		while( fgets( szResource, sizeof(szResource), pList ) ) {
+			size_t nLength = strlen( szResource );
+			while( nLength && (szResource[nLength - 1] == '\r' || szResource[nLength - 1] == '\n' ||
+							 szResource[nLength - 1] == ' ' || szResource[nLength - 1] == '\t') )
+				szResource[--nLength] = 0;
+			size_t nStart = 0;
+			while( szResource[nStart] == ' ' || szResource[nStart] == '\t' )
+				nStart++;
+			if( nStart ) {
+				memmove( szResource, szResource + nStart, nLength - nStart + 1 );
+				nLength -= nStart;
+			}
+			if( !nLength || szResource[0] == '#' )
+				continue;
+			nRequested++;
+#if FANG_WINGC
+			// "tex:NAME" lines decode a retail texture to <export dir>\textures\NAME.tga (asset tooling).
+			if( !fclib_strnicmp( szResource, "tex:", 4 ) ) {
+				if( gcmesh_ExportTextureByName( szResource + 4 ) ) {
+					DEVPRINTF( "Character mesh export wrote texture '%s'.\n", szResource + 4 );
+					nLoaded++;
+				} else {
+					DEVPRINTF( "Character mesh export could not write texture '%s'.\n", szResource + 4 );
+					nFailed++;
+				}
+				continue;
+			}
+#endif
+			if( !fresload_IsNameValid( szResource ) ) {
+				DEVPRINTF( "Character mesh export skipped invalid MESH name '%s'.\n", szResource );
+				nFailed++;
+				continue;
+			}
+			FResFrame_t MeshFrame = fres_GetFrame();
+			void *pMesh = fresload_Load( FMESH_RESTYPE, szResource );
+			if( pMesh ) {
+				DEVPRINTF( "Character mesh export loaded '%s'.\n", szResource );
+				nLoaded++;
+			} else {
+				DEVPRINTF( "Character mesh export could not load '%s'.\n", szResource );
+				nFailed++;
+			}
+			fres_ReleaseFrame( MeshFrame );
+		}
+		fclose( pList );
+		DEVPRINTF( "Character mesh export finished (%u requested, %u loaded, %u failed).\n",
+				  nRequested, nLoaded, nFailed );
+	#if !GAMELOOP_EXTERNAL_DEMO
+		ffile_LogStop();
+	#endif
+		gameloop_ScheduleExit();
+		return TRUE;
 	}
 
 	if( pParm->bLoadWorldOnly ) {

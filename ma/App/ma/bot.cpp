@@ -1071,6 +1071,14 @@ void CBot::InflictDamageResult( const CDamageResult *pDamageResult ) {
 	if( MultiplayerMgr.IsSinglePlayer() ) {
 		// Single-player game...
 
+#if FANG_WINGC
+		// Local co-op: partners can't hurt each other (a melee blew a partner's upper body off).
+		if( (m_nPossessionPlayerIndex >= 0) && (pDamageResult->m_pDamageData->m_Damager.nDamagerPlayerIndex >= 0) &&
+			(pDamageResult->m_pDamageData->m_Damager.nDamagerPlayerIndex != m_nPossessionPlayerIndex) ) {
+			return;
+		}
+#endif
+
 		if( pDamageResult->m_pDamageData->m_Damager.pBot ) {
 			// Damage is from a bot...
 
@@ -1714,7 +1722,10 @@ BOOL CBot::ClassHierarchyBuild( void ) {
 	FASSERT( IsSystemInitialized() );
 	FASSERT( !IsCreated() );
 	FASSERT( FWorld_pWorld );
-	FASSERT( (TypeBits() & ENTITY_BITS_ALLBOTBITS) != ENTITY_BIT_BOT);
+	// CBotSniper has no free u64 leaf bit and shares ENTITY_BIT_UNSPECIFIED.
+	// Its inherited BOT bit still makes it part of all bot collision filters.
+	FASSERT( (TypeBits() & ENTITY_BITS_ALLBOTBITS) != ENTITY_BIT_BOT ||
+			(LeafTypeBit() == ENTITY_BIT_UNSPECIFIED && (TypeBits() & ENTITY_BIT_UNSPECIFIED)) );
 	// Get a frame...
 	FResFrame_t ResFrame = fres_GetFrame();
 
@@ -4284,10 +4295,18 @@ void CBot::HandleCollision( void ) {
 						fTemp = m_SurfaceUnitNorm_WS.Dot( pWallImpact->PushUnitVec );
 						if ( fTemp < -0.0001f ) {
 
-							// Force the push vector along the surface of the poly we're standing on
-							vDiff.Mul( m_SurfaceUnitNorm_WS, -fTemp );
-							vPushVec_WS.Add( pWallImpact->PushUnitVec, vDiff );
-							vPushVec_WS.Mul( fmath_Div( pWallImpact->fImpactDistInfo, (1 + fTemp) ) + 0.001f );
+							// Force the push vector along the surface of the poly we're standing on.
+							// An exactly downward/upward push has no tangent component, so this
+							// projection is undefined (1 + fTemp == 0). This can occur for a bot
+							// placed in an initial floor overlap; use the original finite push to
+							// let the collision solver move it out instead of propagating NaNs.
+							if( (1.0f + fTemp) > 0.0001f ) {
+								vDiff.Mul( m_SurfaceUnitNorm_WS, -fTemp );
+								vPushVec_WS.Add( pWallImpact->PushUnitVec, vDiff );
+								vPushVec_WS.Mul( fmath_Div( pWallImpact->fImpactDistInfo, (1 + fTemp) ) + 0.001f );
+							} else {
+								vPushVec_WS.Mul( pWallImpact->PushUnitVec, pWallImpact->fImpactDistInfo + 0.001f );
+							}
 						} else {
 							vPushVec_WS.Mul( pWallImpact->PushUnitVec, pWallImpact->fImpactDistInfo + 0.001f );
 						}

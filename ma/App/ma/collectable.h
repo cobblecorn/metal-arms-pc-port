@@ -98,6 +98,11 @@ typedef enum
 	COLLECTABLE_WEAPON_CLEANER,
 	COLLECTABLE_WEAPON_WRENCH,
 	COLLECTABLE_WEAPON_RECRUITER,
+#if FANG_WINGC
+	// Recovered cut throwables (PC). Collectable IDs are not saved, so these may sit in the weapon range.
+	COLLECTABLE_WEAPON_NUKE,
+	COLLECTABLE_WEAPON_WATER,
+#endif
 
 	COLLECTABLE_WEAPON_END, // Don't use this one
 
@@ -411,6 +416,12 @@ private:
 	static void _ForceSpecialMeshesToNull( CCollectableType *pCollectType );
 
 	static BOOL _IsWeapon( CCollectableType *pType );
+#if FANG_WINGC
+	// Recovered cut throwables: Nuke/Water Grenade pickup types cloned from the Coring Charge/EMP Grenade,
+	// and the swap that turns some of those pickups into them.
+	static void _PortAddCutGrenadeTypes( void );
+	static CCollectableType *_PortCutGrenadeSwap( CCollectableType *pType, const CFVec3A *pPos_WS, BOOL bPlacedInWorld );
+#endif
 	static u8 _GetEUKForWeapon( CCollectableType *pType );
 	static u8 _GetEUKForWeapon( CollectableType_e eType );
 

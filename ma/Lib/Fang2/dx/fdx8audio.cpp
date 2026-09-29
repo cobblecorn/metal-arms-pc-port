@@ -380,6 +380,78 @@ static s32 _GainToDSVolume( f32 fGain )
 	FMATH_CLAMP( nVolume, DSBVOLUME_MIN, DSBVOLUME_MAX );
 	return nVolume;
 }
+
+// PC mix: dialogue over effects. Mission dialogue and bot chatter are bank sound effects like gunfire,
+// so they share the Sound Effects level; on PC the effects buried them (user reports, 2026-09-29: effects
+// sounded right about 11 dB down, with the player's own guns and footsteps a further 6 dB down, but
+// lowering the slider that far made mission 1's dialogue hard to hear). So effects are trimmed and
+// dialogue is not:
+// - Dialogue keeps the retail level: the level dialogue banks (level_NNd), barter, buddy, intro, taunt
+//   and announcer banks, bot remarks ("br..."), speaker lines ("ca_08o_010"; two letters and '_' in a
+//   level bank) and the Coliseum announcer ("..._ann").
+// - Every other effect is trimmed by -sfx-db / MA_PORT_SFX_DB (default -11 dB).
+// - The player's own sounds, 2D effects named "sw" (weapons, the AA gun), "sr" (robots: footsteps,
+//   equipment, vehicles) or "sd" (weapon parts), are trimmed by -player-sfx-db / MA_PORT_PLAYER_SFX_DB
+//   more (default -6 dB). Both set to 0 is the retail mix. Streams (music, streamed speech) are untouched.
+#define _PORT_SFX_DEFAULT_DB			( -11.0f )
+#define _PORT_PLAYER_SFX_DEFAULT_DB		( -6.0f )
+
+static f32 _PortTrimGain( cchar *pszEnv, f32 fDefaultDB, cchar *pszWhat )
+{
+	f32 fDB = fDefaultDB;
+	char szValue[32];
+	const DWORD nLength = GetEnvironmentVariableA( pszEnv, szValue, sizeof(szValue) );
+	if( nLength > 0 && nLength < sizeof(szValue) )
+	{
+		fDB = (f32)atof( szValue );
+		FMATH_CLAMP( fDB, -40.0f, 6.0f );
+	}
+	DEVPRINTF( "[ FAUDIO ] %s trimmed by %.1f dB.\n", pszWhat, fDB );
+	return (f32)pow( 10.0, (double)fDB / 20.0 );
+}
+
+static BOOL _PortIsDialogueWave( const FDataWvbFile_Wave_t *poWave )
+{
+	cchar *pszWave = poWave->szName;
+	const BOOL bSpeakerLine = isalpha( (unsigned char)pszWave[0] ) && isalpha( (unsigned char)pszWave[1] ) && pszWave[2] == '_';
+	if( !_strnicmp( pszWave, "br", 2 ) || ( bSpeakerLine && isdigit( (unsigned char)pszWave[3] ) ) ) {
+		return TRUE;
+	}
+	for( cchar *psz = pszWave; *psz; ++psz ) {
+		if( !_strnicmp( psz, "_ann", 4 ) ) {
+			return TRUE;
+		}
+	}
+	const FDataWvbFile_Bank_t *poBank = (const FDataWvbFile_Bank_t *)poWave->oBankHandle;
+	if( !poBank ) {
+		return FALSE;
+	}
+	cchar *pszBank = poBank->szName;
+	const size_t nBankLength = strlen( pszBank );
+	if( !_strnicmp( pszBank, "level_", 6 ) ) {
+		return bSpeakerLine || ( nBankLength > 6 && tolower( (unsigned char)pszBank[nBankLength - 1] ) == 'd' );
+	}
+	return !_stricmp( pszBank, "barter" ) || !_stricmp( pszBank, "buddy" ) || !_stricmp( pszBank, "b_intro" ) ||
+		   !_stricmp( pszBank, "multi" ) || !_stricmp( pszBank, "grunt_26" ) || !_strnicmp( pszBank, "mg_", 3 );
+}
+
+static f32 _PortSfxGain( FAudio_WaveHandle_t oWaveHandle, BOOL b3D )
+{
+	static f32 _fEffects = -1.0f, _fPlayer = -1.0f;
+	if( _fEffects < 0.0f )
+	{
+		_fEffects = _PortTrimGain( "MA_PORT_SFX_DB", _PORT_SFX_DEFAULT_DB, "Sound effects (not dialogue)" );
+		_fPlayer = _PortTrimGain( "MA_PORT_PLAYER_SFX_DB", _PORT_PLAYER_SFX_DEFAULT_DB, "The player's own 2D sounds, further," );
+	}
+	const FDataWvbFile_Wave_t *poWave = (const FDataWvbFile_Wave_t *)oWaveHandle;
+	if( !poWave || _PortIsDialogueWave( poWave ) )
+	{
+		return 1.0f;
+	}
+	const char c0 = (char)tolower( (unsigned char)poWave->szName[0] ), c1 = (char)tolower( (unsigned char)poWave->szName[1] );
+	const BOOL bPlayer = !b3D && c0 == 's' && ( c1 == 'w' || c1 == 'r' || c1 == 'd' );
+	return bPlayer ? _fEffects * _fPlayer : _fEffects;
+}
 #endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -4060,12 +4132,13 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 #if FANG_WINGC
 					// MIDI volume as fgcaudio.cpp and MusyX compute it, then MusyX's squared DLS law
 					fVolume = _GCMusyxVolume( fVolume );
-					if( poVirtualEmitter->poRealEmitter->poDS3DBuffer )
+					const BOOL b3D = poVirtualEmitter->poRealEmitter->poDS3DBuffer != NULL;
+					if( b3D )
 					{
 						// Not computed yet (no listener update): the flat 3D scale, never silence.
 						fVolume *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? _GC_3D_VOLUME_SCALE : poVirtualEmitter->fDistanceGain;
 					}
-					pDSBuffer->SetVolume( _GainToDSVolume( fVolume * fVolume ) );
+					pDSBuffer->SetVolume( _GainToDSVolume( fVolume * fVolume * _PortSfxGain( poVirtualEmitter->oWaveHandle, b3D ) ) );
 #else
 					pDSBuffer->SetVolume( _anVolumes[ fmath_FloatToU32( _UNIQUE_FLOAT_VOL_LEVEL_INDICES * fVolume ) ] );
 #endif
@@ -4078,9 +4151,10 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 					if( b3D ) {
 						fMidi *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? _GC_3D_VOLUME_SCALE : poVirtualEmitter->fDistanceGain;
 					}
-					DEVPRINTF( "PORT-MIX   %s '%s' vol=%.2f ducked=%.2f dist=%.2f radius=%.0f -> amp %.3f\n", b3D ? "3D" : "2D",
+					const f32 fTrim = _PortSfxGain( poVirtualEmitter->oWaveHandle, b3D );
+					DEVPRINTF( "PORT-MIX   %s '%s' vol=%.2f ducked=%.2f dist=%.2f radius=%.0f -> amp %.3f (trim %.1f dB)\n", b3D ? "3D" : "2D",
 						((FDataWvbFile_Wave_t *)poVirtualEmitter->oWaveHandle)->szName, poVirtualEmitter->fVolume, poVirtualEmitter->fVolumeDucked,
-						poVirtualEmitter->fDistanceGain, poVirtualEmitter->fRadiusOuter, fMidi * fMidi );
+						poVirtualEmitter->fDistanceGain, poVirtualEmitter->fRadiusOuter, fMidi * fMidi * fTrim, 20.0f * log10f( fTrim ) );
 				}
 #endif
 				// Frequency.

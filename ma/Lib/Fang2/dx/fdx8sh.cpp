@@ -1464,7 +1464,12 @@ void fsh_CreateFullScreenTarget()
 {
 	char szName[16];
 	sprintf(szName, "FullScr");
+#if FANG_WINGC
+	// PC: four times the console-era 128-texel liquid reflection cube, so water and mercury reflect cleanly.
+	_pFullScrTarget = ftex_CreateRenderTarget_FullScreen(FTEX_RENDERTARGET_FMT_C24_A8_D24_S8, szName, FALSE, FRES_NULLHANDLE, NULL, 512, 512, FTEX_CUBE);
+#else
 	_pFullScrTarget = ftex_CreateRenderTarget_FullScreen(FTEX_RENDERTARGET_FMT_C24_A8_D24_S8, szName, FALSE, FRES_NULLHANDLE, NULL, 128, 128, FTEX_CUBE);
+#endif
 	_pFullScrTarget_D3DTex = NULL;
 	_pFullScrTarget_D3DSurf = NULL;
 	if (_pFullScrTarget)
@@ -1537,7 +1542,12 @@ void fsh_CreateSReflectTarget(void *pUserData)
 	if (_nNumSReflectTargets < MAX_SREFLECT_TARGETS)
 	{
 		sprintf(szName, "SReflect%d", _nNumSReflectTargets);
+#if FANG_WINGC
+		// PC: twice the console-era 128-texel dynamic reflection.
+		pTexInst = ftex_CreateRenderTarget(256, 256, FTEX_RENDERTARGET_FMT_C24_A8_D24_S8, szName, TRUE);
+#else
 		pTexInst = ftex_CreateRenderTarget(128, 128, FTEX_RENDERTARGET_FMT_C24_A8_D24_S8, szName, TRUE);
+#endif
 		if (pTexInst)
 		{
 			ftex_AddRenderTarget(pTexInst, fsh_DynamicSReflect_Callback, TRUE, 20, FALSE, TRUE, pUserData);
@@ -6585,7 +6595,7 @@ void _MoveUp(f32 fYOffs)
 
 void fsh_RenderPlane(u32 nPlaneID, f32 fScaleU, f32 fScaleV, f32 fScrollU, f32 fScrollV, CFTexInst *pEMBM, f32 fGlowScale, f32 fBumpTile)
 {
-#if FANG_PLATFORM_XB
+#if FANG_PLATFORM_DX
 	if (!bRenderPlane) return;
 	u32 nQuad=1, n, nPasses;
 	f32 fDeltaY=0.0f;
@@ -6781,7 +6791,7 @@ void _MoveOut(f32 fScale, CFVec3& vFwd)
 
 void fsh_DrawLiquidMesh(u32 nType, u16 nVtx, u16 nPrim, void *pMesh, u16 *pIdx, CFColorRGB *pClr, f32 fOpacity, CFVec3& vFwd, CFTexInst *pLayer0, CFTexInst *pLayer1, CFTexInst *pEMBM)
 {
-#if FANG_PLATFORM_XB
+#if FANG_PLATFORM_DX
 
 	if (!pEMBM) return;
 

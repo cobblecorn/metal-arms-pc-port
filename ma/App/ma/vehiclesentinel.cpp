@@ -857,7 +857,20 @@ void CVehicleSentinel::_UpdateCannon( void )
 		m_CannonTracerDef.pUser = this;
 		m_CannonTracerDef.UnitDir_WS.Set( m_vTargetPoint );
 		m_CannonTracerDef.UnitDir_WS.Sub( mProj.m_vPos );
-		m_CannonTracerDef.UnitDir_WS.Unitize();
+		f32 fUnitDirMagSq = m_CannonTracerDef.UnitDir_WS.MagSq();
+		if( fUnitDirMagSq > 0.0001f && fUnitDirMagSq < 1.0e20f ) {
+			m_CannonTracerDef.UnitDir_WS.Unitize();
+		} else {
+			// A target at the muzzle (or a non-finite target point) cannot define an aim vector.
+			// Keep the cannon shot on its barrel axis instead of feeding NaNs into tracer rendering.
+			m_CannonTracerDef.UnitDir_WS = mProj.m_vFront;
+			fUnitDirMagSq = m_CannonTracerDef.UnitDir_WS.MagSq();
+			if( fUnitDirMagSq > 0.0001f && fUnitDirMagSq < 1.0e20f ) {
+				m_CannonTracerDef.UnitDir_WS.Unitize();
+			} else {
+				m_CannonTracerDef.UnitDir_WS = CFVec3A::m_UnitAxisZ;
+			}
+		}
 		m_CannonTracerDef.TailPos_WS = mProj.m_vPos;
 		m_CannonTracerDef.TailPos_WS.Add( mProj.m_vFront );
 

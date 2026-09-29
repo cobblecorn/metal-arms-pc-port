@@ -707,6 +707,13 @@ BOOL CMeshEntity::ClassHierarchyBuild( void ) {
 		pBuilder->m_fCullDist2 = FMATH_MAX_FLOAT;
 	}
 	MeshInit.fCullDist = fmath_Sqrt( pBuilder->m_fCullDist2 );
+#if FANG_WINGC
+	// Placed objects with an authored cull distance vanished at console draw distances; a PC draws
+	// them twice as far to cut pop-in. (Unculled objects, FMATH_MAX_FLOAT, stay unculled.)
+	if( MeshInit.fCullDist < 1.0e18f ) {
+		MeshInit.fCullDist *= 2.0f;
+	}
+#endif
 	MeshInit.Mtx.Set( pBuilder->m_EC_Mtx_WS );
 	MeshInit.Mtx.m_vRight.Mul( pBuilder->m_fEC_Scale_WS );
 	MeshInit.Mtx.m_vUp.Mul( pBuilder->m_fEC_Scale_WS );

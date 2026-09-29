@@ -222,6 +222,11 @@ void CItem::DrawMesh(f32 fThetaY)
 #define _WEAPON_NAME_MAGMA_BOMB			"Magma Bomb"
 #define _WEAPON_NAME_STAFF				"Staff"
 #define _WEAPON_NAME_WRENCH				"Wrench"
+#if FANG_WINGC
+// PC port: cut-content throwables built on the Coring Charge and EMP Grenade (see ItemRepository.cpp).
+#define _WEAPON_NAME_NUKE_GRENADE		"Nuke Grenade"
+#define _WEAPON_NAME_WATER_GRENADE		"Water Grenade"
+#endif
 
 // allocate and create() a weapon object corresponding to
 // the name string stored in the item
@@ -403,6 +408,40 @@ CWeapon *CItem::MakeWeapon()
 
 		pWeapon->EnableAutoWork(FALSE);
 	}
+#if FANG_WINGC
+	else if(fclib_stricmp(m_pszCodeName, _WEAPON_NAME_NUKE_GRENADE) == 0)
+	{
+		pWeapon = fnew CWeaponGren;
+		if( pWeapon == NULL )
+		{
+			return NULL;
+		}
+
+		if( !((CWeaponGren *)(pWeapon))->Create() )
+		{
+			return NULL;
+		}
+
+		((CWeaponGren *)(pWeapon))->SetPortNuke( TRUE );
+		pWeapon->EnableAutoWork(FALSE);
+	}
+	else if(fclib_stricmp(m_pszCodeName, _WEAPON_NAME_WATER_GRENADE) == 0)
+	{
+		pWeapon = fnew CWeaponEMP;
+		if( pWeapon == NULL )
+		{
+			return NULL;
+		}
+
+		if( !((CWeaponEMP *)(pWeapon))->Create() )
+		{
+			return NULL;
+		}
+
+		((CWeaponEMP *)(pWeapon))->SetPortWater( TRUE );
+		pWeapon->EnableAutoWork(FALSE);
+	}
+#endif
 	else if(fclib_stricmp(m_pszCodeName, _WEAPON_NAME_CLEANER) == 0)
 	{
 		pWeapon = fnew CWeaponCleaner;
@@ -540,6 +579,11 @@ cchar *CItem::GetWeaponName( const CWeapon *pWeapon )
 		return _WEAPON_NAME_RIVET_GUN;
 
 	case CWeapon::WEAPON_TYPE_GRENADE:
+#if FANG_WINGC
+		if( ((const CWeaponGren *)pWeapon)->IsPortNuke() ) {
+			return _WEAPON_NAME_NUKE_GRENADE;
+		}
+#endif
 		return _WEAPON_NAME_CORING_CHARGE;
 
 	case CWeapon::WEAPON_TYPE_CLEANER:
@@ -552,6 +596,11 @@ cchar *CItem::GetWeaponName( const CWeapon *pWeapon )
 		return _WEAPON_NAME_CHAINGUN;
 
 	case CWeapon::WEAPON_TYPE_EMP:
+#if FANG_WINGC
+		if( ((const CWeaponEMP *)pWeapon)->IsPortWater() ) {
+			return _WEAPON_NAME_WATER_GRENADE;
+		}
+#endif
 		return _WEAPON_NAME_EMP_GRENADE;
 
 	case CWeapon::WEAPON_TYPE_RECRUITER:

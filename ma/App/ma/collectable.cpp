@@ -37,6 +37,8 @@
 #include "ItemRepository.h"
 #include "weapon.h"
 #include "MultiplayerMgr.h"
+#include "weapon_gren.h"
+#include "weapon_emp.h"
 #include "sas_user.h"
 
 #define _COLLECTABLE_CSV					( "goodies.csv" )
@@ -57,6 +59,10 @@
 #define _HUD_MESSAGE_TIME					( 3.5f )
 #define _PICKUP_RADIUS_MULTIPLY				( 0.75f ) // Was 2.0f, then was 1.5f
 #define _MAX_BATTERIES						( 6 )
+#if FANG_WINGC
+extern "C" int port_GetCutEnemies( void );	// main_win.cpp: -cut-enemies (also gates cut items)
+#endif
+
 #define _EUK_MESH_ID						( 50 )
 
 #define ITEM_UNKNOWN						( -1 )
@@ -131,6 +137,8 @@ static const NameType_t _collectableTypes[] = {
 	{ "Wrench",				COLLECTABLE_WEAPON_WRENCH },
 	{ "Recruiter Grenade",	COLLECTABLE_WEAPON_RECRUITER },
 #if FANG_WINGC
+	{ "Nuke Grenade",		COLLECTABLE_WEAPON_NUKE },
+	{ "Water Grenade",		COLLECTABLE_WEAPON_WATER },
 	{ "megawasher",		COLLECTABLE_MEGA_WASHER },
 #endif
 };
@@ -894,6 +902,9 @@ BOOL CCollectable::InitSystem( void ) {
 	if( !_LoadCollectableCSV() ) {
 		goto _ExitInitSystemWithError;
 	}
+#if FANG_WINGC
+	_PortAddCutGrenadeTypes();
+#endif
 
 	m_hSpecialPickup = (FParticle_DefHandle_t) fresload_Load( FPARTICLE_RESTYPE, _COLLECTABLE_SPECIAL_PICKUP );
 
@@ -1325,6 +1336,11 @@ CollectableType_e CCollectable::ClassifyPlayerWeapon( CWeapon *pWeap ) {
 			return (CollectableType_e) ( COLLECTABLE_WEAPON_RIVET_GUN_L1 + uUpgrade );
 		break;
 		case CWeapon::WEAPON_TYPE_GRENADE:
+#if FANG_WINGC
+			if( ((CWeaponGren *)pWeap)->IsPortNuke() ) {
+				return COLLECTABLE_WEAPON_NUKE;
+			}
+#endif
 			return COLLECTABLE_WEAPON_CORING_CHARGE;
 		break;
 		case CWeapon::WEAPON_TYPE_BLASTER:
@@ -1352,6 +1368,11 @@ CollectableType_e CCollectable::ClassifyPlayerWeapon( CWeapon *pWeap ) {
 			return (CollectableType_e) ( COLLECTABLE_WEAPON_SCOPE_L1 + uUpgrade );
 		break;
 		case CWeapon::WEAPON_TYPE_EMP:
+#if FANG_WINGC
+			if( ((CWeaponEMP *)pWeap)->IsPortWater() ) {
+				return COLLECTABLE_WEAPON_WATER;
+			}
+#endif
 			return COLLECTABLE_WEAPON_EMP;
 		break;
 		case CWeapon::WEAPON_TYPE_MAGMABOMB:
@@ -1374,6 +1395,15 @@ CollectableType_e CCollectable::ClassifyPlayerWeapon( CWeapon *pWeap ) {
 void CCollectable::NotifyCollectableUsedInWorld( cchar *pszName, BOOL bFromBot/* = FALSE*/ ) {
 	CCollectableType *pType = NULL;
 	cchar *pszLookName = pszName;
+#if FANG_WINGC
+	// A level using Coring Charges or EMP Grenades may also get the cut Nuke/Water Grenades in their place.
+	{
+		CCollectableType *pBase = _FindCollectableType( pszName );
+		if( pBase && (pBase->m_eType == COLLECTABLE_WEAPON_CORING_CHARGE || pBase->m_eType == COLLECTABLE_WEAPON_EMP) ) {
+			NotifyCollectableUsedInWorld( pBase->m_eType == COLLECTABLE_WEAPON_EMP ? COLLECTABLE_WEAPON_WATER : COLLECTABLE_WEAPON_NUKE, FALSE );
+		}
+	}
+#endif
 
 	// NKM - This is a hack since we want "coring charge" but the LDs have "coringcharge" in all the worlds.
 	if( !fclib_stricmp( _CORING_CHARGE_LDS, pszName ) ) {
@@ -1409,6 +1439,13 @@ void CCollectable::NotifyCollectableUsedInWorld( CollectableType_e eType, BOOL b
 	if( eType == COLLECTABLE_UNKNOWN ) {
 		return;
 	}
+#if FANG_WINGC
+	if( eType == COLLECTABLE_WEAPON_CORING_CHARGE ) {
+		NotifyCollectableUsedInWorld( COLLECTABLE_WEAPON_NUKE, FALSE );
+	} else if( eType == COLLECTABLE_WEAPON_EMP ) {
+		NotifyCollectableUsedInWorld( COLLECTABLE_WEAPON_WATER, FALSE );
+	}
+#endif
 
 	CCollectableType *pType = NULL;
 
@@ -1906,6 +1943,15 @@ BOOL CCollectable::ClassHierarchyBuild( void ) {
 	_ClearDataMembers();
 
 	m_pCollectableType = pBuilder->m_pCollectableType;
+#if FANG_WINGC
+	{
+		CCollectableType *pSwapped = _PortCutGrenadeSwap( m_pCollectableType, &MtxToWorld()->m_vPos, TRUE );
+		if( pSwapped != m_pCollectableType ) {
+			m_pCollectableType = pSwapped;
+			pBuilder->m_nAmmo = -1;		// the new type's own pickup count (one grenade)
+		}
+	}
+#endif
 
 	if( _CheckRemapItem( pBuilder ) ) {
 		// If we got here, we re-mapped to something that shouldn't be in the world
@@ -2487,6 +2533,15 @@ BOOL CCollectable::_PlaceIntoWorld( CCollectableType *pType,
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	{
+		CCollectableType *pSwapped = _PortCutGrenadeSwap( pType, &pMtx->m_vPos, FALSE );
+		if( pSwapped != pType ) {
+			pType = pSwapped;
+			nAmmoCount = -1;
+		}
+	}
+#endif
 	CCollectable *pCollectable = GetCollectable();
 
 	if( pCollectable == NULL ) {
@@ -2671,6 +2726,94 @@ void CCollectable::_ForceSpecialMeshesToNull( CCollectableType *pCollectType ) {
 	}
 }
 
+#if FANG_WINGC
+// The Nuke and Water Grenade pickups clone the Coring Charge and EMP Grenade pickups (sounds, pool size,
+// HUD scale) with the unused retail pickup models gp_snuke and gp_swater, one grenade per pickup.
+void CCollectable::_PortAddCutGrenadeTypes( void ) {
+	static const struct { cchar *pszBase; cchar *pszName; cchar *pszMesh; CollectableType_e eType; } aCut[] = {
+		{ "coring charge", "nuke grenade", "gp_snuke", COLLECTABLE_WEAPON_NUKE },
+		{ "emp grenade", "water grenade", "gp_swater", COLLECTABLE_WEAPON_WATER },
+	};
+	for( u32 i = 0; i < sizeof(aCut) / sizeof(aCut[0]); ++i ) {
+		CCollectableType *pBase = _FindCollectableType( aCut[i].pszBase );
+		if( !pBase || _FindCollectableType( aCut[i].pszName ) ) {
+			continue;
+		}
+		CCollectableType *pType = fnew CCollectableType;
+		if( !pType ) {
+			return;
+		}
+		*pType = *pBase;
+		pType->m_bSetup = FALSE;
+		pType->m_bNeedSetup = FALSE;
+		pType->m_bSpecialEUK = FALSE;
+		pType->m_pszName = CFStringTable::AddString( NULL, aCut[i].pszName );
+		pType->m_pszMeshName = aCut[i].pszMesh;
+		pType->m_pszEUKMeshName = NULL;
+		pType->m_eType = aCut[i].eType;
+		pType->m_nAmmoCount = 1;
+		pType->m_pMeshPool = NULL;
+		pType->m_pMesh = NULL;
+		pType->m_pEUKMeshPool = NULL;
+		pType->m_pEUKMesh = NULL;
+		pType->m_pAnimInst = NULL;
+		pType->m_paAnimCombiners = NULL;
+		if( !CItemRepository::RetrieveEntry( pType->m_pszName, &pType->m_uItemRepositoryIndex ) ) {
+			DEVPRINTF( "CCollectable::_PortAddCutGrenadeTypes(): No item for '%s'.\n", aCut[i].pszName );
+			fdelete( pType );
+			continue;
+		}
+		flinklist_AddTail( &m_CollectableTypeList, pType );
+	}
+}
+
+// Some Coring Charge and EMP Grenade pickups become the cut Nuke and Water Grenades: about one in four
+// Coring Charges and one in three EMP Grenades. Level-placed pickups are picked by position (the same
+// ones every load); dropped pickups roll the same odds, once the cut type's meshes are loaded.
+CCollectableType *CCollectable::_PortCutGrenadeSwap( CCollectableType *pType, const CFVec3A *pPos_WS, BOOL bPlacedInWorld ) {
+	if( !pType || !pPos_WS || !port_GetCutEnemies() ) {
+		return pType;
+	}
+	CollectableType_e eCut;
+	u32 nOneIn;
+	if( pType->m_eType == COLLECTABLE_WEAPON_CORING_CHARGE ) {
+		eCut = COLLECTABLE_WEAPON_NUKE;
+		nOneIn = 4;
+	} else if( pType->m_eType == COLLECTABLE_WEAPON_EMP ) {
+		eCut = COLLECTABLE_WEAPON_WATER;
+		nOneIn = 3;
+	} else {
+		return pType;
+	}
+	CCollectableType *pCut = _FindCollectableType( eCut );
+	if( !pCut ) {
+		return pType;
+	}
+	BOOL bSwap;
+	if( bPlacedInWorld ) {
+		u32 nHash = 2166136261u;
+		const s32 anPos[3] = { (s32)pPos_WS->x, (s32)pPos_WS->y, (s32)pPos_WS->z };
+		for( u32 i = 0; i < 3; ++i ) {
+			for( u32 nByte = 0; nByte < 4; ++nByte ) {
+				nHash = (nHash ^ ((u32)anPos[i] >> (nByte * 8) & 0xFF)) * 16777619u;
+			}
+		}
+		bSwap = (nHash % nOneIn) == 0;
+		if( bSwap ) {
+			pCut->m_bNeedSetup = TRUE;
+		}
+	} else {
+		bSwap = pCut->m_pMeshPool != NULL && fmath_RandomChoice( nOneIn ) == 0;
+	}
+	if( bSwap ) {
+		DEVPRINTF( "Port: a %s pickup at (%.0f, %.0f, %.0f) is a %s (cut content).\n", pType->m_pszName,
+				   pPos_WS->x, pPos_WS->y, pPos_WS->z, pCut->m_pszName );
+		return pCut;
+	}
+	return pType;
+}
+#endif
+
 BOOL CCollectable::_IsWeapon( CCollectableType *pType ) {
 	FASSERT( pType );
 	return IsWeapon( pType->m_eType );
@@ -2690,6 +2833,10 @@ BOOL CCollectable::IsPrimaryWeaponType( CCollectableType *pType ) {
 		case COLLECTABLE_WEAPON_CLEANER:
 		case COLLECTABLE_WEAPON_WRENCH:
 		case COLLECTABLE_WEAPON_RECRUITER:
+#if FANG_WINGC
+		case COLLECTABLE_WEAPON_NUKE:
+		case COLLECTABLE_WEAPON_WATER:
+#endif
 //		case COLLECTABLE_WEAPON_SCOPE_L1:
 //		case COLLECTABLE_WEAPON_SCOPE_L2:
 			return FALSE;

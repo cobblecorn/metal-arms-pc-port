@@ -128,6 +128,11 @@ FINLINE f32 fmath_InvCos( f32 fCos )
 FINLINE f32 fmath_Sqrt( f32 fVal ) {
 	f32 fRetVal;
 
+	#if FANG_PLATFORM_WIN
+	if( !(fVal >= 0.0f) ) {
+		DEVPRINTF( "*** FANG SQRT INPUT: fmath_Sqrt received %g\n", (double)fVal );
+	}
+	#endif
 	FASSERT_POS_FLOAT( fVal );
 
 	__asm {

@@ -6,7 +6,7 @@
 // runs the game on its own thread. This thread owns the render window, so it just
 // pumps messages until the game asks to exit.
 //
-// Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource>] [-world-only <world-resource>] [-log <file>] [-asset-log <file>]
+// Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-level <world-resource> | -mission <world-resource>] [-world-only <world-resource> | -export-character-meshes <list-file>] [-log <file>] [-asset-log <file>]
 //
 //   -data <dir>     directory holding the game's data (default: gamedata\files)
 //   -mst <file>     master file name inside the data dir (default: mettlearms_gc.mst)
@@ -27,7 +27,9 @@
 //   -mission <name> load a registered single-player world with its mission data
 //   -coop <2-4>     experimental local campaign co-op player slots; requires -mission; shared or separate inputs
 //   -level <name>    launch a world directly as a generic debug level
+//   -spawn-sniper-test spawn one hostile Mil Sniper near the player start in the loaded mission
 //   -world-only <name> load a world resource, then exit before game/audio setup
+//   -export-character-meshes <file> load one MESH resource name per line and write rigged model data
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
 //   -asset-log <file> write Fang's resource-loading output here (default: ma_port_asset_log.txt)
 //   -mouse-sensitivity <n> raw mouse sensitivity in degrees per count (default 0.1)
@@ -40,6 +42,14 @@
 //                   counts from the first gameplay frame instead (pauses a mission 8 s into play)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 //   -save-dir <dir> where player profiles are saved (default: %APPDATA%\Metal Arms PC Port\Saves)
+//   -start-at X,Y,Z[,YAW] test/play aid: move player 1 to this world position (yaw in degrees) once play begins
+//   -sfx-db <dB>    trim for sound effects other than dialogue; default -11, 0 = retail mix
+//   -aniso <n>      anisotropic texture filtering level (default 16, capped by the GPU; 1 = off)
+//   -test-win-level <s> test aid: complete the loaded level s seconds in (reaches the results screen)
+//   -test-give <item>   test aid: give player 1 a weapon/throwable (e.g. "nuke grenade") and select it
+//   -cut-enemies on|off recovered cut enemies in levels (default on: the Mil Sniper in its retail sniper roles)
+//   -snipers-every <n> also turn about 1 in n world Grunts into Mil Snipers (default 8; 0 = only retail roles)
+//   -player-sfx-db <dB> further trim for the player's own 2D sounds (weapons, footsteps); default -6, 0 = retail mix
 //   -instance-label <name> add a short label to the window title (useful for parallel test windows)
 
 #include "res/resource.h"
@@ -81,7 +91,14 @@ static char _szAssetLogFile[MAX_PATH];
 static char _szStartLevel[64];
 static char _szMission[64];
 static char _szWorldOnly[64];
+static char _szCharacterMeshList[MAX_PATH];
 static char _szInstanceLabel[64];
+static bool _bStartAt = false;
+static float _afStartAt[4];				// -start-at X,Y,Z[,YAW degrees]
+static float _fTestWinLevelSecs = 0.0f;	// -test-win-level S
+static char _szTestGive[64];				// -test-give ITEM: give player 1 this weapon/throwable and select it
+static int _nCutEnemies = 1;				// -cut-enemies on|off: recovered cut enemies (the Mil Sniper) in levels
+static int _nSnipersEvery = 8;				// -snipers-every N: also turn about 1 in N world Grunts into Snipers (0 = only retail roles)
 static int _nReqWidth = 1280, _nReqHeight = 960;
 static bool _bFullscreen = false;
 static bool _bNoAudio = false;
@@ -387,6 +404,66 @@ static DWORD WINAPI _StallWatchdog( void * )
 // logged for its first 10 occurrences, with a stack on the first, then at 100, 1000, ...
 static SRWLOCK _ReportLock = SRWLOCK_INIT;
 
+// Fang assertions show a modal dialog, so capture the current symbolized stack to the run log
+// before displaying it. This makes assertions such as fmath_Sqrt's input check actionable.
+extern "C" void port_LogFangAssertionStack( const char *pszFile, int nLine )
+{
+	AcquireSRWLockExclusive( &_ReportLock );
+	static DWORD anLoggedAssertSites[64];
+	static unsigned nLoggedAssertSites = 0;
+	DWORD nSiteKey = 2166136261u;
+	for( const char *psz = pszFile; psz && *psz; ++psz ) nSiteKey = (nSiteKey ^ (unsigned char)*psz) * 16777619u;
+	nSiteKey = (nSiteKey ^ (DWORD)nLine) * 16777619u;
+	for( unsigned i = 0; i < nLoggedAssertSites; ++i )
+	{
+		if( anLoggedAssertSites[i] == nSiteKey )
+		{
+			ReleaseSRWLockExclusive( &_ReportLock );
+			return;
+		}
+	}
+	if( nLoggedAssertSites < sizeof(anLoggedAssertSites) / sizeof(anLoggedAssertSites[0]) )
+		anLoggedAssertSites[nLoggedAssertSites++] = nSiteKey;
+	CONTEXT Ctx;
+	RtlCaptureContext( &Ctx );
+	_Log( "    (first Fang assertion at %s:%d; stack follows)\n", pszFile ? pszFile : "?", nLine );
+	_LogStack( Ctx, 24 );
+	_LogFlush();
+	ReleaseSRWLockExclusive( &_ReportLock );
+}
+
+// -start-at: player.cpp asks for the test start position once player 1 has control.
+extern "C" int port_GetStartAt( float *pafXYZYaw )
+{
+	if( !_bStartAt )
+		return 0;
+	memcpy( pafXYZYaw, _afStartAt, sizeof(_afStartAt) );
+	return 1;
+}
+
+// -cut-enemies / -snipers-every: entity.cpp asks which world Grunts become recovered Mil Snipers.
+extern "C" int port_GetCutEnemies( void )
+{
+	return _nCutEnemies;
+}
+
+extern "C" int port_GetSnipersEvery( void )
+{
+	return _nCutEnemies ? _nSnipersEvery : 0;
+}
+
+// -test-give: player.cpp gives player 1 this item once play begins (NULL = none).
+extern "C" const char *port_GetTestGive( void )
+{
+	return _szTestGive[0] ? _szTestGive : NULL;
+}
+
+// -test-win-level: gamepad.cpp completes the level this many seconds into the game loop (0 = off).
+extern "C" float port_GetTestWinLevelSecs( void )
+{
+	return _fTestWinLevelSecs;
+}
+
 // Returns how many times this report text has been seen. Call with _ReportLock held.
 static unsigned _CountReport( const char *pszKey )
 {
@@ -555,7 +632,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id> [-discord-large-image <asset-key-or-url>] [-discord-large-text <tooltip>]] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> [-coop 2-4] | -world-only <world-resource>] [-log <file>] [-asset-log <file>] [-instance-label <name>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-save-dir <dir>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id> [-discord-large-image <asset-key-or-url>] [-discord-large-text <tooltip>]] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> [-coop 2-4] | -world-only <world-resource> | -export-character-meshes <list-file>] [-spawn-sniper-test] [-log <file>] [-asset-log <file>] [-instance-label <name>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-save-dir <dir>] [-start-at X,Y,Z[,YAW]] [-sfx-db <dB>] [-player-sfx-db <dB>]\n" );
 }
 
 static bool _DataDirHasMaster( const char *pszDataDir )
@@ -620,6 +697,7 @@ static bool _ParseArgs( int argc, char **argv )
 	_szStartLevel[0] = 0;
 	_szMission[0] = 0;
 	_szWorldOnly[0] = 0;
+	_szCharacterMeshList[0] = 0;
 	_szInstanceLabel[0] = 0;
 
 	for( int i = 1; i < argc; i++ )
@@ -645,6 +723,7 @@ static bool _ParseArgs( int argc, char **argv )
 			_nCampaignCoopPlayers = (int)nPlayers;
 		}
 		else if( !_stricmp( pszArg, "-world-only" ) && bHasValue )	strncpy( _szWorldOnly, argv[++i], sizeof(_szWorldOnly) - 1 );
+		else if( !_stricmp( pszArg, "-export-character-meshes" ) && bHasValue )	strncpy( _szCharacterMeshList, argv[++i], sizeof(_szCharacterMeshList) - 1 );
 		else if( !_stricmp( pszArg, "-instance-label" ) && bHasValue ) strncpy( _szInstanceLabel, argv[++i], sizeof(_szInstanceLabel) - 1 );
 		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
 		else if( !_stricmp( pszArg, "-no-audio" ) )				_bNoAudio = true;
@@ -657,6 +736,7 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-discord-large-image" ) && bHasValue ) strncpy( _szDiscordLargeImage, argv[++i], sizeof(_szDiscordLargeImage) - 1 );
 		else if( !_stricmp( pszArg, "-discord-large-text" ) && bHasValue ) strncpy( _szDiscordLargeText, argv[++i], sizeof(_szDiscordLargeText) - 1 );
 		else if( !_stricmp( pszArg, "-dev-menu" ) )					_bDevMenu = true;
+		else if( !_stricmp( pszArg, "-spawn-sniper-test" ) )		SetEnvironmentVariableA( "MA_PORT_SPAWN_SNIPER_TEST", "1" );
 		else if( !_stricmp( pszArg, "-mouse-sensitivity" ) && bHasValue ) {
 			char *pEnd;
 			const char *pszValue = argv[++i];
@@ -695,6 +775,23 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );
 		else if( !_stricmp( pszArg, "-save-dir" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SAVE_DIR", argv[++i] );	// read by Fang2/dx/fdx8storage.cpp
+		else if( !_stricmp( pszArg, "-player-sfx-db" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_PLAYER_SFX_DB", argv[++i] );	// read by Fang2/dx/fdx8audio.cpp
+		else if( !_stricmp( pszArg, "-sfx-db" ) && bHasValue )			SetEnvironmentVariableA( "MA_PORT_SFX_DB", argv[++i] );		// read by Fang2/dx/fdx8audio.cpp
+		else if( !_stricmp( pszArg, "-aniso" ) && bHasValue )			SetEnvironmentVariableA( "MA_PORT_ANISO", argv[++i] );		// read by compat/d3d8_compat.cpp
+		else if( !_stricmp( pszArg, "-test-win-level" ) && bHasValue )	_fTestWinLevelSecs = (float)atof( argv[++i] );				// read by gamepad.cpp
+		else if( !_stricmp( pszArg, "-test-give" ) && bHasValue )		strncpy( _szTestGive, argv[++i], sizeof(_szTestGive) - 1 );	// read by player.cpp
+		else if( !_stricmp( pszArg, "-cut-enemies" ) && bHasValue )		_nCutEnemies = _stricmp( argv[++i], "off" ) != 0;			// read by entity.cpp
+		else if( !_stricmp( pszArg, "-snipers-every" ) && bHasValue )	_nSnipersEvery = atoi( argv[++i] );							// read by entity.cpp
+		else if( !_stricmp( pszArg, "-start-at" ) && bHasValue )
+		{
+			_afStartAt[3] = 0.0f;
+			if( sscanf( argv[++i], "%f,%f,%f,%f", &_afStartAt[0], &_afStartAt[1], &_afStartAt[2], &_afStartAt[3] ) < 3 )
+			{
+				_Log( "Bad -start-at value '%s' (expected X,Y,Z or X,Y,Z,YAW)\n", argv[i] );
+				return false;
+			}
+			_bStartAt = true;
+		}
 		else if( !_stricmp( pszArg, "-res" ) && bHasValue )
 		{
 			if( sscanf( argv[++i], "%dx%d", &_nReqWidth, &_nReqHeight ) != 2 || _nReqWidth < 320 || _nReqHeight < 200 )
@@ -710,9 +807,9 @@ static bool _ParseArgs( int argc, char **argv )
 			return false;
 		}
 	}
-	if( (!!_szStartLevel[0] + !!_szWorldOnly[0] + !!_szMission[0]) > 1 )
+	if( (!!_szStartLevel[0] + !!_szWorldOnly[0] + !!_szCharacterMeshList[0] + !!_szMission[0]) > 1 )
 	{
-		_Log( "Choose only one of -level, -mission, or -world-only.\n" );
+		_Log( "Choose only one of -level, -mission, -world-only, or -export-character-meshes.\n" );
 		_Usage();
 		return false;
 	}
@@ -925,16 +1022,18 @@ int main( int argc, char **argv )
 	memset( &_GameInitParms, 0, sizeof(_GameInitParms) );
 
 	_GameInitParms.fTargetFPS = GAMELOOP_DEFAULT_TARGET_FPS;
-	_GameInitParms.bSkipLevelSelect = _szStartLevel[0] != 0 || _szMission[0] != 0;
+	_GameInitParms.bSkipLevelSelect = _szStartLevel[0] != 0 || _szMission[0] != 0 || _szCharacterMeshList[0] != 0;
 	_GameInitParms.bLoadRegisteredMission = _szMission[0] != 0;
 	_GameInitParms.nQuickLaunchCampaignPlayers = (u8)_nCampaignCoopPlayers;
+	_GameInitParms.bPlayerDeath = TRUE;					// Match the original launcher default; campaign actors must be able to die.
 	_GameInitParms.nAnimPlaybackRate = GAMELOOP_DEFAULT_ANIM_PLAYBACK;
 	_GameInitParms.bViewBounds = GAMELOOP_DEFAULT_VIEW_BOUNDS;
 	_GameInitParms.bShowFPS = FALSE;
 	_GameInitParms.bDrawScreenSafeArea = FALSE;
 	_GameInitParms.nPlatform = GAMELOOP_PLATFORM_GC;			// the retail data set is the GameCube one
 	_GameInitParms.nMaxSoundMgrSounds = GAMELOOP_DEFAULT_MAX_SOUNDS;
-	_GameInitParms.pszInputFilename = _szMission[0] ? _szMission : (_szStartLevel[0] ? _szStartLevel : NULL);
+	_GameInitParms.pszInputFilename = _szMission[0] ? _szMission : (_szStartLevel[0] ? _szStartLevel :
+		(_szCharacterMeshList[0] ? _szCharacterMeshList : NULL));
 	_GameInitParms.pszScreenShotDir = GAMELOOP_DEFAULT_SCREENSHOT_DIR;
 	_GameInitParms.BGColorRGB.Black();
 	_GameInitParms.pExitFunc = _GameloopExit;
@@ -945,6 +1044,8 @@ int main( int argc, char **argv )
 	_GameInitParms.pszInputEmulationDevName = NULL;
 	_GameInitParms.bInstallAudio = !_bNoAudio;
 	_GameInitParms.bLoadWorldOnly = _szWorldOnly[0] != 0;
+	_GameInitParms.bExportCharacterMeshes = _szCharacterMeshList[0] != 0;
+	_GameInitParms.pszCharacterMeshList = _GameInitParms.bExportCharacterMeshes ? _szCharacterMeshList : NULL;
 	if( _GameInitParms.bLoadWorldOnly )
 	{
 		_GameInitParms.bSkipLevelSelect = TRUE;

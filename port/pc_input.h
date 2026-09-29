@@ -24,7 +24,12 @@ void pcinput_MapSample(const PcInputState &state, bool primary,
 // switching freely between devices. SEPARATE keeps the keyboard/mouse alone on port 0 and puts
 // pads 1-3 on ports 1-3, so a keyboard player and pad players are different players.
 // Set with -input-layout or MA_PORT_INPUT_LAYOUT (shared, separate).
-enum PcInputLayout { PCINPUT_LAYOUT_SHARED, PCINPUT_LAYOUT_SEPARATE };
+// AUTO (local co-op sessions only): the keyboard/mouse always feed player 1's port, and each XInput
+// pad keeps the port it was dealt until it disconnects. With a pad for every player they are dealt in
+// order (player 1 keeps the keyboard/mouse too); otherwise players 2-N get pads first and player 1
+// takes one only when the others have theirs. Pads connected later are dealt the same way, so player
+// 1 can pick up a new pad or go back to the keyboard/mouse at any time.
+enum PcInputLayout { PCINPUT_LAYOUT_SHARED, PCINPUT_LAYOUT_SEPARATE, PCINPUT_LAYOUT_AUTO };
 bool pcinput_ParseLayout(const char *text, PcInputLayout *layout);
 // The XInput pad index feeding a game port, or -1 for none.
 int pcinput_PadForPort(PcInputLayout layout, u32 port);
@@ -32,8 +37,17 @@ int pcinput_PadForPort(PcInputLayout layout, u32 port);
 u32 pcinput_KeyboardPort();
 // The layout chosen at install.
 PcInputLayout pcinput_Layout();
-// Temporary menu-launched co-op routing; does not change the configured layout.
-void pcinput_SetLocalCoopSession(bool active, PcInputLayout layout = PCINPUT_LAYOUT_SHARED);
+// Temporary co-op routing for a local co-op session of `players` players; does not change the
+// configured layout. Starting a session clears the AUTO pad assignment.
+void pcinput_SetLocalCoopSession(bool active, PcInputLayout layout = PCINPUT_LAYOUT_AUTO, u32 players = 2);
+// Changes an AUTO session's port count, keeping the pads already dealt to ports below it (the co-op
+// join screen deals for four; the game keeps those pads for the ports that joined).
+void pcinput_SetLocalCoopPlayers(u32 players);
+// XInput pads connected now (probed at most every quarter second while absent), and one by XInput slot.
+u32 pcinput_ConnectedPadCount();
+bool pcinput_XInputPadConnected(u32 pad);
+// Changes whenever AUTO deals or drops a pad, so the game can report the new assignment.
+u32 pcinput_PadAssignmentSerial();
 bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform);
 void pcinput_Uninstall();
 void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info);
