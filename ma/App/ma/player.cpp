@@ -41,6 +41,12 @@
 #include "collectable.h"
 #if FANG_WINGC
 #include "botpart.h"
+#include "botglitch.h"
+#include "letterbox.h"
+#include "meshtypes.h"
+#include "meshentity.h"
+#include "weapon.h"
+#include "SpyVsSpy.h"
 #endif
 
 #if FANG_PLATFORM_WIN && !FANG_PRODUCTION_BUILD
@@ -405,7 +411,13 @@ void CPlayer::UninitLevel( Level_e nLevel, BOOL bLevelCompleted ) {
 	GameTypes_e nGameType = game_GetCurrentType();
 	bReplaying = (nGameType == GAME_TYPES_REPLAY_LEVEL);
 	if( nGameType == GAME_TYPES_ADVENTURE || bReplaying ) {
+#if FANG_WINGC
+		// Campaign co-op (PC): every player's (virtual) profile records the level, so each carries
+		// their inventory into the next one; coopsave_SaveSession() then writes them to the co-op save.
+		if( (nLevel >= 0) && (nLevel < LEVEL_SINGLE_PLAYER_COUNT ) && (m_nPlayerCount == 1 || MultiplayerMgr.IsLocalCoop()) ) {
+#else
 		if( (nLevel >= 0) && (nLevel < LEVEL_SINGLE_PLAYER_COUNT ) && (m_nPlayerCount == 1) ) {
+#endif
 			bUpdateProfileStats = bLevelCompleted;
 		} else {
 			bUpdateProfileStats = FALSE;
@@ -526,6 +538,11 @@ void CPlayer::UpdateProfileUserSettings( void ) {
 		m_pPlayerProfile->m_Data.nFlags |= GAMESAVE_PROFILE_FLAGS_ASSISTED_TARGETING;
 	}
 	m_pPlayerProfile->m_Data.fUnitLookSensitivity = m_fLookSensitivity;
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() && coopsave_IsSessionActive() ) {
+		coopsave_SaveLookSensitivity( m_pPlayerProfile );
+	}
+#endif
 
 	m_pPlayerProfile->m_Data.fUnitVibrationIntensity = fforce_GetMasterIntensity( m_nControllerIndex );
 
@@ -728,8 +745,12 @@ BOOL CPlayer::IsReadyToContinue( void ) {
 
 void CPlayer::DrawText( void ) {
 #if FANG_WINGC
+	const BOOL bCoopWaitMessage = m_pEntityCurrent && CEntity::CoopTripwireWaitMessage( m_pEntityCurrent );
+	if( MultiplayerMgr.IsLocalCoop() && CBot::m_bCutscenePlaying ) {
+		return;
+	}
 	// Local co-op: this player is holding a tripwire event until the others arrive.
-	if( !IsReadyToContinue() && m_pEntityCurrent && CEntity::CoopTripwireWaiting( m_pEntityCurrent ) ) {
+	if( !IsReadyToContinue() && bCoopWaitMessage ) {
 		FTextArea_t *pWaitArea = ftext_GetAttributes( m_hTextBoxRestart );
 		pWaitArea->oColorForeground.Set( 0.8f, 0.8f, 0.8f, 1.0f );
 		ftext_PrintString( m_hTextBoxRestart, L"Waiting for your partners" );
@@ -754,16 +775,154 @@ void CPlayer::DrawText( void ) {
 }
 
 #if FANG_WINGC
-// Campaign co-op (PC): single-player rules restore the level's checkpoint when the player dies or falls
-// out of the world, which with several players would roll everyone back. A player who goes down while a
-// partner is still standing comes back beside that partner instead, keeping their inventory; only when
-// nobody is left standing does the checkpoint restore run (then it brings everyone back).
-static BOOL _CoopRespawnNearPartner( CPlayer *pPlayer ) {
+// Campaign co-op (PC): dead players wait for a checkpoint while a partner is alive. Living players
+// stuck outside the playable world can recover beside a grounded partner without rolling the team back.
+static void _CoopPlayRespawnEffect( CBot *pBot ) {
+	if( pBot->TypeBits() & ENTITY_BIT_BOTGLITCH ) {
+		((CBotGlitch *)pBot)->PortPlayRespawnEffect();
+	}
+}
+
+// Check the floor and the same body sphere used by bot movement. Never use an unchecked offset over
+// a ledge or inside a wall, and never drop to a lower floor beneath the partner's playable route.
+static u32 _CoopRespawnTrackerCheck( CFWorldTracker *pTracker ) {
+	// Tracker masks accept ANY matching bit. ~ENTITY_BIT_BOT still accepts Glitch's
+	// subclass bits, so explicitly exclude bot meshes and equipment attached to them.
+	if( pTracker->m_nUser == MESHTYPES_ENTITY && pTracker->m_pUser ) {
+		CEntity *pEntity = (CEntity *)pTracker->m_pUser;
+		if( (pEntity->TypeBits() & ENTITY_BIT_BOT) ||
+			((pEntity->TypeBits() & ENTITY_BIT_WEAPON) && ((CWeapon *)pEntity)->GetOwner()) ||
+			(pEntity->TypeBits() & ENTITY_BIT_DETPACKDROP) ||
+			((pEntity->TypeBits() & ENTITY_BIT_MESHENTITY) && ((CMeshEntity *)pEntity)->IsVehicleCollOnly()) ) {
+			return FCOLL_CHECK_CB_DO_NOT_CHECK_TRACKER;
+		}
+	}
+	return FCOLL_CHECK_CB_ALL_IMPACTS;
+}
+
+static BOOL _CoopCheckRespawnPosition( CBot *pBot, CBot *pPartner, CFVec3A *pPos, BOOL bScriptedStart = FALSE ) {
+	CFCollData CollData = {};
+	CollData.nCollMask = FCOLL_MASK_COLLIDE_WITH_PLAYER;
+	CollData.nTrackerUserTypeBitsMask = ~ENTITY_BIT_BOT;
+	CollData.pCallback = _CoopRespawnTrackerCheck;
+	CollData.pLocationHint = pPartner->m_pWorldMesh;
+	CFVec3A vDown;
+	vDown.Set( 0.0f, bScriptedStart ? -16.0f : -3.0f, 0.0f );
+	CollData.pMovement = &vDown;
+	CollData.nFlags = FCOLL_DATA_IGNORE_BACKSIDE;
+	CFSphere Sphere;
+	Sphere.m_Pos = pPos->v3;
+	Sphere.m_Pos.y += 1.0f;
+	Sphere.m_fRadius = 0.05f;
+	fcoll_Clear();
+	fcoll_Check( &CollData, &Sphere );
+	FCollImpact_t *pFloor = NULL;
+	for( u32 n=0; n < FColl_nImpactCount; ++n ) {
+		FCollImpact_t *pImpact = &FColl_aImpactBuf[n];
+		if( pImpact->fUnitImpactTime >= 0.0f && (!pFloor || pImpact->fUnitImpactTime < pFloor->fUnitImpactTime) ) {
+			pFloor = pImpact;
+		}
+	}
+	if( !pFloor || pFloor->UnitFaceNormal.y < 0.5f ||
+		(CGColl::GetSurfaceType( pFloor ) != GCOLL_SURF_TYPE_NORMAL && CGColl::GetSurfaceType( pFloor ) != GCOLL_SURF_TYPE_SLIPPERY) ) {
+		return FALSE;
+	}
+	const CBot::BotInfo_Gen_t *pInfo = pBot->m_pBotInfo_Gen;
+	// The bot's movement sphere is lowered by 0.9 units relative to its model-space centre.
+	pPos->y = pFloor->ImpactPoint.y - (pInfo->fCollSphere1Y_MS - 0.9f - pInfo->fCollSphere1Radius_MS) + 0.1f;
+	if( fmath_Abs( pPos->y - pPartner->MtxToWorld()->m_vPos.y ) > (bScriptedStart ? 16.0f : 2.0f) ) {
+		return FALSE;
+	}
+	Sphere.m_Pos = pPos->v3;
+	Sphere.m_Pos.x += pInfo->fCollSphere1X_MS;
+	Sphere.m_Pos.y += pInfo->fCollSphere1Y_MS - 0.9f;
+	Sphere.m_Pos.z += pInfo->fCollSphere1Z_MS;
+	Sphere.m_fRadius = pInfo->fCollSphere1Radius_MS;
+	CollData.pMovement = NULL;
+	CollData.nFlags = FCOLL_DATA_FLAGS_NONE;
+	fcoll_Clear();
+	fcoll_Check( &CollData, &Sphere );
+	if( FColl_nImpactCount ) {
+		return FALSE;
+	}
+	// Also reject positions on the other side of a nearby wall.
+	CFVec3A vMove, vStart;
+	vStart = pPartner->MtxToWorld()->m_vPos;
+	vStart.x += pInfo->fCollSphere1X_MS;
+	vStart.y += pInfo->fCollSphere1Y_MS - 0.9f + 0.1f;
+	vStart.z += pInfo->fCollSphere1Z_MS;
+	vMove.Sub( Sphere.m_Pos, vStart );
+	Sphere.m_Pos = vStart.v3;
+	CollData.pMovement = &vMove;
+	fcoll_Clear();
+	fcoll_Check( &CollData, &Sphere );
+	return FColl_nImpactCount == 0;
+}
+
+// Packing boxes have an origin below their floor. On release, find real nearby
+// ground with full body clearance instead of dropping a carried bot into the void.
+BOOL CPlayer::RecoverFromStoryCarrier( CBot *pBot ) {
+	if(!pBot || !pBot->m_pWorldMesh || !pBot->m_pBotInfo_Gen) return FALSE;
+	const CFVec3A origin=pBot->MtxToWorld()->m_vPos;
+	static const f32 radii[]={0,4,8,12,16};
+	static const f32 directions[][2]={{0,0},{1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,1},{1,-1},{-1,-1}};
+	for(u32 r=0;r<sizeof(radii)/sizeof(radii[0]);++r) {
+		for(u32 n=0;n<sizeof(directions)/sizeof(directions[0]);++n) {
+			CFVec3A position=origin;position.x+=directions[n][0]*radii[r];position.z+=directions[n][1]*radii[r];position.y+=8;
+			if(!_CoopCheckRespawnPosition(pBot,pBot,&position,TRUE)) continue;
+			pBot->Relocate_Xlat_WS(&position);pBot->ZeroVelocity();
+			DEVPRINTF("Factory packing: recovered story body on checked ground.\n");return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+void CPlayer::CoopPlaceStartingPartners( BOOL bScriptedStart, s32 nLeadIndex ) {
+	if( !MultiplayerMgr.IsLocalCoop() || nLeadIndex < 0 || nLeadIndex >= m_nPlayerCount ) return;
+	CEntity *pFirst = Player_aPlayer[nLeadIndex].m_pEntityCurrent;
+	if( !pFirst || !(pFirst->TypeBits() & ENTITY_BIT_BOT) ) return;
+	CBot *pLead = (CBot *)pFirst;
+	if( !pLead->m_pWorldMesh || !pLead->m_pBotInfo_Gen ) return;
+	for( s32 i = 0; i < m_nPlayerCount; ++i ) {
+		if( i == nLeadIndex ) continue;
+		CEntity *pEntity = Player_aPlayer[i].m_pEntityCurrent;
+		if( !pEntity || !(pEntity->TypeBits() & ENTITY_BIT_BOT) ) continue;
+		CBot *pBot = (CBot *)pEntity;
+		if( !pBot->m_pWorldMesh || !pBot->m_pBotInfo_Gen ) continue;
+		CFMtx43A Mtx = *pBot->MtxToWorld();
+		if( !bScriptedStart && _CoopCheckRespawnPosition( pBot, pLead, &Mtx.m_vPos ) ) continue;
+		static const f32 aOffsets[][2] = { {-1,-1}, {1,-1}, {-1,0}, {1,0}, {0,-1}, {0,1}, {0,0} };
+		const f32 fSpacing = pBot->m_pBotInfo_Gen->fCollSphere1Radius_MS * 2.0f + 0.5f;
+		for( u32 n = 0; n < sizeof(aOffsets)/sizeof(aOffsets[0]); ++n ) {
+			CFVec3A vSide, vFront;
+			Mtx = *pLead->MtxToWorld();
+			vSide.Mul( Mtx.m_vRight, aOffsets[n][0] * fSpacing );
+			vFront.Mul( Mtx.m_vFront, aOffsets[n][1] * fSpacing );
+			Mtx.m_vPos.Add( vSide ).Add( vFront );
+			if( !_CoopCheckRespawnPosition( pBot, pLead, &Mtx.m_vPos, bScriptedStart ) ) continue;
+			BOOL bOccupied = FALSE;
+			if( aOffsets[n][0] || aOffsets[n][1] ) {
+				for( s32 j = 0; j < i; ++j ) {
+					if( j == nLeadIndex ) continue;
+					CEntity *pOther = Player_aPlayer[j].m_pEntityCurrent;
+					if( pOther && pOther->MtxToWorld()->m_vPos.DistSq( Mtx.m_vPos ) < (fSpacing - 0.5f) * (fSpacing - 0.5f) ) bOccupied = TRUE;
+				}
+			}
+			if( !bOccupied ) {
+				pBot->Relocate_RotXlatFromUnitMtx_WS( &Mtx, FALSE );
+				DEVPRINTF( "Co-op: repaired starting position for player %d.\n", i + 1 );
+				break;
+			}
+		}
+	}
+}
+
+static BOOL _CoopFindPartnerRespawn( CPlayer *pPlayer, CFMtx43A *pMtx, s32 *pPartnerIndex ) {
 	if( !MultiplayerMgr.IsSinglePlayer() || CPlayer::m_nPlayerCount < 2 ) {
 		return FALSE;
 	}
 	CEntity *pEntity = pPlayer->m_pEntityCurrent;
-	if( !pEntity || !(pEntity->TypeBits() & ENTITY_BIT_BOT) ) {
+	if( !pEntity || !(pEntity->TypeBits() & ENTITY_BIT_BOT) || !((CBot *)pEntity)->m_pBotInfo_Gen ) {
 		return FALSE;
 	}
 	CBot *pBot = (CBot *)pEntity;
@@ -774,12 +933,15 @@ static BOOL _CoopRespawnNearPartner( CPlayer *pPlayer ) {
 			continue;
 		}
 		CBot *pPartnerBot = (CBot *)pPartner->m_pEntityCurrent;
-		if( pPartnerBot->IsDeadOrDying() || !pPartnerBot->IsInWorld() || pPartnerBot->IsInAir() || !pPartnerBot->m_pWorldMesh ) {
+		if( pPartnerBot->IsDeadOrDying() || !pPartnerBot->IsInWorld() || pPartnerBot->IsInAir() ||
+			pPartnerBot->m_pDrivingVehicle || pPartnerBot->IsPanicOn() || !pPartnerBot->m_pWorldMesh ) {
+			continue;
+		}
+		FVisVolume_t *pVolume = pPartnerBot->m_pWorldMesh->GetCenterpointVolume();
+		if( !pVolume || (pVolume->nVolumeID == FVIS_SLOP_BUCKET_ID && FWorld_pWorld->nVolumeCount != 1) ) {
 			continue;
 		}
 
-		// Beside and a little behind the partner, facing the way the partner faces, a little above the
-		// ground so the bot settles onto it.
 		CFMtx43A Mtx;
 		Mtx.Identity();
 		CFVec3A vFront = pPartnerBot->MtxToWorld()->m_vFront;
@@ -791,19 +953,61 @@ static BOOL _CoopRespawnNearPartner( CPlayer *pPlayer ) {
 		Mtx.m_vFront = vFront;
 		Mtx.m_vUp.Set( 0.0f, 1.0f, 0.0f );
 		Mtx.m_vRight.Cross( Mtx.m_vUp, Mtx.m_vFront );
-		const f32 fSide = (pPlayer->m_nPlayerIndex & 1) ? -3.0f : 3.0f;
-		CFVec3A vOffset, vBack;
-		vOffset.Mul( Mtx.m_vRight, fSide );
-		vBack.Mul( Mtx.m_vFront, -2.0f );
-		Mtx.m_vPos = pPartnerBot->MtxToWorld()->m_vPos;
-		Mtx.m_vPos.Add( vOffset );
-		Mtx.m_vPos.Add( vBack );
-		Mtx.m_vPos.y += 1.0f;
-		pBot->Relocate_RotXlatFromUnitMtx_WS( &Mtx );
-		DEVPRINTF( "Co-op: player %d back beside player %d.\n", pPlayer->m_nPlayerIndex + 1, i + 1 );
-		return TRUE;
+		const f32 fSide = (pPlayer->m_nPlayerIndex & 1) ? -1.0f : 1.0f;
+		const f32 fSpacing = pBot->m_pBotInfo_Gen->fCollSphere1Radius_MS * 2.0f + 0.5f;
+		static const f32 aOffsets[][2] = { {1,-1}, {-1,-1}, {1,0}, {-1,0}, {0,-1}, {0,1}, {1,1}, {-1,1}, {0,0} };
+		for( u32 n=0; n < sizeof(aOffsets)/sizeof(aOffsets[0]); ++n ) {
+			CFVec3A vOffset, vBack;
+			vOffset.Mul( Mtx.m_vRight, aOffsets[n][0] * fSide * fSpacing );
+			vBack.Mul( Mtx.m_vFront, aOffsets[n][1] * fSpacing );
+			Mtx.m_vPos = pPartnerBot->MtxToWorld()->m_vPos;
+			Mtx.m_vPos.Add( vOffset ).Add( vBack );
+			BOOL bOccupied = FALSE;
+			// Prefer space for each revived player. The partner's own checked position is the final
+			// fallback on narrow platforms, where moving sideways could leave the playable route.
+			if( aOffsets[n][0] || aOffsets[n][1] ) {
+				for( s32 j=0; j < CPlayer::m_nPlayerCount; ++j ) {
+					CEntity *pOther = Player_aPlayer[j].m_pEntityCurrent;
+					if( j == pPlayer->m_nPlayerIndex || !pOther || !pOther->IsInWorld() ||
+						!(pOther->TypeBits() & ENTITY_BIT_BOT) || ((CBot *)pOther)->IsDeadOrDying() ) {
+						continue;
+					}
+					const f32 fClearance = fSpacing - 0.5f;
+					if( pOther->MtxToWorld()->m_vPos.DistSq( Mtx.m_vPos ) < fClearance * fClearance ) {
+						bOccupied = TRUE;
+						break;
+					}
+				}
+			}
+			if( bOccupied ) {
+				continue;
+			}
+			if( _CoopCheckRespawnPosition( pBot, pPartnerBot, &Mtx.m_vPos ) ) {
+				*pMtx = Mtx;
+				*pPartnerIndex = i;
+				return TRUE;
+			}
+		}
 	}
 	return FALSE;
+}
+
+static BOOL _CoopRespawnNearPartner( CPlayer *pPlayer ) {
+	if( !pPlayer->m_pEntityCurrent || !(pPlayer->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) ||
+		((CBot *)pPlayer->m_pEntityCurrent)->IsDeadOrDying() ) {
+		return FALSE;
+	}
+	CFMtx43A Mtx;
+	s32 nPartner;
+	if( !_CoopFindPartnerRespawn( pPlayer, &Mtx, &nPartner ) ) {
+		return FALSE;
+	}
+	CBot *pBot = (CBot *)pPlayer->m_pEntityCurrent;
+	pBot->Relocate_RotXlatFromUnitMtx_WS( &Mtx, FALSE );
+	_CoopPlayRespawnEffect( pBot );
+	DEVPRINTF( "Co-op: player %d recovered beside player %d at (%.1f, %.1f, %.1f).\n",
+		pPlayer->m_nPlayerIndex + 1, nPartner + 1, Mtx.m_vPos.x, Mtx.m_vPos.y, Mtx.m_vPos.z );
+	return TRUE;
 }
 
 static BOOL _CoopActive( void ) {
@@ -848,13 +1052,21 @@ static void _CoopResurrectOthers( CPlayer *pPlayer ) {
 	}
 }
 
-void CPlayer::CoopReviveForCheckpoint( void ) {
+BOOL CPlayer::CoopReviveForCheckpoint( void ) {
 	if( !_CoopActive() ) {
-		return;
+		return TRUE;
 	}
+	BOOL bReady = TRUE;
 	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
 		CPlayer *pPlayer = &Player_aPlayer[i];
-		if( !pPlayer->m_pEntityCurrent || !pPlayer->CoopWaitingForCheckpoint() ) {
+		if( !pPlayer->m_pEntityCurrent ) {
+			continue;
+		}
+		if( !pPlayer->IsReadyToContinue() ) {
+			// Let the death transition finish before saving an alive checkpoint for this player.
+			if( (pPlayer->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) && ((CBot *)pPlayer->m_pEntityCurrent)->IsDeadOrDying() ) {
+				bReady = FALSE;
+			}
 			continue;
 		}
 		if( pPlayer->m_pEntityCurrent != pPlayer->m_pEntityOrig ) {
@@ -862,12 +1074,20 @@ void CPlayer::CoopReviveForCheckpoint( void ) {
 			if( (pPlayer->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) && ((CBot *)pPlayer->m_pEntityCurrent)->IsPossessionExitable() ) {
 				((CBot *)pPlayer->m_pEntityCurrent)->ForceQuickDataPortUnPlug();
 			}
+			bReady = FALSE;
 			continue;
 		}
 		if( !(pPlayer->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) ) {
 			continue;
 		}
 		CBot *pBot = (CBot *)pPlayer->m_pEntityCurrent;
+		CFMtx43A Mtx;
+		s32 nPartner;
+		if( !_CoopFindPartnerRespawn( pPlayer, &Mtx, &nPartner ) ) {
+			// A checkpoint can fire during a jump. Keep the player down and retry after a partner lands.
+			bReady = FALSE;
+			continue;
+		}
 		pPlayer->Resurrect();
 		if( pBot->AIBrain() ) {
 			aibrainman_ConfigurePlayerBotBrain( pBot->AIBrain(), pPlayer->m_nPlayerIndex );
@@ -881,12 +1101,18 @@ void CPlayer::CoopReviveForCheckpoint( void ) {
 		if( !pBot->IsInWorld() ) {
 			pBot->AddToWorld();
 		}
-		if( _CoopRespawnNearPartner( pPlayer ) ) {
-			DEVPRINTF( "Co-op: player %d revived at the checkpoint.\n", i + 1 );
-		} else {
-			DEVPRINTF( "Co-op: player %d revived at the checkpoint, with no partner to stand beside.\n", i + 1 );
-		}
+		// Death turned this player's HUD off; retail turns it back on in the checkpoint restore.
+		letterbox_PortRestoreHud( i );
+		pBot->Relocate_RotXlatFromUnitMtx_WS( &Mtx, FALSE );
+		pPlayer->m_bForceReady = FALSE;
+		pPlayer->m_bRestoreTimerRunning = FALSE;
+		pPlayer->m_bRestoreTimerSuspended = FALSE;
+		pPlayer->m_fRestoreCheckpointTimer = 0.0f;
+		_CoopPlayRespawnEffect( pBot );
+		DEVPRINTF( "Co-op: player %d revived at the checkpoint beside player %d at (%.1f, %.1f, %.1f).\n",
+			i + 1, nPartner + 1, Mtx.m_vPos.x, Mtx.m_vPos.y, Mtx.m_vPos.z );
 	}
+	return bReady;
 }
 
 // Test/play aid (PC): -start-at X,Y,Z[,YAW] moves player 1's bot to that spot once, after it has had
@@ -1012,6 +1238,10 @@ void CPlayer::Work( void ) {
 			m_HumanControl.Zero();
 		}
 
+		#if FANG_WINGC
+		CSpyVsSpy::ConstrainPackingControls(m_pEntityCurrent,&m_HumanControl);
+		#endif
+
 		if( (!m_pEntityCurrent->IsInWorld() ||
 			  ((m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) && ((CBot*)m_pEntityCurrent)->IsDead())) &&
 			m_pEntityCurrent != m_pEntityOrig) {
@@ -1062,10 +1292,10 @@ void CPlayer::Work( void ) {
 						if( checkpoint_Saved( 1 ) ) {
 							// player has passed a checkpoint on this level,
 							// so restore to that.
-							checkpoint_Restore( 1, TRUE );
+							checkpoint_Restore( 1, TRUE, "player:death-continue" );
 						} else if( checkpoint_Saved( 0 ) ) {
 							// otherwise restore to beginning-of-level checkpoint
-							checkpoint_Restore( 0, TRUE );
+							checkpoint_Restore( 0, TRUE, "player:death-continue" );
 						}
 					}
 				}
@@ -1097,8 +1327,15 @@ void CPlayer::Work( void ) {
 
 			// We will only reset if the player is in first or third person camera and we're not in debug camera mode
 			BOOL bValidCamera = ((nCamType == GAME_CAM_TYPE_ROBOT_3RD || nCamType == GAME_CAM_TYPE_ROBOT_1ST) && !gamecam_IsInDebugMode());
+#if FANG_WINGC
+			// A parked exit arrival can legitimately remain in midair or outside
+			// playable geometry until the team arrives. Do not roll everyone back.
+			if( CEntity::CoopTripwireExitWaiting( m_pEntityCurrent ) ) {
+				bValidCamera = FALSE;
+			}
+#endif
 
-			if ( (m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) && bValidCamera ) {
+			if ( (m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT) && bValidCamera && !((CBot *)m_pEntityCurrent)->IsDeadOrDying() ) {
 				CBot *pPlayerBot = (CBot *)m_pEntityCurrent;
 
 				// Determine player bot's out of world state
@@ -1146,10 +1383,10 @@ void CPlayer::Work( void ) {
 							if( !MultiplayerMgr.RespawnBot( pPlayerBot ) ) {
 								if( checkpoint_Saved( 1 ) ) {
 									// player has passed a checkpoint on this level, so restore to that.
-									checkpoint_Restore( 1, TRUE );
+									checkpoint_Restore( 1, TRUE, "player:out-of-world" );
 								} else if( checkpoint_Saved( 0 ) ) {
 									// otherwise restore to beginning-of-level checkpoint
-									checkpoint_Restore( 0, TRUE );
+									checkpoint_Restore( 0, TRUE, "player:out-of-world" );
 								}
 							}
 						}
@@ -1190,10 +1427,10 @@ void CPlayer::Work( void ) {
 							if( !MultiplayerMgr.RespawnBot( pPlayerBot ) ) {
 								if( checkpoint_Saved( 1 ) ) {
 									// player has passed a checkpoint on this level, so restore to that.
-									checkpoint_Restore( 1, TRUE );
+									checkpoint_Restore( 1, TRUE, "player:stuck-in-air" );
 								} else if( checkpoint_Saved( 0 ) ) {
 									// otherwise restore to beginning-of-level checkpoint
-									checkpoint_Restore( 0, TRUE );
+									checkpoint_Restore( 0, TRUE, "player:stuck-in-air" );
 								}
 							}
 						}
@@ -1272,6 +1509,25 @@ void CPlayer::Work( void ) {
 			}
 		#endif
 	}
+#if FANG_WINGC
+	else if( MultiplayerMgr.IsLocalCoop() && CBot::m_bCutscenePlaying &&
+		m_nPlayerIndex != game_GetStoryPlayerIndex() && m_pEntityCurrent &&
+		m_pEntityCurrent == m_pEntityOrig && m_pEntityCurrent->IsInWorld() &&
+		(m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
+		!((CBot *)m_pEntityCurrent)->IsDeadOrDying() && !m_pEntityCurrent->IsAutoWorkEnabled() &&
+		!(m_uPlayerFlags & PF_DONT_CALL_WORK) ) {
+		// Spectators animate under neutral controls, landing before being parked.
+		CBotGlitch *pBot = (CBotGlitch *)m_pEntityCurrent;
+		if( !pBot->m_pDrivingVehicle && !pBot->GetCurMech() &&
+			(!pBot->AIBrain() || !pBot->AIBrain()->GetFlag_Active()) ) {
+			m_HumanControl.Zero();
+			if( pBot->Controls() != &m_HumanControl ) {
+				pBot->SetControls( &m_HumanControl );
+			}
+			pBot->PortWorkForCoopScene();
+		}
+	}
+#endif
 }
 
 void CPlayer::Resurrect( void )

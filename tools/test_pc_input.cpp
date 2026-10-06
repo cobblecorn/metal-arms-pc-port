@@ -16,8 +16,8 @@ static bool Neutral(const FPadio_Sample_t &s) {
 // Exercise the actual INI read/write path in a disposable settings directory.
 static void CheckMouseSettings() {
 	char temp[MAX_PATH], root[MAX_PATH], path[MAX_PATH + 64];
-	char oldLocal[32768] = {}, oldOverride[32768] = {}, oldTestKeys[32768] = {};
-	GetEnvironmentVariableA("LOCALAPPDATA", oldLocal, sizeof(oldLocal));
+	char oldSaveDir[32768] = {}, oldOverride[32768] = {}, oldTestKeys[32768] = {};
+	GetEnvironmentVariableA("MA_PORT_SAVE_DIR", oldSaveDir, sizeof(oldSaveDir));
 	GetEnvironmentVariableA("MA_PORT_TEST_KEYS", oldTestKeys, sizeof(oldTestKeys));
 	GetEnvironmentVariableA("MA_PORT_MOUSE_SENSITIVITY", oldOverride, sizeof(oldOverride));
 	if (!GetTempPathA(sizeof(temp), temp) || !GetTempFileNameA(temp, "mai", 0, root)) {
@@ -25,7 +25,7 @@ static void CheckMouseSettings() {
 	}
 	DeleteFileA(root);
 	if (!CreateDirectoryA(root, NULL)) { Check(false, "create isolated settings directory"); return; }
-	SetEnvironmentVariableA("LOCALAPPDATA", root);
+	SetEnvironmentVariableA("MA_PORT_SAVE_DIR", root);
 	SetEnvironmentVariableA("MA_PORT_MOUSE_SENSITIVITY", NULL);
 	const FPadio_InputEmulationPlatform_e gc = FPADIO_INPUT_EMULATION_PLATFORM_GC;
 	pcinput_Install(0, gc);
@@ -45,7 +45,7 @@ static void CheckMouseSettings() {
 	pcinput_Install(0, gc);
 	Check(Near(pcinput_MouseSensitivity(), 0.17f) && !pcinput_MouseSensitivityIsOverride(), "invalid override preserves editable saved preference");
 	pcinput_Uninstall();
-	_snprintf(path, sizeof(path), "%s\\Metal Arms Source Port\\settings.ini", root);
+	_snprintf(path, sizeof(path), "%s\\settings.ini", root);
 	WritePrivateProfileStringA("Input", "MouseSensitivity", "nan", path);
 	SetEnvironmentVariableA("MA_PORT_MOUSE_SENSITIVITY", NULL);
 	pcinput_Install(0, gc);
@@ -64,11 +64,9 @@ static void CheckMouseSettings() {
 	Check(Neutral(scripted), "background game without scripted keys stays neutral");
 	pcinput_Uninstall();
 	SetEnvironmentVariableA("MA_PORT_TEST_KEYS", *oldTestKeys ? oldTestKeys : NULL);
-	SetEnvironmentVariableA("LOCALAPPDATA", *oldLocal ? oldLocal : NULL);
+	SetEnvironmentVariableA("MA_PORT_SAVE_DIR", *oldSaveDir ? oldSaveDir : NULL);
 	SetEnvironmentVariableA("MA_PORT_MOUSE_SENSITIVITY", *oldOverride ? oldOverride : NULL);
 	DeleteFileA(path);
-	_snprintf(path, sizeof(path), "%s\\Metal Arms Source Port", root);
-	RemoveDirectoryA(path);
 	RemoveDirectoryA(root);
 }
 

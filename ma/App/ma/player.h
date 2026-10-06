@@ -209,6 +209,10 @@ public:
 	static BOOL InitLevel( const GameInitInfo_t *pGameInit, Level_e nLevel );
 	static void UninitLevel( Level_e nLevel, BOOL bLevelCompleted );
 
+#if FANG_WINGC
+	static void CoopPlaceStartingPartners( BOOL bScriptedStart = FALSE, s32 nLeadIndex = 0 );
+	static BOOL RecoverFromStoryCarrier( CBot *pBot );
+#endif
 	static void SetCurrent( s32 nCurrentPlayerIndex );
 	static CInventory *GetInventory( s32 nPlayerIndex, BOOL bPossession = FALSE );
 	static void AbortAllPlayerScopeZoomMode( BOOL bImmediate );
@@ -233,9 +237,12 @@ public:
 
 #if FANG_WINGC
 	// Local co-op: a player who goes down stays down while a partner stands; the next checkpoint
-	// brings them back beside a partner (called just before the checkpoint is saved).
-	static void CoopReviveForCheckpoint( void );
+	// brings them back at a checked partner position. FALSE postpones saving until safe placement exists.
+	static BOOL CoopReviveForCheckpoint( void );
 	BOOL CoopWaitingForCheckpoint( void );
+	void CoopClearRespawnWait() {
+		m_bForceReady = FALSE; m_bRestoreTimerRunning = FALSE; m_bRestoreTimerSuspended = FALSE; m_fRestoreCheckpointTimer = 0.0f;
+	}
 #endif
 	
 	// Call just before/after rendering this player's main view

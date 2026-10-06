@@ -72,10 +72,6 @@ BOOL CWeaponGrenBuilder::InterpretTable( void ) {
 
 CWeaponGren::_UserProps_t CWeaponGren::m_aUserProps[EUK_COUNT_GRENADE];
 CEProjPool::PoolHandle_t CWeaponGren::m_ahProjPool[EUK_COUNT_GRENADE];
-#if FANG_WINGC
-CEProjPool::PoolHandle_t CWeaponGren::m_hPortNukePool = EPROJPOOL_NULL_HANDLE;
-FExplosion_GroupHandle_t CWeaponGren::m_hPortNukeBlast = FEXPLOSION_INVALID_HANDLE;
-#endif
 SmokeTrailAttrib_t CWeaponGren::m_SmokeTrailAttrib;
 CFTexInst CWeaponGren::m_StreamerTexInst;
 
@@ -280,19 +276,6 @@ BOOL CWeaponGren::InitSystem( void ) {
 	m_StreamerTexInst.SetTexDef( pTexDef );
 	m_StreamerTexInst.SetFlags( CFTexInst::FLAG_WRAP_S | CFTexInst::FLAG_WRAP_T );
 
-#if FANG_WINGC
-	// Nuke Grenade (cut content): its own pool of the unused gp_snuke model and the heavy blast the
-	// giant rats and big level explosions use. Failure only disables the Nuke; Coring Charges still work.
-	m_hPortNukePool = CEProjPool::Create( CEProj::PROJTYPE_GRENADE, "gp_snuke", 4 );
-	if( m_hPortNukePool == EPROJPOOL_NULL_HANDLE ) {
-		DEVPRINTF( "CWeaponGren::InitSystem(): Could not create the Nuke Grenade projectile pool.\n" );
-	}
-	m_hPortNukeBlast = CExplosion2::GetExplosionGroup( "HugeRatExplosion" );
-	if( m_hPortNukeBlast == FEXPLOSION_INVALID_HANDLE ) {
-		m_hPortNukeBlast = CExplosion2::GetExplosionGroup( "BigBlast" );
-	}
-#endif
-
 	// Success...
 
 	return TRUE;
@@ -414,44 +397,7 @@ void CWeaponGren::_ClearDataMembers( void ) {
 	m_pResourceData = NULL;
 	m_fSecondsCountdownTimer = 0.0f;
 	m_pProjToThrow = NULL;
-#if FANG_WINGC
-	m_bPortNuke = FALSE;
-#endif
 }
-
-#if FANG_WINGC
-// Nuke Grenade detonation: the Coring Charge's own blast still goes off (return TRUE), plus the heavy
-// blast at the centre and a ring of six coring blasts 12 units out, all carrying this grenade's damage.
-BOOL CWeaponGren::_PortNukeDetonated( CEProj *pProj, BOOL bMakeEffect, CEProj::Event_e nEvent, const FCollImpact_t *pImpact ) {
-	FExplosion_SpawnerHandle_t hSpawner = CExplosion2::GetExplosionSpawner();
-	if( !bMakeEffect || hSpawner == FEXPLOSION_INVALID_HANDLE ) {
-		return TRUE;
-	}
-	FExplosionSpawnParams_t SpawnParams;
-	SpawnParams.InitToDefaults();
-	SpawnParams.uFlags = FEXPLOSION_SPAWN_NONE;
-	SpawnParams.pDamageProfile = pProj->GetDamageProfile();
-	SpawnParams.pDamager = pProj->GetDamager();
-	SpawnParams.UnitDir.Set( 0.0f, 1.0f, 0.0f );
-	SpawnParams.uSurfaceType = 0;
-
-	const CFVec3A Center = pProj->MtxToWorld()->m_vPos;
-	DEVPRINTF( "Port: Nuke Grenade detonated at (%.0f, %.0f, %.0f).\n", Center.x, Center.y, Center.z );
-	if( m_hPortNukeBlast != FEXPLOSION_INVALID_HANDLE ) {
-		SpawnParams.Pos_WS = Center;
-		CExplosion2::SpawnExplosion( hSpawner, m_hPortNukeBlast, &SpawnParams );
-	}
-	const FExplosion_GroupHandle_t hRing = m_aUserProps[0].hExplosionGroup;
-	if( hRing != FEXPLOSION_INVALID_HANDLE ) {
-		for( u32 i = 0; i < 6; ++i ) {
-			const f32 fAngle = (f32)i * (FMATH_2PI / 6.0f);
-			SpawnParams.Pos_WS.Set( Center.x + 12.0f * fmath_Sin( fAngle ), Center.y + 1.0f, Center.z + 12.0f * fmath_Cos( fAngle ) );
-			CExplosion2::SpawnExplosion( hSpawner, hRing, &SpawnParams );
-		}
-	}
-	return TRUE;
-}
-#endif
 
 
 void CWeaponGren::ClassHierarchyRemoveFromWorld( void ) {
@@ -515,12 +461,7 @@ BOOL CWeaponGren::_GetProjectileFromPoolAndInit( void ) {
 	}
 
 	// Get a free projectile...
-#if FANG_WINGC
-	const BOOL bNuke = m_bPortNuke && m_hPortNukePool != EPROJPOOL_NULL_HANDLE;
-	m_pProjToThrow = CEProjPool::GetProjectileFromFreePool( bNuke ? m_hPortNukePool : m_ahProjPool[m_nUpgradeLevel] );
-#else
 	m_pProjToThrow = CEProjPool::GetProjectileFromFreePool( m_ahProjPool[m_nUpgradeLevel] );
-#endif
 	if( m_pProjToThrow == NULL ) {
 		// No more projectiles...
 		return FALSE;
@@ -549,9 +490,6 @@ BOOL CWeaponGren::_GetProjectileFromPoolAndInit( void ) {
 	m_pProjToThrow->SetExplosionGroup( pUserProps->hExplosionGroup );
 	m_pProjToThrow->SetGrenadeParams( &GrenadeParams );
 	m_pProjToThrow->Relocate_RotXlatFromUnitMtx_WS_NewScale_WS( &CFMtx43A::m_IdentityMtx, pUserProps->fGrenadeMeshScale, FALSE );
-#if FANG_WINGC
-	m_pProjToThrow->SetDetonateCallback( bNuke ? _PortNukeDetonated : NULL );
-#endif
 
 	return TRUE;
 }

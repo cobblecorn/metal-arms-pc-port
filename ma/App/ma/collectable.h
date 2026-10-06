@@ -98,11 +98,6 @@ typedef enum
 	COLLECTABLE_WEAPON_CLEANER,
 	COLLECTABLE_WEAPON_WRENCH,
 	COLLECTABLE_WEAPON_RECRUITER,
-#if FANG_WINGC
-	// Recovered cut throwables (PC). Collectable IDs are not saved, so these may sit in the weapon range.
-	COLLECTABLE_WEAPON_NUKE,
-	COLLECTABLE_WEAPON_WATER,
-#endif
 
 	COLLECTABLE_WEAPON_END, // Don't use this one
 
@@ -271,6 +266,12 @@ private:
 	// by the scripting system.  This means that in GetCollectable()
 	// The collectable will be put into the dead list and treated like any other collectable.
 	BOOL m_bUsedInScript;
+#if FANG_WINGC
+	u32 m_nCoopCollectedMask;
+	s32 m_nRecipientPlayer; // -1: world pickup; otherwise only the intended recipient may collect it
+	BOOL _IsPersonalWeapon() const;
+	static BOOL _CoopDrawFilter( CFMeshInst *pMesh, void *pData );
+#endif
 
 	BOOL8 m_bInActiveList;
 	BOOL8 m_bOverPoolAlloc;
@@ -308,6 +309,9 @@ public:
 // Public Functions:
 //----------------------------------------------------------------------------------------------------------------------------------
 public:
+	#if FANG_WINGC
+	u32 GetCoopCollectedMask() const { return m_nCoopCollectedMask; }
+	#endif
 	static BOOL IsSystemInitialized() { return m_bSystemInitialized; }
 
 	static BOOL InitSystem( void );
@@ -408,20 +412,17 @@ private:
 	static CollectableType_e _ClassifyCollectableType( cchar *pszTypeName );
 	
 	static void _GiveWeaponToPlayer( CBot *pBot, CInventory *pInv, cchar *pszWeaponName, s32 uAmmoCount );
+#if defined(MA_PC_INPUT)
+	static BOOL _GiveWeaponToPlayerScoped( CBot *pBot, cchar *pszWeaponName, s32 nAmmoCount );
+#endif
 	static BOOL _GiveWeaponAmmoToPlayer( CBot *pBot, CItemInst *pItemInst, CInventory *pInv, cchar *pszWeaponName, s32 uAmmoCount );
 
-	static BOOL _PlaceIntoWorld( CCollectableType *pType, const CFMtx43A *pMtx, const CFVec3A *pVelWS = NULL, f32 fScale = 1.0f, f32 fSpawnTime = 0.0f, s32 nAmmoCount = -1, CEntity *pSpawnIgnoreEntity = NULL );
+	static BOOL _PlaceIntoWorld( CCollectableType *pType, const CFMtx43A *pMtx, const CFVec3A *pVelWS = NULL, f32 fScale = 1.0f, f32 fSpawnTime = 0.0f, s32 nAmmoCount = -1, CEntity *pSpawnIgnoreEntity = NULL, s32 nRecipientPlayer = -1 );
 
 	static void _PickupSpecialItem( CCollectableType *pCollectType );
 	static void _ForceSpecialMeshesToNull( CCollectableType *pCollectType );
 
 	static BOOL _IsWeapon( CCollectableType *pType );
-#if FANG_WINGC
-	// Recovered cut throwables: Nuke/Water Grenade pickup types cloned from the Coring Charge/EMP Grenade,
-	// and the swap that turns some of those pickups into them.
-	static void _PortAddCutGrenadeTypes( void );
-	static CCollectableType *_PortCutGrenadeSwap( CCollectableType *pType, const CFVec3A *pPos_WS, BOOL bPlacedInWorld );
-#endif
 	static u8 _GetEUKForWeapon( CCollectableType *pType );
 	static u8 _GetEUKForWeapon( CollectableType_e eType );
 

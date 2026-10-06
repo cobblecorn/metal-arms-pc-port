@@ -22,6 +22,12 @@
 #include "fang.h"
 #include "MenuTypes.h"
 #include "ItemInst.h"
+#if defined(MA_PC_INPUT)
+#include "pc_cheats.h"
+const u32 CPauseScreen_uOptionCount = 7;
+#else
+const u32 CPauseScreen_uOptionCount = 6;
+#endif
 
 // these define are used in the hud2 module as well, why duplicate them?
 #if FANG_PLATFORM_DX
@@ -102,6 +108,13 @@ private:
 //	static void YesNoButtonCallback(MenuItemCallbackReason_e eReason, CMenuItem *pMI, u32 uData);
 	static void CancelOnlyCallback(MenuItemCallbackReason_e eReason, CMenuItem *pMI, u32 uData);
 	static void OptionScreenCallback(MenuItemCallbackReason_e eReason, CMenuItem *pMI, u32 uData);
+	static void ShowConfirmation( u32 uContext );
+	static BOOL TakeConfirmation( u32 &uContext );
+#if defined(MA_PC_INPUT)
+	static void CheatsScreenCallback(MenuItemCallbackReason_e eReason, CMenuItem *pMI, u32 uData);
+	static void RefreshCheats();
+	static void BackFromCheats();
+#endif
 	static void DrawInfoBoxMesh(CMenuItem *pMI);
 	static void DrawInfoBoxText(CMenuItem *pMI, CInventory *pInventory);
 	static void DrawMissionText( void );
@@ -121,7 +134,7 @@ private:
 	static CMenuItem m_aMIWeaponPrimary[12 + 1 + 1];	// 12 for the items, 1 for the highlight, and one for the info box.
 	static CMenuItem m_aMIWeaponSecondary[12 + 1 + 1];	// 12 for the items, 1 for the highlight, and one for the info box.
 	static CMenuItem m_aMIItem[6];						// 12 for the items.
-	static CMenuItem m_aMIOptions[6];
+	static CMenuItem m_aMIOptions[CPauseScreen_uOptionCount];
 	static CMenuScreen m_aMS[4];
 	static CMenuMgr m_MenuMgr;
 
@@ -138,6 +151,7 @@ private:
 	////
 
 	static BOOL8 m_bMsgBoxActive;
+	static u32 m_uMsgBoxContext;
 	static BOOL8 m_bIsEnabled;
 	static BOOL8 m_bWSEnabled;
 	static BOOL8 m_bHUDEnabled;
@@ -170,6 +184,10 @@ private:
 	static BOOL m_bPauseAudio;
 #if defined(MA_PC_INPUT)
 	static CFTexInst m_MousePointerTex;
+	static CMenuScreen m_MSCheats;
+	static CMenuItem m_aMICheats[PC_CHEAT_ACTION_COUNT + 1];
+	static FTextAreaHandle_t m_hCheatStatus;
+	static cwchar *m_pwszCheatStatus;
 #endif
 };
 

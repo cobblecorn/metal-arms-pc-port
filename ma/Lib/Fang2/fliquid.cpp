@@ -96,6 +96,7 @@ BOOL _WorldCallbackFunc( FWorldEvent_e nEvent )
 //Liquid volume
 CFLiquidVolume::CFLiquidVolume( void )
 {
+	m_bRenderEnabled = TRUE;
 	m_fRainDropMag = 0.0f;
 		
 	m_vCurrent = CFVec2(0.0f,0.0f);
@@ -707,13 +708,14 @@ BOOL CFLiquidVolume::CollisionCallback( CFWorldTracker *pTracker, FVisVolume_t *
 		//Do Displacement here.	
 		fMag = -2.0f * sphere.m_fRadius;
 		if (fMag < -4.0f) { fMag = -4.0f; }
-		if ( m_pSelf->Displace(vSpherePos, 1.0f, fMag, TRUE, m_pSelf->m_bInteract) )
+		if ( m_pSelf->Displace(vSpherePos, 1.0f, fMag, TRUE,
+			m_pSelf->m_bInteract && m_pSelf->m_bRenderEnabled && m_pSelf->m_pData != NULL) )
 		{
 			//Here I need to pass on information about the collision.
 			CFWorldMesh* pMesh = (CFWorldMesh*)pTracker;
 			FLiquid_pCollisionCallback(pMesh, m_pSelf->m_pUserData);
 
-			if (m_pSelf->m_bUseParticles)
+			if (m_pSelf->m_bUseParticles && m_pSelf->m_bRenderEnabled)
 			{
 				CFVec3 vPartOrig;
 				f32 fIntens = (sphere.m_fRadius - m_fMinPScale) * m_fPScale;
@@ -992,6 +994,7 @@ CFLiquidMesh::CFLiquidMesh( void )
 	m_fSpeed = 1.0f;
 	m_vMesh = NULL;
 	m_pIdx = NULL;
+	m_nLastFrameWork = ~0u;
 
 	m_pLiquidVolume = NULL;
 }
@@ -1004,12 +1007,16 @@ void CFLiquidMesh::SetLiquidType(LiquidType_e ltype)
 
 f32 CFLiquidMesh::EvalFunc(f32 fX)
 {
-	return 1.0f - powf(fX - 1.0f, m_fExp);
+	return EvalFunc( fX, m_fExp );
 }
 
 f32 CFLiquidMesh::EvalFunc(f32 fX, f32 fExp)
 {
-	return 1.0f - powf(fX - 1.0f, fExp);
+	// Animated curvature uses fractional exponents. A negative base would
+	// produce NaN positions throughout the fall; use the positive unit distance.
+	FMATH_CLAMPMIN( fX, 0.0f );
+	FMATH_CLAMPMAX( fX, 1.0f );
+	return 1.0f - powf( 1.0f - fX, fExp );
 }
 
 void CFLiquidMesh::AnimateMesh(f32 fExp, f32 fNextExp)
@@ -1230,6 +1237,12 @@ void CFLiquidMesh::Init()
 
 void CFLiquidMesh::Work()
 {
+	// Liquid work is reached once for each viewport. Animate the shared world
+	// mesh once per frame so every player sees the same shape and scroll phase.
+	if( m_nLastFrameWork == FVid_nFrameCounter ) {
+		return;
+	}
+	m_nLastFrameWork = FVid_nFrameCounter;
 	if (!m_pLiquidVolume)
 	{
 		m_pLiquidVolume = LiquidSystem.SearchForLiquidVolume(this);
@@ -1404,6 +1417,17 @@ void CFLiquidSystem::Work()
 	
 	for (i=0; i<m_nNumLiquidVolume; i++)
 	{
+		if( !m_LiquidVolumes[i]->m_bRenderEnabled ) {
+			m_LiquidVolumes[i]->m_bRender = FALSE;
+			if( !m_LiquidVolumes[i]->m_bProcedural ) {
+				fsh_ActivateRenderPlane( m_LiquidVolumes[i]->m_nRenderPlaneID, FALSE );
+				if( m_LiquidVolumes[i]->m_nLastFrameWork != FVid_nFrameCounter ) {
+					m_LiquidVolumes[i]->m_nLastFrameWork = FVid_nFrameCounter;
+					m_LiquidVolumes[i]->HandleCollisions();
+				}
+			}
+			continue;
+		}
 		if (!m_LiquidVolumes[i]->m_bProcedural)
 		{
 			m_LiquidVolumes[i]->m_bRender=FALSE;
@@ -1466,7 +1490,8 @@ void CFLiquidSystem::Work()
 		}
 		else
 		{
-			if ( m_LiquidVolumes[i]->m_pParentMesh->WasDrawnThisFrame() || m_LiquidVolumes[i]->m_pParentMesh->WasDrawnLastFrame() )
+			m_LiquidVolumes[i]->m_bRender = FALSE;
+			if ( nActive < LV_POOLSIZE && (m_LiquidVolumes[i]->m_pParentMesh->WasDrawnThisFrame() || m_LiquidVolumes[i]->m_pParentMesh->WasDrawnLastFrame()) )
 			{
 				m_Active[nActive++] = m_LiquidVolumes[i];
 				m_LiquidVolumes[i]->m_bRender = TRUE;
@@ -1480,9 +1505,9 @@ void CFLiquidSystem::Work()
 	{
 		if (m_Active[i] && (m_Active[i]->m_bRender == TRUE) )
 		{
-			if (m_LiquidVolumes[i]->m_nLastFrameWork != FVid_nFrameCounter)
+			if (m_Active[i]->m_nLastFrameWork != FVid_nFrameCounter)
 			{
-				m_LiquidVolumes[i]->m_nLastFrameWork = FVid_nFrameCounter;
+				m_Active[i]->m_nLastFrameWork = FVid_nFrameCounter;
 				m_Active[i]->Work();
 			}
 		}
@@ -1521,11 +1546,19 @@ void CFLiquidSystem::Render()
 
 #if FANG_PLATFORM_WIN
 	// Log when the set of drawn liquid surfaces changes, so a run shows each pool coming into view.
-	static u32 _nPortLastMask = 0xffffffff;
-	if( Fang_bPortDiag && nPortDrawnMask != _nPortLastMask ) {
-		_nPortLastMask = nPortDrawnMask;
-		DEVPRINTF( "PORT-LIQ frame %u: drawing %u of %u volumes (plane mask 0x%x), %u meshes\n",
-				   FVid_nFrameCounter, nPortDrawn, m_nNumLiquidVolume, nPortDrawnMask, m_nNumLiquidMesh );
+	// Split-screen views can see different pools; compare each viewport with its own previous mask.
+	static struct { FViewport_t *pView; u32 nMask; } aLastViews[4] = {};
+	if( Fang_bPortDiag ) {
+		FViewport_t *pView = fviewport_GetActive();
+		u32 nView;
+		for( nView=0; nView < 4; ++nView ) if( !aLastViews[nView].pView || aLastViews[nView].pView == pView ) break;
+		if( nView == 4 ) nView = 0;
+		if( aLastViews[nView].pView != pView || aLastViews[nView].nMask != nPortDrawnMask ) {
+			aLastViews[nView].pView = pView;
+			aLastViews[nView].nMask = nPortDrawnMask;
+			DEVPRINTF( "PORT-LIQ frame %u view %u: drawing %u of %u volumes (plane mask 0x%x), %u meshes\n",
+					   FVid_nFrameCounter, nView, nPortDrawn, m_nNumLiquidVolume, nPortDrawnMask, m_nNumLiquidMesh );
+		}
 	}
 #endif
 

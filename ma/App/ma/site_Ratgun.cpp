@@ -33,6 +33,9 @@
 #include "AI\AIEnviro.h"
 #include "AI\AIBrainman.h"
 #include "vehiclerat.h"
+#if defined(FANG_WINGC)
+#include "MultiplayerMgr.h"
+#endif
 
 #define _ANTENNA_SEGMENTS			( 5 )
 #define _ANTENNA_FREQUENCY			( 60.0f )
@@ -590,6 +593,10 @@ BOOL CRatGun::Create( CBotSiteWeapon::SiteWeaponData_t* pData, void* pUser, cons
 
 	m_ePreviousState = m_pData->m_eSiteWeaponState;
 	m_bPossessed = FALSE;
+#if defined(FANG_WINGC)
+	m_bCoopDriverCollisionSuppressed = FALSE;
+	m_bOldDriverCollision = TRUE;
+#endif
 
 	m_fIdlingVelocity					= 0;
 	m_fIdlingVelocityDamp				= .50f;						// how much velocity is left after hitting an extrema
@@ -889,7 +896,8 @@ void CRatGun::_HandleFireThisFrame(void)
 		RayEnd.Mul( vFireUnitDir, m_pSpewProps->fMaxLiveRange ).Add( MuzzlePoint );
 
 		FWorld_nTrackerSkipListCount = 0;
-		m_pOwnerBot->AppendTrackerSkipList();
+		if( pRat ) pRat->AppendTrackerSkipList();
+		else m_pOwnerBot->AppendTrackerSkipList();
 		if( fworld_FindClosestImpactPointToRayStart( &CollImpact, &MuzzlePoint, &RayEnd, FWorld_nTrackerSkipListCount, FWorld_apTrackerSkipList, TRUE, NULL, -1, FCOLL_MASK_COLLIDE_WITH_THIN_PROJECTILES ) ) 
 		{
 			// Hit something...
@@ -1368,7 +1376,17 @@ void 	CRatGun::_CuePossessed(BOOL bGoPosed)		// transform!()
 		m_pData->m_pDriverBot->Relocate_RotXlatFromUnitMtx_WS(pmtxAttachBot,FALSE);
 
 		// attach to point
- 		m_pData->m_pDriverBot->Attach_ToParent_WS( m_pOwnerBot,m_apszBoneNameList[BONE_ATTACHPOINT_GUNNER]);
+#if defined(FANG_WINGC)
+		if( MultiplayerMgr.IsLocalCoop() && IsOwnedByPlayer() ) {
+			// A seated human must not run ground translation or be pushed by the RAT/pods.
+			// DetachFromParent clears glue on exit; preserve the original mesh collision flag.
+			m_bOldDriverCollision = m_pData->m_pDriverBot->m_pWorldMesh->IsCollisionFlagSet();
+			m_bCoopDriverCollisionSuppressed = TRUE;
+			m_pData->m_pDriverBot->m_pWorldMesh->SetCollisionFlag(FALSE);
+			m_pData->m_pDriverBot->Attach_ToParent_WithGlue_WS(m_pOwnerBot,m_apszBoneNameList[BONE_ATTACHPOINT_GUNNER]);
+		} else
+#endif
+		m_pData->m_pDriverBot->Attach_ToParent_WS( m_pOwnerBot,m_apszBoneNameList[BONE_ATTACHPOINT_GUNNER]);
 		m_pData->m_pDriverBot->SetControls(NULL);
 //		m_pData->m_pDriverBot->EnteringMechWork(m_pOwnerBot);
 
@@ -1422,6 +1440,14 @@ void 	CRatGun::_CuePossessed(BOOL bGoPosed)		// transform!()
 	}
 	else
 	{
+#if defined(FANG_WINGC)
+		// Restore even if teardown removed the driver from the world before the gun.
+		if( m_bCoopDriverCollisionSuppressed && m_pData->m_pDriverBot &&
+			m_pData->m_pDriverBot->m_pWorldMesh ) {
+			m_pData->m_pDriverBot->m_pWorldMesh->SetCollisionFlag(m_bOldDriverCollision);
+		}
+		m_bCoopDriverCollisionSuppressed = FALSE;
+#endif
 		if (m_pData->m_pDriverBot && m_pData->m_pDriverBot->IsInWorld())// now, can get called on quit, and driver gets popped first
 		{
 			s32 nIdx = GetPlayerIndex();

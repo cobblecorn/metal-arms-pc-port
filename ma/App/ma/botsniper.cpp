@@ -50,7 +50,7 @@
 #define _LASERSIGHT_TEX		( "twdm_lit01" )
 
 #define _RETICLE_Y			( 0.2f )
-#define _SCOPE_EUK			( 1 )	// GameCube w_scope.csv has valid levels 0 and 1.
+#define _SCOPE_EUK			( 2 )
 #define _GRAPPLE_FLY_SPEED	( 300.0f )
 #define _BULLETTRAIL_TEX	( "TFMNsmoke01" )
 
@@ -97,11 +97,7 @@ TracerGroupHandle_t CBotSniper::m_hTracerGroup = TRACER_NULLGROUPHANDLE;
 TracerDef_t			CBotSniper::m_TracerDef;	
 CFTexInst			CBotSniper::m_TracerTexInst;
 
-BulletTrail_t*		CBotSniper::m_paBulletTrails = NULL;
-#if FANG_WINGC
-CDamageProfile*		CBotSniper::m_pPortShotDamageNPC = NULL;
-CDamageProfile*		CBotSniper::m_pPortShotDamagePlayer = NULL;
-#endif
+BulletTrail_t*		CBotSniper::m_paBulletTrails = NULL;		
 u32					CBotSniper::m_uNumActiveBulletTrails = 0;
 CFTexInst			CBotSniper::m_BulletTrailTex;
 
@@ -228,10 +224,6 @@ void CBotSniper::_ClearDataMembers( void ) {
 	m_eSnipeState = SNIPESTATE_NONE;
 
 	m_fFireTimer = 0.0f;
-#if FANG_WINGC
-	m_fPortDiagTimer = 0.0f;
-	m_bPortDiagDeathLogged = FALSE;
-#endif
 	m_fUnitAim = 0.0f;
 
 	m_bGrappleRecoilOn = FALSE;
@@ -275,51 +267,6 @@ BOOL CBotSniper::ClassHierarchyLoadSharedResources( void ) {
 		goto _ExitWithError;
 	}
 
-	// Retail GameCube b_sniper's MountAim table has 11 fields. The shared bot
-	// vocabulary has a final allowable-lock-angle field that this table omits.
-	// Other retail bot tables use 20 degrees for that field, so use the same
-	// threshold while leaving the retail row itself untouched.
-	{
-		static const s8 anMountAimFieldMap11[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, -1 };
-		static const s8 anMountAimFieldMap12[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
-		FMemFrame_t hMemFrame = fmem_GetFrame();
-		FGameDataFileHandle_t hFile = fgamedata_LoadFileToFMem( _BOTINFO_FILENAME );
-		if( hFile == FGAMEDATA_INVALID_FILE_HANDLE ) {
-			DEVPRINTF( "CBotSniper::ClassHierarchyLoadSharedResources(): Could not load %s.csv for MountAim compatibility.\n", _BOTINFO_FILENAME );
-			fmem_ReleaseFrame( hMemFrame );
-			goto _ExitWithError;
-		}
-
-		FGameDataTableHandle_t hMountAim = fgamedata_GetFirstTableHandle( hFile, "MountAim" );
-		if( hMountAim == FGAMEDATA_INVALID_TABLE_HANDLE ) {
-			DEVPRINTF( "CBotSniper::ClassHierarchyLoadSharedResources(): Could not find MountAim in %s.csv.\n", _BOTINFO_FILENAME );
-			fmem_ReleaseFrame( hMemFrame );
-			goto _ExitWithError;
-		}
-
-		u32 nMountAimFields = fgamedata_GetNumFields( hMountAim );
-		const s8 *panMountAimFieldMap = NULL;
-		if( nMountAimFields == 11 ) {
-			m_BotInfo_MountAim.fAllowableLockAngleCos = fmath_Cos( FMATH_DEG2RAD( 20.0f ) );
-			panMountAimFieldMap = anMountAimFieldMap11;
-		} else if( nMountAimFields == 12 ) {
-			panMountAimFieldMap = anMountAimFieldMap12;
-		} else {
-			DEVPRINTF( "CBotSniper::ClassHierarchyLoadSharedResources(): MountAim in %s.csv has %u fields; expected 11 or 12.\n",
-					   _BOTINFO_FILENAME, nMountAimFields );
-			fmem_ReleaseFrame( hMemFrame );
-			goto _ExitWithError;
-		}
-
-		if( !fgamedata_GetTableDataRemapped( hMountAim, m_aBotInfoVocab_MountAim, panMountAimFieldMap, 12,
-															&m_BotInfo_MountAim, sizeof( m_BotInfo_MountAim ) ) ) {
-			DEVPRINTF( "CBotSniper::ClassHierarchyLoadSharedResources(): Could not parse MountAim in %s.csv.\n", _BOTINFO_FILENAME );
-			fmem_ReleaseFrame( hMemFrame );
-			goto _ExitWithError;
-		}
-		fmem_ReleaseFrame( hMemFrame );
-	}
-
 	// Build animation stack...
 	if( !_BuildAnimStackDef() ) {
 		DEVPRINTF( "CBotSniper::ClassHierarchyLoadSharedResources():  Error creating bot anim stack def\n" );
@@ -352,13 +299,6 @@ BOOL CBotSniper::ClassHierarchyLoadSharedResources( void ) {
 		DEVPRINTF( "CBotSniper::ClassHierarchyLoadSharedResources() : Could not create tracer group.\n" );
 		goto _ExitWithError;
 	}
-
-#if FANG_WINGC
-	// The cut Sniper's tracer never delivered damage (its kill callback was empty) and retail has no
-	// Sniper damage profile: use the Rivet Gun's, L2 for enemy Snipers and L3 when a player drives one.
-	m_pPortShotDamageNPC = CDamage::FindDamageProfile( "RivetL2" );
-	m_pPortShotDamagePlayer = CDamage::FindDamageProfile( "RivetL3" );
-#endif
 
 	// load and init bullet trails
 	FASSERT( m_paBulletTrails == NULL );
@@ -398,6 +338,7 @@ BOOL CBotSniper::ClassHierarchyLoadSharedResources( void ) {
 
 	// Error:
 _ExitWithError:
+	FASSERT_NOW;
 	ClassHierarchyUnloadSharedResources();
 	fres_ReleaseFrame( frame );
 
@@ -414,10 +355,9 @@ void CBotSniper::ClassHierarchyUnloadSharedResources( void ) {
 		return;
 	}
 
-	if( m_hTracerGroup != TRACER_NULLGROUPHANDLE ) {
-		tracer_DestroyGroup( m_hTracerGroup );
-		m_hTracerGroup = TRACER_NULLGROUPHANDLE;
-	}
+	FASSERT( m_hTracerGroup != TRACER_NULLGROUPHANDLE );
+	tracer_DestroyGroup( m_hTracerGroup );
+	m_hTracerGroup = TRACER_NULLGROUPHANDLE;
 
 	m_AnimStackDef.Destroy();
 
@@ -896,23 +836,6 @@ void CBotSniper::ClassHierarchyWork( void ) {
 		DeathWork();
 	}
 
-#if FANG_WINGC
-	// -port-diag: where each recovered Sniper is and how it is doing, every 5 s, and when it goes down.
-	if( Fang_bPortDiag ) {
-		m_fPortDiagTimer -= FLoop_fPreviousLoopSecs;
-		if( m_fPortDiagTimer <= 0.0f || (IsDeadOrDying() && !m_bPortDiagDeathLogged) ) {
-			m_fPortDiagTimer = 1.0f;
-			if( IsDeadOrDying() ) {
-				m_bPortDiagDeathLogged = TRUE;
-			}
-			DEVPRINTF( "PORT-SNIPER '%s' %s at (%.0f, %.0f, %.0f) vel=(%.0f, %.0f, %.0f) state=%d grapple=%d fire=%.1f/%.1f health=%.2f\n",
-					   Name() ? Name() : "?", IsDeadOrDying() ? "down" : "alive", m_MountPos_WS.x, m_MountPos_WS.y, m_MountPos_WS.z,
-					   m_Velocity_WS.x, m_Velocity_WS.y, m_Velocity_WS.z, (int)m_nState, (int)m_eGrappleState,
-					   m_fControls_Fire1, m_fControls_Fire2, NormHealth() );
-		}
-	}
-#endif
-
 	_HandleWeaponAnimations();
 	_HandleSummerAnimations();
 	m_pGrapple->Work();
@@ -923,14 +846,14 @@ void CBotSniper::ClassHierarchyWork( void ) {
 }
 
 
-void CBotSniper::AppendTrackerSkipList( u32& nTrackerSkipListCount, CFWorldTracker **apTrackerSkipList ) {
+void CBotSniper::AppendTrackerSkipList() {
 	FASSERT( IsCreated() );
-	FASSERT( (nTrackerSkipListCount + 1) <= FWORLD_MAX_SKIPLIST_ENTRIES );
+	FASSERT( (FWorld_nTrackerSkipListCount + 1) <= FWORLD_MAX_SKIPLIST_ENTRIES );
 
-	apTrackerSkipList[nTrackerSkipListCount++] = m_pWorldMesh;
+	FWorld_apTrackerSkipList[FWorld_nTrackerSkipListCount++] = m_pWorldMesh;
 
 	if( m_pDataPortMeshEntity ) {
-		m_pDataPortMeshEntity->AppendTrackerSkipList( nTrackerSkipListCount, apTrackerSkipList );
+		m_pDataPortMeshEntity->AppendTrackerSkipList();
 	}
 }
 
@@ -995,9 +918,9 @@ void CBotSniper::_HandleWeaponAnimations( void ) {
 				SetControlValue( ANIMCONTROL_FIRE_END_LOWER, m_fUnitAim );
 			}
 
-			if( m_bControls_Action ) {
-				_EnterSnipingMode();
-			}
+			//if( m_bControls_Action ) {
+			//	_EnterSnipingMode();
+			//}
 
 //			FASSERT( GetControlValue( ANIMCONTROL_FIRE ) == 0.0f );
 //			FASSERT( GetControlValue( ANIMCONTROL_FIRE_START ) == 0.0f );
@@ -1662,13 +1585,6 @@ void CBotSniper::_WeaponWork( void ) {
 
 		// successfully fired a tracer
 		m_fFireTimer = m_BotInfo_Sniper.fReloadTime;
-#if FANG_WINGC
-		if( Fang_bPortDiag ) {
-			DEVPRINTF( "PORT-SNIPER '%s' fired from (%.0f, %.0f, %.0f) toward (%.0f, %.0f, %.0f)%s\n", Name() ? Name() : "?",
-					   vMuzzlePt.x, vMuzzlePt.y, vMuzzlePt.z, m_TargetedPoint_WS.x, m_TargetedPoint_WS.y, m_TargetedPoint_WS.z,
-					   m_nPossessionPlayerIndex >= 0 ? " (player)" : "" );
-		}
-#endif
 		
 		// kick off the firing animation
 		UpdateUnitTime( ANIMTAP_FIRE, 0.001f );
@@ -1694,35 +1610,6 @@ void CBotSniper::_HandleFireAnimation( void ) {
 
 void CBotSniper::_TracerKilledCallback( TracerDef_t *pTracerDef, TracerKillReason_e nKillReason, const FCollImpact_t *pImpact ) {
 	///*ME*/DEVPRINTF( "Boom\n" );
-#if FANG_WINGC
-	// PC port: deliver the shot's damage (the same impact path CBotSnarq's tracer uses).
-	if( nKillReason != TRACER_KILLREASON_HIT_GEO || !pImpact || !pTracerDef->pUser ) {
-		return;
-	}
-	CBotSniper *pSniper = (CBotSniper *)pTracerDef->pUser;
-
-	const CGCollMaterial *pCollMaterial = CGColl::GetMaterial( pImpact->nUserType );
-	pCollMaterial->DrawAllDrawableParticles( &pImpact->ImpactPoint, &pImpact->UnitFaceNormal, TRUE,
-											 fmath_RandomFloatRange( 0.2f, 0.4f ), fmath_RandomFloatRange( 0.25f, 0.75f ), 0.0f );
-
-	CDamageProfile *pProfile = pSniper->m_nPossessionPlayerIndex >= 0 ? m_pPortShotDamagePlayer : m_pPortShotDamageNPC;
-	CEntity *pEntity = CGColl::ExtractEntity( pImpact );
-	if( pEntity && pProfile ) {
-		CDamageForm *pDamageForm = CDamage::GetEmptyDamageFormFromPool();
-		if( pDamageForm ) {
-			pDamageForm->m_nDamageLocale	= CDamageForm::DAMAGE_LOCALE_IMPACT;
-			pDamageForm->m_nDamageDelivery	= CDamageForm::DAMAGE_DELIVERY_ONE_SPECIFIC_ENTITY;
-			pDamageForm->m_pDamageProfile	= pProfile;
-			pDamageForm->m_Damager.pWeapon	= NULL;
-			pDamageForm->m_Damager.pBot		= pSniper;
-			pDamageForm->m_Damager.pEntity	= pSniper;
-			pDamageForm->m_Damager.nDamagerPlayerIndex = pSniper->m_nPossessionPlayerIndex;
-			pDamageForm->m_pDamageeEntity	= pEntity;
-			pDamageForm->InitTriDataFromCollImpact( (CFWorldMesh *)pImpact->pTag, pImpact, &pTracerDef->UnitDir_WS );
-			CDamage::SubmitDamageForm( pDamageForm );
-		}
-	}
-#endif
 }
 
 
@@ -1736,7 +1623,7 @@ void CBotSniper::_TracerBuildTrackerSkipList( void *pUser ) {
 
 void CBotSniper::_TracerMovedCB( void* pUserData, const CFVec3A& NewPos_WS, BOOL bDied ) {
 	u32 uTrailID = (u32)pUserData;
-	if( !m_paBulletTrails || uTrailID >= m_BotInfo_Sniper.uMaxTracers ) {
+	if( uTrailID > m_BotInfo_Sniper.uMaxTracers ) {
 		return;
 	}
 
@@ -2483,9 +2370,7 @@ void CBotSniper::_DrawLaserSights( void ) {
 void CBotSniper::_CalcLaserPt( void ) {
 	// based on target point.  Find the normal, then calculate the four corners
 	// only do this in scope mode
-	// PC port: this checked m_uNumActiveBulletTrails, so the sight count (reset only when the sights
-	// are drawn) ran past m_avLaserPt[] every frame and overwrote other statics (tracers, damage forms).
-	if( m_uNumSightsActive >= MAX_LASER_SIGHTS ) {
+	if( m_uNumActiveBulletTrails >= MAX_LASER_SIGHTS ) {
 		return;
 	}
 
@@ -2638,13 +2523,6 @@ void CBotSniperBuilder::SetDefaults( u64 nEntityTypeBits, u64 nEntityLeafTypeBit
 	// Override defaults set by our parent classes...
 	m_nEC_HealthContainerCount = CBotSniper::m_BotInfo_Gen.nBatteryCount;
 	m_pszEC_ArmorProfile = CBotSniper::m_BotInfo_Gen.pszArmorProfile;
-#if FANG_WINGC
-	// The retail b_sniper gen table (cut content, shared with the Swarmer Queen's) names the
-	// "None_Im_Invincible" armor profile, so a revived Sniper could never be killed. Use the Grunt's.
-	if( !m_pszEC_ArmorProfile || !fclib_stricmp( m_pszEC_ArmorProfile, "None_Im_Invincible" ) ) {
-		m_pszEC_ArmorProfile = "Grunt";
-	}
-#endif
 }
 
 

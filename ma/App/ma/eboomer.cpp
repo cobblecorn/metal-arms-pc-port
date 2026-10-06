@@ -25,6 +25,9 @@
 #include "explosion.h"
 #include "eparticlepool.h"
 #include "FScriptSystem.h"
+#include "MultiplayerMgr.h"
+#include "level.h"
+#include "player.h"
 
 
 
@@ -534,6 +537,15 @@ void CEBoomer::CheckpointRestore( void ) {
 }
 
 
+#if FANG_WINGC
+static BOOL _CoopCanBreachEntrance( const CEntity *pGate, const CDamageData *pDamageData ) {
+	return MultiplayerMgr.IsLocalCoop() && Level_nLoadedIndex >= 0 && pGate->Name() &&
+		!fclib_stricmp( Level_aInfo[Level_nLoadedIndex].pszWorldResName, "WEWCcomm_02" ) &&
+		!fclib_stricmp( pGate->Name(), "frontie" ) && pDamageData->m_Damager.nDamagerPlayerIndex >= 0 &&
+		pDamageData->m_Damager.nDamagerPlayerIndex < CPlayer::m_nPlayerCount;
+}
+#endif
+
 void CEBoomer::InflictDamage( CDamageData *pDamageData ) {
 	if( IsDetPackOnly() ) {
 		// Apply hitpoints only if from detpack...
@@ -592,7 +604,11 @@ void CEBoomer::InflictDamage( CDamageData *pDamageData ) {
 		}
 	} else if( m_pDamageOnlyProfile ) {
 		// if damage-only profile is set, only allow object to be damaged if profiles match.
-		if( pDamageData->m_pDamageProfile != m_pDamageOnlyProfile ) {
+		if( pDamageData->m_pDamageProfile != m_pDamageOnlyProfile
+#if FANG_WINGC
+			&& !_CoopCanBreachEntrance( this, pDamageData )
+#endif
+		) {
 			return;
 		}
 	}

@@ -1,5 +1,9 @@
 # Enemy and actor implementation map
 
+> **Update 2026-09-29 (removed):** the in-game Mil Sniper was taken out again at the user's request (the
+> recovered model is too tall and poorly animated for the campaign); see HANDOFF.md. On 2026-09-30 the
+> Nuke/Water Grenades went too, so the port has no cut content. The earlier note follows.
+>
 > **Update 2026-09-29 (implementation):** the Mil Sniper now spawns in the campaign and fights. The float/fling,
 > crash and no-damage problems below were bugs in the recovered actor (a stale `AppendTrackerSkipList()`
 > override, a laser-sight array overflow, an empty tracer kill callback, invincible retail armor), all fixed.

@@ -1288,8 +1288,25 @@ BOOL CMemCardItemInst::RestoreInventory( const CMemCardItemInst *pSave, CItemIns
 		if( i == nNumItems ) {
 			// didn't find a match
 			pItem->m_pItemData = NULL;
-			DEVPRINTF( "CMemCardItemInst::RestoreInventory(): could not find a matching item for Item CRC %d.\n", pSave->m_nItemNameCRC );
-			return FALSE;
+#if FANG_WINGC
+			// Retired experimental grenades in existing saves become their original retail weapons.
+			// GenerateNameCRC hashes the lower-case tag padded to 64 bytes, including its terminator.
+			static const char aRetiredTags[][64] = { "nuke grenade", "water grenade" };
+			static cchar *apszRetailTags[] = { "coring charge", "emp grenade" };
+			for( u32 nRetired = 0; nRetired < sizeof(aRetiredTags) / sizeof(aRetiredTags[0]); ++nRetired ) {
+				if( pSave->m_nItemNameCRC == fmath_Crc32( 0, (const u8 *)aRetiredTags[nRetired], sizeof(aRetiredTags[0]) ) ) {
+					pItem->m_pItemData = CItemRepository::RetrieveEntry( apszRetailTags[nRetired], NULL );
+					if( pItem->m_pItemData ) {
+						DEVPRINTF( "Port: restored retired grenade as '%s'.\n", apszRetailTags[nRetired] );
+					}
+					break;
+				}
+			}
+#endif
+			if( !pItem->m_pItemData ) {
+				DEVPRINTF( "CMemCardItemInst::RestoreInventory(): could not find a matching item for Item CRC %d.\n", pSave->m_nItemNameCRC );
+				return FALSE;
+			}
 		}
 	} else {
 		pItem->m_pItemData = NULL;

@@ -1720,6 +1720,7 @@ public:
 
 	// Recruitment:
 	BOOL Recruit_CanBeRecruited( void ) const;
+	BOOL Recruit_IsInstanceForbidden( void ) const { FASSERT( IsCreated() ); return !!(m_nBotFlags2 & BOTFLAG2_INST_CANNOT_BE_RECRUITED); }
 	BOOL Recruit_IsRecruited( void ) const { FASSERT( IsCreated() ); return (m_nRecruitID >= 0); }
 	s32  Recruit_GetRecruiter( void ) const { FASSERT( IsCreated() ); return (m_nRecruitID >= 0) ? m_nRecruitPlayerIndex : -1; }
 	BOOL Recruit( CBot *pRecruiterBot, const CFVec3A *pEpicenter_WS=NULL );

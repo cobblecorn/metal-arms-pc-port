@@ -19,8 +19,10 @@
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
 #include "game.h"
+#include "SpyVsSpy.h"
 #if defined(MA_PC_INPUT)
 #include "pc_input.h"
+#include "pc_cheats.h"
 #include "discord_rpc.h"
 #include <windows.h>
 #endif
@@ -64,7 +66,6 @@
 #include "player.h"
 #include "explosion.h"
 #include "botswarmer.h"
-#include "botsniper.h"
 #include "gamesave.h"
 #include "gstring.h"
 #include "damage.h"
@@ -122,6 +123,10 @@
 #include "botgrunt.h"
 #include "LightPool.h"
 #include "SplitScreen.h"
+#if FANG_WINGC
+#include "CamManual.h"
+#include "fworld_coll.h"
+#endif
 #include "MultiplayerMgr.h"
 #include "wpr_levelcomplete.h"
 #include "flightgroup.h"
@@ -459,14 +464,75 @@ static BOOL8 _bSystemInitialized = FALSE;
 static BOOL8 _bGameUnloadedNeeded = FALSE;// prevents game_unload from being called twice
 static BOOL8 _bAllowCutSceneSkip;
 static BOOL8 _bCompletedLevel;
+static BOOL8 _bEndingMoviePlayed;
 static ControlMode_e _aeControlMode[MAX_PLAYERS];
 #if defined(MA_PC_INPUT)
 static void _SetCoopLetterboxModes( ControlMode_e eFrom, ControlMode_e eFrom2, ControlMode_e eTo );
 #endif
+#if FANG_WINGC
+static void _CoopWatchCamerasWork( void );
+static void _CoopWatchCamerasReset( void );
+static s32 _nCoopStoryPlayer = -1;
+#endif
 #if defined(MA_PC_INPUT)
 #define _WEAPONSELECT_HOLD_SECS		( 0.3f )	// user-chosen hold before a weapon list opens
-static BOOL8 _aabWeaponSelectArmed[MAX_PLAYERS][2];	// [player][0 = primary, 1 = secondary]
-static f32 _aafWeaponSelectHeldSecs[MAX_PLAYERS][2];
+#define _WEAPONSELECT_DOUBLE_TAP_SECS	( 0.3f )
+enum { _WSINPUT_NONE, _WSINPUT_TAP, _WSINPUT_OPEN, _WSINPUT_CYCLE };
+struct _WeaponSelectButton_t {
+	BOOL8 bDown, bArmed, bTapPending;
+	f32 fHeldSecs, fTapAge;
+
+	void Reset( BOOL bHeld ) {
+		bDown = bHeld;
+		bArmed = bTapPending = FALSE;
+		fHeldSecs = fTapAge = 0.0f;
+	}
+
+	u32 Work( u32 uLatches, f32 fElapsed ) {
+		const BOOL bOn = (uLatches & FPAD_LATCH_ON) != 0;
+		const BOOL bSpike = !bDown && !bOn && (uLatches & FPAD_LATCH_SPIKED);
+		const BOOL bPress = (!bDown && bOn) || bSpike;
+		const BOOL bRelease = (bDown && !bOn) || bSpike;
+		bDown = bOn;
+		if( fElapsed < 0.0f ) { Reset( bOn ); return _WSINPUT_NONE; }
+		if( bTapPending ) {
+			fTapAge += fElapsed;
+			if( fTapAge > _WEAPONSELECT_DOUBLE_TAP_SECS ) bTapPending = FALSE;
+		}
+		if( bPress ) {
+			bArmed = TRUE;
+			fHeldSecs = 0.0f; // Time before the press, including a hitch, is not held time.
+		} else if( bArmed && bOn ) {
+			fHeldSecs += fElapsed;
+		}
+		if( bArmed && bOn && fHeldSecs >= _WEAPONSELECT_HOLD_SECS ) {
+			bArmed = bTapPending = FALSE;
+			return _WSINPUT_OPEN;
+		}
+		if( bArmed && bRelease ) {
+			bArmed = FALSE;
+			if( bTapPending ) {
+				bTapPending = FALSE;
+				return _WSINPUT_CYCLE;
+			}
+			bTapPending = TRUE;
+			fTapAge = 0.0f;
+			return _WSINPUT_TAP;
+		}
+		return _WSINPUT_NONE;
+	}
+};
+static _WeaponSelectButton_t _aaWeaponSelectButton[MAX_PLAYERS][2];
+static CEntity *_apWeaponSelectBody[MAX_PLAYERS];
+static u32 _anWeaponSelectController[MAX_PLAYERS];
+
+void game_PcResetWeaponSelect( void ) {
+	for( u32 nPlayer = 0; nPlayer < MAX_PLAYERS; ++nPlayer ) {
+		_apWeaponSelectBody[nPlayer] = NULL;
+		_aaWeaponSelectButton[nPlayer][0].Reset( TRUE );
+		_aaWeaponSelectButton[nPlayer][1].Reset( TRUE );
+	}
+}
 #endif
 static CFStringTable *_pCutSceneTable = NULL;
 static cchar *_pszCurCutSceneName = NULL;
@@ -612,7 +678,13 @@ static void _DiscordLevelPresence( const GameInitInfo_t *pGameInit ) {
 	}
 
 	if( !pGameInit || pGameInit->bSinglePlayer ) {
-		fclib_strcpy( szState, "Campaign" );
+		const u32 nPlayers = pGameInit ? pGameInit->nNumPlayers : CPlayer::m_nPlayerCount;
+		if( nPlayers > 1 ) {
+			_snprintf( szState, sizeof(szState) - 1, "CO-OP Campaign (%u players)", nPlayers );
+		} else {
+			fclib_strcpy( szState, "Campaign" );
+		}
+		szState[sizeof(szState) - 1] = 0;
 	} else {
 		char szRules[64];
 		szRules[0] = 0;
@@ -630,6 +702,7 @@ static void _DiscordLevelPresence( const GameInitInfo_t *pGameInit ) {
 		}
 		szState[sizeof(szState) - 1] = 0;
 	}
+	DEVPRINTF( "Discord presence: %s / %s\n", szDetails, szState );
 	discord_SetActivity( szDetails, szState, true );
 }
 #endif
@@ -645,6 +718,7 @@ BOOL game_LoadLevel( cchar *pszLevelTitle,
 	DEVPRINTF( "******** LOAD MARKER - START LOADING LEVEL***********.\n" );
 #if FANG_WINGC
 	CEntity::CoopTripwireReset();
+	_CoopWatchCamerasReset();
 #endif
 #if !GAMELOOP_EXTERNAL_DEMO
 	ffile_LogStart( pszLevelTitle );
@@ -660,6 +734,7 @@ BOOL game_LoadLevel( cchar *pszLevelTitle,
     _hResFrame = fres_GetFrame();
 
 	_bCompletedLevel = FALSE;
+	_bEndingMoviePlayed = FALSE;
 	_bGameUnloadedNeeded = TRUE;
 
     // set the player profile array and control modes
@@ -672,6 +747,9 @@ BOOL game_LoadLevel( cchar *pszLevelTitle,
 
 		_aeControlMode[i] = CONTROLMODE_NORMAL;
 	}
+#if defined(MA_PC_INPUT)
+	game_PcResetWeaponSelect();
+#endif
 	MultiplayerMgr.PreLoadInitLevel( pGameInit );
 
 	// Init spawner system...
@@ -730,6 +808,7 @@ BOOL game_LoadGenericDebugLevel( cchar *pszWorldResName ) {
 	// I PULLED THE LOAD SCREEN MOVIE WHILE LOADING THIS LEVEL TO SIMPLIFIY THE CODE A BIT, IT IS ONLY A DEBUG LEVEL AFTER ALL
 
 	_bCompletedLevel = FALSE;
+	_bEndingMoviePlayed = FALSE;
 	_bGameUnloadedNeeded = TRUE;
 	CFScriptSystem::SetMonitorsOn( Gameloop_bDrawDebugInfo );
 
@@ -775,6 +854,7 @@ void game_UnloadLevel( void ) {
 	}
 #if FANG_WINGC
 	CEntity::CoopTripwireReset();
+	_CoopWatchCamerasReset();
 #endif
 
 	if( !_bGameUnloadedNeeded ) {
@@ -923,6 +1003,22 @@ void game_ControlModeWork() {
 		CHud2* pHud = CHud2::GetHudForPlayer(nPlayer);
 		u32 nControlIndex = Player_aPlayer[nPlayer].m_nControllerIndex;
 
+#if defined(MA_PC_INPUT)
+		static const u32 _anSelectAction[2] = { GAMEPAD_MAIN_SELECT_PRIMARY, GAMEPAD_MAIN_SELECT_SECONDARY };
+		CEntity *pSelectBody = Player_aPlayer[nPlayer].m_pEntityCurrent;
+		const BOOL bNewBody = _apWeaponSelectBody[nPlayer] != pSelectBody ||
+			_anWeaponSelectController[nPlayer] != nControlIndex;
+		const BOOL bCanSelect = pSelectBody && (pSelectBody->TypeBits() & ENTITY_BIT_BOT) &&
+			pSelectBody->IsInWorld() && !((CBot *)pSelectBody)->IsDeadOrDying() && fdx8vid_HaveFocus();
+		if( bNewBody || !bCanSelect || _aeControlMode[nPlayer] != CONTROLMODE_NORMAL ) {
+			for( u32 uSide = 0; uSide < 2; ++uSide )
+				_aaWeaponSelectButton[nPlayer][uSide].Reset(
+					(Gamepad_aapSample[nControlIndex][_anSelectAction[uSide]]->uLatches & FPAD_LATCH_ON) != 0 );
+		}
+		_apWeaponSelectBody[nPlayer] = pSelectBody;
+		_anWeaponSelectController[nPlayer] = nControlIndex;
+#endif
+
 		switch( _aeControlMode[nPlayer] ) {
 		
 		///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -944,40 +1040,19 @@ void game_ControlModeWork() {
 				}
 			} else {
 #if defined(MA_PC_INPUT)
-				// Desktop: a weapon list opens only once its button has been held for
-				// _WEAPONSELECT_HOLD_SECS, so a tap (which reloads the primary weapon) never flashes it.
-				// A release within that time replays the original press-and-release.
-				static const u32 _anSelectAction[2] = { GAMEPAD_MAIN_SELECT_PRIMARY, GAMEPAD_MAIN_SELECT_SECONDARY };
+				// Taps never enter the selector. A second quick tap cycles that hand;
+				// only a fresh uninterrupted hold opens the list, for keyboard and pads.
 				BOOL bStarted = FALSE;
-				for( u32 uSide = 0; uSide < 2 && !bStarted; ++uSide ) {
+				for( u32 uSide = 0; bCanSelect && uSide < 2 && !bStarted; ++uSide ) {
 					const u32 uLatches = Gamepad_aapSample[nControlIndex][ _anSelectAction[uSide] ]->uLatches;
-					BOOL8 &rbArmed = _aabWeaponSelectArmed[nPlayer][uSide];
-					f32 &rfHeldSecs = _aafWeaponSelectHeldSecs[nPlayer][uSide];
-					if( uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
-						rbArmed = TRUE;
-						rfHeldSecs = 0.0f;
-					}
-					if( !rbArmed ) {
-						continue;
-					}
-					CInventory *pInventory = ((CBot *)Player_aPlayer[nPlayer].m_pEntityCurrent)->m_pInventory;
-					if( uLatches & FPAD_LATCH_ON ) {
-						rfHeldSecs += FLoop_fRealPreviousLoopSecs;
-						if( rfHeldSecs >= _WEAPONSELECT_HOLD_SECS ) {
-							rbArmed = FALSE;
-							bStarted = pHud->StartWeaponSelect( uSide, pInventory, FALSE );
-						}
-					} else {
-						rbArmed = FALSE;
-						// Only a release seen this frame counts as a tap; one that happened while
-						// another control mode ran (pause, barter) is dropped.
-						if( uLatches & ( FPAD_LATCH_CHANGED | FPAD_LATCH_SPIKED ) ) {
-							bStarted = pHud->StartWeaponSelect( uSide, pInventory, TRUE );
-						}
-					}
+					const u32 uAction = _aaWeaponSelectButton[nPlayer][uSide].Work( uLatches, FLoop_fRealPreviousLoopSecs );
+					CInventory *pInventory = ((CBot *)pSelectBody)->m_pInventory;
+					if( uAction == _WSINPUT_OPEN )
+						bStarted = pHud->StartWeaponSelect( uSide, pInventory, FALSE );
+					else if( uAction == _WSINPUT_TAP || uAction == _WSINPUT_CYCLE )
+						pHud->PcWeaponSelectTap( uSide, pInventory, uAction == _WSINPUT_CYCLE );
 				}
 				if( bStarted ) {
-					_aabWeaponSelectArmed[nPlayer][0] = _aabWeaponSelectArmed[nPlayer][1] = FALSE;
 					_aeControlMode[nPlayer] = CONTROLMODE_WEAPONSELECT;
 					break;
 				}
@@ -1158,6 +1233,10 @@ BOOL game_Work( void ) {
 	if( !CPauseScreen::IsActive() && 
 		_nControllerToPlugIn == _ALL_CONTROLLERS_PLUGGED_IN ) {
 
+#if defined(MA_PC_INPUT)
+		pccheats_Work();
+#endif
+
 		PROTRACK_BEGINBLOCK("CallActiveListCallbacks");
 			CEntity::CallActiveListCallbacks();
 		PROTRACK_ENDBLOCK();
@@ -1191,7 +1270,10 @@ BOOL game_Work( void ) {
 	PROTRACK_ENDBLOCK();// "AIMain"
 
 		PROTRACK_BEGINBLOCK("ScriptSys");
-			CFScriptSystem::Work();	
+#if FANG_WINGC
+			CMAScriptTypes::RefreshCoopScriptPlayers();
+#endif
+			CFScriptSystem::Work();
 		PROTRACK_ENDBLOCK();// "ScriptSys"
 
 		PROTRACK_BEGINBLOCK("CWorkable");
@@ -1307,6 +1389,9 @@ BOOL game_Work( void ) {
 	PROTRACK_ENDBLOCK();// "TalkSysWork"
 
 	// CHud2::Work should come after CTalkSystem2::Work().
+#if FANG_WINGC
+	_CoopWatchCamerasWork();
+#endif
 	PROTRACK_BEGINBLOCK("HUD/Pause");
 	// TODO: CPauseScreen needs to work for multiplayer...
 #if FANG_WINGC
@@ -1350,6 +1435,10 @@ BOOL game_Work( void ) {
 		CBlinkGlow::Work();
 	PROTRACK_ENDBLOCK();// "BlinkGlowWork"
 
+#if FANG_WINGC
+	extern void port_CoopRegressionWork();
+	port_CoopRegressionWork();
+#endif
 	PROTRACK_BEGINBLOCK("BarterSysWork");
 		bartersystem_Work();
 	PROTRACK_ENDBLOCK();//  "BarterSysWork"
@@ -1374,7 +1463,7 @@ BOOL game_Work( void ) {
 		checkpoint_Work();
 	PROTRACK_ENDBLOCK();// "CheckpointWork"
 #if FANG_WINGC
-	// Local co-op: release tripwire events once every standing player has arrived.
+	// Local co-op: recover missed crossings and release held team gates.
 	CEntity::CoopTripwireWork();
 #endif
 
@@ -1514,6 +1603,11 @@ BOOL game_Draw( void ) {
 					( _fFade_Timer >= Level_fEndingFadeSecs ) ||
 					( CPauseScreen::IsActive() ) ||
 					( CFTextMonitor::IsPaused() ) ) {
+					if( MultiplayerMgr.IsSinglePlayer() && !_bEndingMoviePlayed ) {
+						_bEndingMoviePlayed = TRUE;
+						const cutscene_Handle_t hEnding = level_GetEndingMovieHandle();
+						if( hEnding != CUTSCENE_INVALID_HANDLE && cutscene_Start( hEnding ) ) return TRUE;
+					}
 					// something is up, end the fade out
 					_nFadeState = _FADE_STATE_NONE;
 					game_DrawSolidFullScreenOverlay( 0.0f, 0.0f );
@@ -1545,8 +1639,37 @@ BOOL game_Draw( void ) {
 }
 
 
+#if FANG_WINGC
+s32 game_GetStoryPlayerIndex( void ) {
+	if( CSpyVsSpy::IsFactoryActive() ) return 0;
+	if( !MultiplayerMgr.IsLocalCoop() ) {
+		return 0;
+	}
+	if( CBot::m_bCutscenePlaying && _nCoopStoryPlayer >= 0 && _nCoopStoryPlayer < CPlayer::m_nPlayerCount ) {
+		return _nCoopStoryPlayer;
+	}
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		CEntity *pEntity = Player_aPlayer[n].m_pEntityCurrent;
+		if( pEntity && pEntity->IsInWorld() && (pEntity->TypeBits() & ENTITY_BIT_BOT) && !((CBot *)pEntity)->IsDeadOrDying() ) {
+			_nCoopStoryPlayer = n;
+			return n;
+		}
+	}
+	_nCoopStoryPlayer = 0;
+	return 0;
+}
+#endif
+
 BOOL game_BeginCutScene( cchar *pszCutSceneTitle, BOOL bImmediate )
 {
+	s32 nStoryPlayer = 0;
+#if FANG_WINGC
+	nStoryPlayer = game_GetStoryPlayerIndex();
+	if( MultiplayerMgr.IsLocalCoop() ) {
+		DEVPRINTF( "Co-op: cutscene actor is player %d.\n", nStoryPlayer + 1 );
+	}
+#endif
+	CEntity *pStoryEntity = Player_aPlayer[nStoryPlayer].m_pEntityCurrent;
 	CPlayer::m_pCurrent->DisableEntityControl();
 #if defined(MA_PC_INPUT)
 	// Local co-op: the cutscene holds every player, not only the current one.
@@ -1556,10 +1679,10 @@ BOOL game_BeginCutScene( cchar *pszCutSceneTitle, BOOL bImmediate )
 		}
 	}
 #endif
-	CAIBrain* pBrain = Player_aPlayer[0].m_pEntityCurrent->AIBrain();
-	if (Player_aPlayer[0].m_pEntityCurrent ->TypeBits() & ENTITY_BIT_BOT)
+	CAIBrain* pBrain = pStoryEntity->AIBrain();
+	if (pStoryEntity->TypeBits() & ENTITY_BIT_BOT)
 	{
-		((CBot*)Player_aPlayer[0].m_pEntityCurrent)->HeadStopLook();
+		((CBot*)pStoryEntity)->HeadStopLook();
 	}
 	aibrainman_Activate(pBrain);
 	ai_NotifyCutSceneBegin();
@@ -1577,7 +1700,12 @@ BOOL game_BeginCutScene( cchar *pszCutSceneTitle, BOOL bImmediate )
 
 BOOL game_EndCutScene( BOOL bImmediate )
 {
-	aibrainman_Deactivate(Player_aPlayer[0].m_pEntityCurrent->AIBrain());
+	s32 nStoryPlayer = 0;
+#if FANG_WINGC
+	nStoryPlayer = game_GetStoryPlayerIndex();
+#endif
+	CEntity *pStoryEntity = Player_aPlayer[nStoryPlayer].m_pEntityCurrent;
+	aibrainman_Deactivate(pStoryEntity->AIBrain());
 	CPlayer::m_pCurrent->EnableEntityControl();
 #if defined(MA_PC_INPUT)
 	if( MultiplayerMgr.IsSinglePlayer() ) {
@@ -1586,17 +1714,67 @@ BOOL game_EndCutScene( BOOL bImmediate )
 		}
 	}
 #endif
-	aibrainman_ConfigurePlayerBotBrain(Player_aPlayer[0].m_pEntityCurrent->AIBrain(), 0);
+	aibrainman_ConfigurePlayerBotBrain(pStoryEntity->AIBrain(), nStoryPlayer);
 	ai_NotifyCutSceneEnd();
-	if (Player_aPlayer[0].m_pEntityCurrent ->TypeBits() & ENTITY_BIT_BOT)
+	if (pStoryEntity->TypeBits() & ENTITY_BIT_BOT)
 	{
-		((CBot*)Player_aPlayer[0].m_pEntityCurrent)->HeadLook();
+		((CBot*)pStoryEntity)->HeadLook();
 	}
 	CBot::EnableBotDamageGlobally();
 	CBot::SetCutscenePlaying( FALSE );
 	return game_LeaveLetterbox(bImmediate);
 }
 
+
+#if FANG_WINGC
+extern BOOL MAScript_bPortScriptCameraActive;	// MAScriptTypes.cpp: a script's Cam_Activate is in effect
+
+// Co-op borrows the live cinematic camera, with each player's own viewport and camera controller.
+// A source link is resolved at render time, after every cameraman has worked: no eased or stale view.
+static void _CoopWatchCamerasReset( void ) {
+	_nCoopStoryPlayer = -1;
+	for( u32 n = 0; n < fcamera_GetCameraCount() && n < MAX_PLAYERS; ++n ) {
+		fcamera_GetCameraByIndex( n )->SetViewSource( NULL );
+		if( n < (u32)CPlayer::m_nPlayerCount ) Player_aPlayer[n].m_pViewportPersp3D = (FViewport_t *)fcamera_GetCameraByIndex( n )->GetViewport();
+	}
+	MAScript_bPortScriptCameraActive = FALSE;
+}
+
+static void _CoopWatchCamerasWork( void ) {
+	// Clear all links first, so switching the story actor cannot create reciprocal camera links.
+	for( u32 n = 0; n < fcamera_GetCameraCount() && n < MAX_PLAYERS; ++n ) {
+		fcamera_GetCameraByIndex( n )->SetViewSource( NULL );
+		if( n < (u32)CPlayer::m_nPlayerCount ) Player_aPlayer[n].m_pViewportPersp3D = (FViewport_t *)fcamera_GetCameraByIndex( n )->GetViewport();
+	}
+	if( !MultiplayerMgr.IsLocalCoop() || CPauseScreen::IsActive() || CSpyVsSpy::CoopIndividualViews() ) return;
+	GameCamType_e nP1Type = GAME_CAM_TYPE_NOT_IN_USE;
+	gamecam_GetCameraManByIndex( GAME_CAM_PLAYER_1, &nP1Type );
+	const BOOL bScriptCamera = nP1Type == GAME_CAM_TYPE_CUTSCENE ||
+		(nP1Type == GAME_CAM_TYPE_MANUAL && MAScript_bPortScriptCameraActive);
+	const s32 nStoryPlayer = game_GetStoryPlayerIndex();
+	CEntity *pStory = Player_aPlayer[nStoryPlayer].m_pEntityCurrent;
+	const BOOL bStoryUp = pStory && (pStory->TypeBits() & ENTITY_BIT_BOT) && pStory->IsInWorld() &&
+		!((CBot *)pStory)->IsDeadOrDying();
+	BOOL bSceneHeld = !Player_aPlayer[nStoryPlayer].HasEntityControl() || CSpyVsSpy::CoopPackingWaiting();
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		if( _aeControlMode[n] == CONTROLMODE_LETTERBOX || _aeControlMode[n] == CONTROLMODE_LETTERBOXFF ) bSceneHeld = TRUE;
+	}
+	if( !bScriptCamera && !(bSceneHeld && bStoryUp) ) return;
+	const s32 nSource = bScriptCamera ? 0 : nStoryPlayer;
+	// Shopping disables only the shopper's controls and uses a manual camera.
+	// That private view is not a cinematic for the rest of the team.
+	if( _aeControlMode[nSource] == CONTROLMODE_BARTERSYSTEM ) return;
+	CFCamera *pSource = fcamera_GetCameraByIndex( PLAYER_CAM(nSource) );
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		if( n != nSource ) {
+			CFCamera *pViewer = fcamera_GetCameraByIndex( PLAYER_CAM(n) );
+			pViewer->SetViewSource( pSource );
+			Player_aPlayer[n].m_pViewportPersp3D = (FViewport_t *)pViewer->GetViewport();
+		}
+	}
+}
+
+#endif
 
 #if defined(MA_PC_INPUT)
 // Local co-op: a cutscene letterboxes every player, so anyone's START skips it. Scripts run with the
@@ -1797,10 +1975,6 @@ static void _DrawMainScene_Persp( void ) {
 		CFXMagmaBomb::DrawAll();
 		CBotScout::DrawBeams();
 		BotEliteGuard_DrawBeams();
-#if FANG_WINGC
-		// Recovered Mil Snipers: bullet trails, laser sights and grapple cables (also resets the sight count).
-		CBotSniper::DrawEffects();
-#endif
 
 		fexplosion_Draw( gamecam_GetActiveCamera() );
 
@@ -2057,41 +2231,6 @@ _ExitWithError:
 	return FALSE;
 }
 
-#if defined(MA_PC_INPUT)
-// Port-only combat harness: place a retail-asset Sniper in front of player 0 so
-// its inherited enemy brain, rifle and grapple code can be exercised in a real map.
-static BOOL _SpawnPortTestSniper( void ) {
-	char szEnabled[8] = { 0 };
-	if( !GetEnvironmentVariableA( "MA_PORT_SPAWN_SNIPER_TEST", szEnabled, sizeof(szEnabled) ) || szEnabled[0] != '1' ) {
-		return TRUE;
-	}
-
-	if( !Player_aPlayer[0].m_pEntityOrig ) {
-		DEVPRINTF( "Port Sniper test spawn requested before player 0 was created.\n" );
-		return FALSE;
-	}
-
-	CFMtx43A SpawnMtx = *Player_aPlayer[0].m_pEntityOrig->MtxToWorld();
-	SpawnMtx.m_vPos.x += SpawnMtx.m_vFront.x * 32.0f;
-	SpawnMtx.m_vPos.y += SpawnMtx.m_vFront.y * 32.0f;
-	SpawnMtx.m_vPos.z += SpawnMtx.m_vFront.z * 32.0f;
-	SpawnMtx.m_vFront.Negate();
-	SpawnMtx.m_vRight.Negate();
-
-	CBotSniper *pSniper = fnew CBotSniper;
-	if( !pSniper || !pSniper->Create( -1, FALSE, "PortSniperTest", &SpawnMtx, "Default" ) ) {
-		if( pSniper ) {
-			fdelete( pSniper );
-		}
-		DEVPRINTF( "Could not create the opt-in PortSniperTest enemy.\n" );
-		return FALSE;
-	}
-
-	DEVPRINTF( "Spawned opt-in PortSniperTest enemy at (%.2f, %.2f, %.2f).\n",
-			   SpawnMtx.m_vPos.x, SpawnMtx.m_vPos.y, SpawnMtx.m_vPos.z );
-	return TRUE;
-}
-#endif
 
 void _DisablePlayerControls(s32 nPlayer) {
 	// Get the player currently in control...
@@ -2218,11 +2357,6 @@ static BOOL _PostWorldLoadGameInit( const GameInitInfo_t *pGameInit ) {
 				MultiplayerMgr.SetupPlayer( nPlayerNum );
 		}
 
-#if defined(MA_PC_INPUT)
-		if( !_SpawnPortTestSniper() ) {
-			goto _ExitStartGameWithError;
-		}
-#endif
 
 //////////////////////////////////////////////////////////////
 // put modules that require the player array to be setup here:
@@ -2305,6 +2439,9 @@ static BOOL _PostWorldLoadGameInit( const GameInitInfo_t *pGameInit ) {
 		}
 
 	_UPDATE_LOADSCREEN
+#if FANG_WINGC
+		CPlayer::CoopPlaceStartingPartners();
+#endif
 		// save initial checkpoint (must be after script init)
 		checkpoint_Save( 0, FALSE );
 	_UPDATE_LOADSCREEN
@@ -2455,7 +2592,7 @@ void game_GotoLevel( cchar *pszCommandKeyword ) {
 			   fclib_stricmp( pszCommandKeyword, "lose" ) == 0 ) {
 		// restart the current level
 		_bCompletedLevel = FALSE;
-		checkpoint_Restore( 0, FALSE );
+		checkpoint_Restore( 0, FALSE, "game:restart-command" );
 		//launcher_EndOfGameDecisions( LAUNCHER_DECISION_RESTART );
 	} else {
 		// default to moving to the next level
@@ -2708,6 +2845,19 @@ BOOL _ControllerWaitForReconnect( void );
 // enough to put up "reconnect" as a level starts.
 static u32 _PortsOnline( void ) {
 #if defined(MA_PC_INPUT)
+#if FANG_WINGC
+	// The opt-in ownership fixture moves all four bots without physical input devices.
+	// This only skips the reconnect overlay for those fixtures, not normal co-op play.
+	static BOOL bTestRead = FALSE, bPickupFixture = FALSE;
+	if( !bTestRead ) {
+		char szTest[32] = {};
+		GetEnvironmentVariableA( "MA_PORT_TEST_COOP_POLISH", szTest, sizeof(szTest) );
+		bPickupFixture = !strcmp( szTest, "pickups" ) || !strcmp( szTest, "weapons" ) ||
+			!strcmp( szTest, "rat-chase" ) || !strncmp( szTest, "floor-pads", 10 );
+		bTestRead = TRUE;
+	}
+	if( bPickupFixture && CPlayer::m_nPlayerCount > 2 ) return (1u << GAMEPAD_MAX_PORT_COUNT) - 1u;
+#endif
 	u32 nMask = 1 << pcinput_KeyboardPort();
 	for( u32 nPort = 0; nPort < GAMEPAD_MAX_PORT_COUNT; ++nPort ) {
 		if( pcinput_XInputConnected( nPort ) ) nMask |= 1 << nPort;
@@ -2976,9 +3126,10 @@ BOOL game_InitLocalizedResources( void ) {
 
 	oAudioInit.uMaxListeners      = MAX_PLAYERS;
 #if FANG_PLATFORM_WIN && FANG_WINGC
-	// 80 was the GameCube's voice budget. Busy fights exceed it with looping burn sounds from
-	// wrecks, and new sounds then fail to start; DirectSound mixes far more.
-	oAudioInit.uMaxEmitters       = 160;
+	// Virtual sound instances include distant effects and wreck loops, not just
+	// audible DirectSound voices. Reactor swarm fights exhausted even 160;
+	// leave room for the whole world while the mixer keeps its own voice limits.
+	oAudioInit.uMaxEmitters       = 512;
 #else
 	oAudioInit.uMaxEmitters       = 80;
 #endif

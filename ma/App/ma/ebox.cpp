@@ -423,6 +423,42 @@ u32 CEBox::TripwireCollisionTest( const CFVec3A *pPrevPos_WS, const CFVec3A *pNe
 		return TRIPWIRE_COLLFLAG_EXIT_EVENT;
 	}
 
+#if FANG_WINGC
+	// A fast player can cross a thin box between frames without either endpoint
+	// inside. Match sphere triggers by reporting both enter and exit in that case.
+	// Kill volumes retain their separate tests above.
+	CFVec3A vPrev, vMove, vBounds;
+	vPrev.Sub( *pPrevPos_WS, m_aCorner_WS[0] );
+	vMove.Sub( *pNewPos_WS, *pPrevPos_WS );
+	vBounds.Sub( m_aCorner_WS[1], m_aCorner_WS[0] );
+	const CFVec3A *apAxes[3] = { &m_MtxToWorld.m_vRight, &m_MtxToWorld.m_vUp, &m_MtxToWorld.m_vFront };
+	f32 fEnter = 0.0f, fExit = 1.0f;
+	for( u32 nAxis=0; nAxis < 3; nAxis++ ) {
+		const f32 fExtent = vBounds.Dot( *apAxes[nAxis] );
+		const f32 fStart = vPrev.Dot( *apAxes[nAxis] );
+		const f32 fMove = vMove.Dot( *apAxes[nAxis] );
+		if( fmath_Abs( fMove ) < 0.000001f ) {
+			if( fStart < 0.0f || fStart > fExtent ) {
+				return TRIPWIRE_COLLFLAG_NONE;
+			}
+			continue;
+		}
+		f32 fNear = -fStart / fMove;
+		f32 fFar = (fExtent - fStart) / fMove;
+		if( fNear > fFar ) {
+			const f32 fSwap = fNear;
+			fNear = fFar;
+			fFar = fSwap;
+		}
+		FMATH_CLAMPMIN( fEnter, fNear );
+		FMATH_CLAMPMAX( fExit, fFar );
+		if( fEnter > fExit ) {
+			return TRIPWIRE_COLLFLAG_NONE;
+		}
+	}
+	return TRIPWIRE_COLLFLAG_ENTER_EVENT | TRIPWIRE_COLLFLAG_EXIT_EVENT;
+#endif
+
 	return TRIPWIRE_COLLFLAG_NONE;
 
 	// JUSTIN: Temp code.

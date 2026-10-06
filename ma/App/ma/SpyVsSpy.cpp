@@ -43,6 +43,7 @@
 #include "meshtypes.h"
 #include "botglitch.h"
 #include "CamManual.h"
+#include "CamBot.h"
 #include "explosion.h"
 #include "meshentity.h"
 #include "BotTalkData.h"
@@ -615,8 +616,8 @@ void CStage1Cam::Setup( CBot *pBot, const CFVec3A *pLookPoint ) {
 	CFCamera* pCam = fcamera_GetCameraByIndex( pBot->m_nPossessionPlayerIndex );
 
 	m_fUnitTime = 0.0f;
-	m_StartPoint = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
-	m_StartQuat.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );	
+	m_StartPoint = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
+	m_StartQuat.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
 	pCam->GetFOV( &m_fStartFOV );
 
 	m_pCamCraneAnimInst->UpdateTime( _CLAW_CAM_START_FRAME * _OO_ANIM_FPS );
@@ -2444,8 +2445,8 @@ void CStage2Cam::Setup( CBot *pBot ) {
 	CFCamera* pCam = fcamera_GetCameraByIndex( pBot->m_nPossessionPlayerIndex );
 
 	m_fUnitTime = 0.0f;
-	m_StartPoint = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
-	m_StartQuat.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );	
+	m_StartPoint = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
+	m_StartQuat.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
 	pCam->GetFOV( &m_fStartFOV );
 
 	m_pCamConveyorAnimInst->UpdateTime( 0.0f );
@@ -2533,8 +2534,8 @@ void CStage2Cam::CamToGlitch( void ) {
 
 	CFCamera* pCam = fcamera_GetCameraByIndex( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex );
 
-	m_EndPoint = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
-	m_EndQuat.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );	
+	m_EndPoint = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
+	m_EndQuat.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
 	pCam->GetFOV( &m_fEndFOV );
 
 	gamecam_SwitchPlayerToManualCamera( PLAYER_CAM( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex ), &m_Camera );
@@ -3872,16 +3873,30 @@ void CLocker::Unload( void ) {
 void CLocker::Work( CHumanControl *pControl, u32 &uNumTriedOpen ) {
 	FASSERT( pControl );
 
+	CBot *pInteractor = CSpyVsSpy::GetGlitch();
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() ) {
+		for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+			CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+			CHumanControl *pHuman = &Player_aPlayer[n].m_HumanControl;
+			if( pBot && Player_aPlayer[n].HasEntityControl() && !pBot->IsDeadOrDying() &&
+				(pHuman->m_nPadFlagsAction & FPAD_LATCH_TURNED_ON_WITH_NO_REPEAT) &&
+				m_pMesh->GetBoundingSphere_WS().IsIntersecting( pBot->m_pWorldMesh->GetBoundingSphere() ) ) {
+				pInteractor = pBot; pControl = pHuman; break;
+			}
+		}
+	}
+#endif
 	// Only check for intersection when we have an action
 	if( ( pControl->m_nPadFlagsAction & FPAD_LATCH_TURNED_ON_WITH_NO_REPEAT ) ) {
 		CFVec3A Front = m_pMesh->MtxToWorld()->m_vFront;
 		Front.Mul( -1.0f );
 
-		if( CSpyVsSpy::GetGlitch()->MtxToWorld()->m_vFront.Dot( Front ) > 0.0f ) {
+		if( pInteractor->MtxToWorld()->m_vFront.Dot( Front ) > 0.0f ) {
 			return;
 		}
 
-		if( !m_pMesh->GetBoundingSphere_WS().IsIntersecting( CSpyVsSpy::GetGlitch()->m_pWorldMesh->GetBoundingSphere() ) ) {
+		if( !m_pMesh->GetBoundingSphere_WS().IsIntersecting( pInteractor->m_pWorldMesh->GetBoundingSphere() ) ) {
 			return;
 		}
 
@@ -4077,7 +4092,18 @@ private:
 	void _WorkGuyState( u32 uNumLockersOpen );
 	void _CheckDeath( void );
 	void _KillGlitch( void );
+	void _CloseInspectionLockers( void );
 
+#if FANG_WINGC
+public:
+ BOOL CoopIndividualViews() const { return m_bCoopEscort; }
+ BOOL PortTestEscort(u32 test);
+ BOOL PortTestInspection(u32 test);
+private:
+ BOOL m_bCoopEscort;
+ void _CoopEscort(BOOL start);
+ GuyState_e _InspectionFailureState(GuyState_e state);
+#endif
 	void _CameraChaseWork( void );
 	void _CameraSpinWork( void );
 
@@ -4328,6 +4354,16 @@ void CSearchStage::Work( void ) {
 }
 
 void CSearchStage::SwitchTo( void ) {
+#if FANG_WINGC
+ _CoopEscort(FALSE);
+ // Rebuilding relocates P1; start its scripted inspection with a neutral,
+ // owning view even if a partner was aiming upward in the preceding scene.
+ if(MultiplayerMgr.IsLocalCoop()) {
+  CSpyVsSpy::GetGlitch()->m_fMountPitch_WS=0;
+
+  fcamera_GetCameraByIndex(0)->SetViewSource(NULL);
+ }
+#endif
 	CFSphere CollSphere;
 
 	// !!Nate - need to remember his original radius somehere, globally so we can share it
@@ -4348,8 +4384,17 @@ void CSearchStage::SwitchTo( void ) {
 
 	_SetGuyState( GUY_STATE_WAIT_TALK/*GUY_STATE_WAIT_FIRST_WORK*/ );
 
-	m_pGuy->DontIgnoreBotVBotCollision();
-	m_pGuy->AIBrain()->GetAIMover()->m_uMoverFlags &= ~( CAIMover::MOVERFLAG_DONT_AVOID_PLAYER_BOTS | CAIMover::MOVERFLAG_DISABLE_OBJECT_AVOIDANCE );
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() ) {
+		m_pGuy->IgnoreBotVBotCollision();
+		m_pGuy->AIBrain()->GetAIMover()->m_uMoverFlags &= ~CAIMover::MOVERFLAG_DISABLE_OBJECT_AVOIDANCE;
+		m_pGuy->AIBrain()->GetAIMover()->m_uMoverFlags |= CAIMover::MOVERFLAG_DONT_AVOID_PLAYER_BOTS;
+	} else
+#endif
+	{
+		m_pGuy->DontIgnoreBotVBotCollision();
+		m_pGuy->AIBrain()->GetAIMover()->m_uMoverFlags &= ~( CAIMover::MOVERFLAG_DONT_AVOID_PLAYER_BOTS | CAIMover::MOVERFLAG_DISABLE_OBJECT_AVOIDANCE );
+	}
     ai_TurnOffPerceptor( m_pGuy->AIBrain(), AI_PERCEPTOR_EYES );
 	ai_TurnOffPerceptor( m_pGuy->AIBrain(), AI_PERCEPTOR_EARS );
 	ai_TurnOffPerceptor( m_pGuy->AIBrain(), AI_PERCEPTOR_TOUCH );
@@ -4399,11 +4444,17 @@ void CSearchStage::SwitchTo( void ) {
 
 	pInv->SetCurWeapon( INV_INDEX_PRIMARY, pPrimary, FALSE, TRUE );
 	pInv->SetCurWeapon( INV_INDEX_SECONDARY, pSecondary, FALSE, TRUE );
+#if FANG_WINGC
+	CSpyVsSpy::CoopSyncStage( "Empty Primary", "Wrench", TRUE );
+#endif
 
 	_SetFinished( FALSE );
 }
 
-void CSearchStage::_ClearDataMembers( void ) { 
+void CSearchStage::_ClearDataMembers( void ) {
+#if FANG_WINGC
+ m_bCoopEscort=FALSE;
+#endif
 	m_SpawnPoint.Zero();
 	m_SafeDirection.Zero();
 
@@ -4443,7 +4494,42 @@ void CSearchStage::_ClearDataMembers( void ) {
 	m_pIdleMachine = NULL;
 }
 
+#if FANG_WINGC
+CSearchStage::GuyState_e CSearchStage::_InspectionFailureState(GuyState_e state) {
+ if(!MultiplayerMgr.IsLocalCoop() || (state!=GUY_STATE_FAULTY_GLITCH && state!=GUY_STATE_KILL_GLITCH)) return state;
+ // Several open lockers and repeat violations bypass _CheckDeath. Handle
+ // every inspection failure here, before taking control or enabling combat.
+ for(u32 n=0;n<NUM_LOCKERS;++n) if(m_Lockers[n].IsOpen()) return GUY_STATE_CLOSE_LOCKER;
+ return GUY_STATE_WALK_AWAY;
+}
+#endif
+
+void CSearchStage::_CloseInspectionLockers( void ) {
+ for(u32 n=0;n<NUM_LOCKERS;++n) {
+  if(!m_Lockers[n].IsOpen()) continue;
+  m_Lockers[n].ForceClose();
+  CFSoundGroup::PlaySound(CSpyVsSpySoundCenter::GetGroup(CSpyVsSpySoundCenter::SOUND_LOCKER_CLOSE));
+#if FANG_WINGC
+  if(MultiplayerMgr.IsLocalCoop()) continue;
+#endif
+  break; // Retail solo warning closes its one offending locker.
+ }
+}
+
 void CSearchStage::_SetGuyState( GuyState_e eState ) {
+#if FANG_WINGC
+ const GuyState_e safeState=_InspectionFailureState(eState);
+ if(safeState!=eState) {
+  DEVPRINTF("Co-op: factory inspection failure %d becomes warning/retry %d; chip search retained.\n",eState,safeState);
+  eState=safeState;
+  if(eState==GUY_STATE_WALK_AWAY) {
+   m_bSpinCam=FALSE;
+   m_pBuildMachine->DrawEnable(TRUE,TRUE);
+   gamecam_SwitchPlayerTo3rdPersonCamera(PLAYER_CAM(0),CSpyVsSpy::GetGlitch());
+   CSpyVsSpy::TakeControlFromPlayer(FALSE);
+  }
+ }
+#endif
 	switch( eState ) {
 		case GUY_STATE_WALK_AWAY:
 			m_GotoPoint = _GetEndPoint( m_pSplineFirstFloor );
@@ -4498,10 +4584,10 @@ void CSearchStage::_SetGuyState( GuyState_e eState ) {
 			CFVec3A CamToLocker;
 			f32 fPlaneD;
 
-			m_StartQuat.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );
-			m_StartPos = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
+			m_StartQuat.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
+			m_StartPos = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
 
-			CamToLocker.Sub( m_Lockers[i].GetMtx()->m_vPos, pCam->GetXfmWithoutShake()->m_MtxR.m_vPos );
+			CamToLocker.Sub( m_Lockers[i].GetMtx()->m_vPos, pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos );
 			CFMtx43A::m_Temp.UnitMtxFromNonUnitVec( &CamToLocker );
 		
 			m_pBuildMachine->DrawEnable( FALSE, TRUE );
@@ -4556,10 +4642,16 @@ void CSearchStage::_SetGuyState( GuyState_e eState ) {
 			m_pGuy->IgnoreBotVBotCollision();
 			m_pGuy->AIBrain()->GetAIMover()->m_uMoverFlags |= ( CAIMover::MOVERFLAG_DONT_AVOID_PLAYER_BOTS | CAIMover::MOVERFLAG_DISABLE_OBJECT_AVOIDANCE );
 			ai_AssignGoal_Goto( CSpyVsSpy::GetGlitch()->AIBrain(), m_GotoPoint, 1, 90, 0 );
+#if FANG_WINGC
+   _CoopEscort(TRUE);
+#endif
 			ai_AssignGoal_Goto( m_pGuy->AIBrain(), DestPosGuy, 1, 100, 0 );
 		}
 		break;
 		case GUY_STATE_CRANE:{
+#if FANG_WINGC
+   _CoopEscort(FALSE);
+#endif
 			m_pCrane->UserAnim_UpdateTime( 0.0f );
 			m_pCrane->UserAnim_Select( 0 );
 			m_pCrane->UserAnim_Pause( FALSE );
@@ -4606,8 +4698,8 @@ void CSearchStage::_SetGuyState( GuyState_e eState ) {
 
 			m_fUnitChase = 0.0f;
 
-			m_Camera.m_Pos_WS = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
-			m_Camera.m_Quat_WS.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );	
+			m_Camera.m_Pos_WS = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
+			m_Camera.m_Quat_WS.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
 				
 			m_ChasePos.Set( 262.71231f, -1.5636727f, 165.83513f );
 			m_ChaseQuat.BuildQuat( CFMtx43A::m_Temp );
@@ -4632,8 +4724,8 @@ void CSearchStage::_SetGuyState( GuyState_e eState ) {
 
 			CFCamera* pCam = fcamera_GetCameraByIndex( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex );
 
-			m_ChasePos = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
-			m_ChaseQuat.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );	
+			m_ChasePos = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
+			m_ChaseQuat.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
 		
 			gamecam_SwitchPlayerToSimpleCamera( PLAYER_CAM( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex ), &m_Camera );
 			CSpyVsSpy::TakeControlFromPlayer( TRUE );
@@ -4649,11 +4741,96 @@ void CSearchStage::_SetGuyState( GuyState_e eState ) {
 	m_eGuyState = eState;
 }
 
+#if FANG_WINGC
+void CSearchStage::_CoopEscort(BOOL start) {
+ if(!MultiplayerMgr.IsLocalCoop() || (!start && !m_bCoopEscort)) return;
+ m_bCoopEscort=start;
+ for(s32 n=1;n<CPlayer::m_nPlayerCount;++n) {
+  CPlayer &player=Player_aPlayer[n];
+  CBot *bot=(CBot *)player.m_pEntityOrig;
+  if(!bot || !bot->IsInWorld() || bot->IsDeadOrDying()) continue;
+  if(start) {
+   player.ZeroControls(); player.DisableEntityControl();
+   bot->IgnoreBotVBotCollision(); bot->MobilizeBot();
+   bot->m_fMountPitch_WS=0;
+   CFMtx43A facing=*CSpyVsSpy::GetGlitch()->MtxToWorld();
+   facing.m_vPos=bot->MtxToWorld()->m_vPos;
+   bot->Relocate_RotXlatFromUnitMtx_WS(&facing);
+   aibrainman_Activate(bot->AIBrain());
+   CFVec3A destination=m_GotoPoint,back;
+   back.Mul(CSpyVsSpy::GetGlitch()->MtxToWorld()->m_vFront,-4.0f*n);
+   destination.Add(back);
+   ai_AssignGoal_GotoWithLookAt(bot->AIBrain(),destination,CFVec3A::m_Null,m_pGuy->Guid(),50,2,90,0);
+   gamecam_SwitchPlayerTo3rdPersonCamera(PLAYER_CAM(n),bot);
+   fcamera_GetCameraByIndex(n)->SetViewSource(NULL);
+  } else {
+   aibrainman_Deactivate(bot->AIBrain());
+   player.EnableEntityControl(); aibrainman_ConfigurePlayerBotBrain(bot->AIBrain(),n);
+   bot->DontIgnoreBotVBotCollision(); player.ZeroControls();
+  }
+ }
+ DEVPRINTF("Co-op: factory escort %s for partners with individual cameras.\n",start?"starts":"ends");
+}
+
+BOOL CSearchStage::PortTestInspection(u32 test) {
+ if(test==0 || test==2) {
+  // Reproduce the actual inspection return with five open lockers. Repeat
+  // with the warning already consumed, the second authored lethal branch.
+  m_bWarnedAboutLocker=(test==2);
+  for(u32 n=8;n<13;++n) {
+   CMeshEntity *locker=m_Lockers[n].GetMesh();
+   locker->UserAnim_UpdateUnitTime(1.0f);
+   locker->UserAnim_SetSpeedMult(_STAGE3_LOCKER_ANIM_RATEMUL);
+   locker->UserAnim_Pause(FALSE); // Match _OpenLocker, not Restore's paused animation.
+  }
+  _SetGuyState(GUY_STATE_WALK_BACK);
+  m_fGotoTimer=0;
+  _WorkGuyState(5);
+  return m_eGuyState==GUY_STATE_CLOSE_LOCKER;
+ }
+ if(test==1) {
+  for(u32 n=0;n<NUM_LOCKERS;++n) if(m_Lockers[n].IsOpen()) return FALSE;
+  return m_eGuyState!=GUY_STATE_FAULTY_GLITCH && m_eGuyState!=GUY_STATE_KILL_GLITCH && !m_bSpinCam;
+ }
+ if(test==3) {
+  _SetGuyState(GUY_STATE_KILL_GLITCH);
+  return m_eGuyState==GUY_STATE_WALK_AWAY;
+ }
+ if(test==4) {
+  _SetGuyState(GUY_STATE_WALK_BACK);m_fGotoTimer=0;_WorkGuyState(0);
+  return m_eGuyState==GUY_STATE_RESTING && m_eGuyStateNext==GUY_STATE_DONE;
+ }
+ return FALSE;
+}
+
+BOOL CSearchStage::PortTestEscort(u32 test) {
+ if(test==0) {_SetGuyState(GUY_STATE_DONE);return m_bCoopEscort;}
+ if(test==1) return m_eGuyState==GUY_STATE_FAKE_DDR;
+ if(test==2) {_CoopEscort(FALSE);return !m_bCoopEscort;}
+ return FALSE;
+}
+#endif
+
 void CSearchStage::_SetGuyRestState( GuyState_e eNextState, f32 fTime ) {
 	m_fRestTime = fTime;
 	m_eGuyStatePrev = m_eGuyState;
 	m_eGuyState = GUY_STATE_RESTING;
 	m_eGuyStateNext = eNextState;
+}
+
+static CItemInst *_SpyTeamChip() {
+	CItemInst *pItem = CSpyVsSpy::GetGlitch()->m_pInventory->IsItemInInventory("chip");
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() && (!pItem || pItem->m_nClipAmmo < 1) ) {
+		for( s32 n = 1; n < CPlayer::m_nPlayerCount; ++n ) {
+			CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+			if( !pBot || !pBot->m_pInventory ) continue;
+			CItemInst *pOther = pBot->m_pInventory->IsItemInInventory("chip");
+			if( pOther && pOther->m_nClipAmmo >= 1 ) return pOther;
+		}
+	}
+#endif
+	return pItem;
 }
 
 void CSearchStage::_WorkGuyState( u32 uNumLockersOpen ) {
@@ -4686,6 +4863,17 @@ void CSearchStage::_WorkGuyState( u32 uNumLockersOpen ) {
 			_SetGuyState( GUY_STATE_WAIT_FIRST_WORK );
 		break;
 		case GUY_STATE_WAIT_FIRST_WORK:{
+#if FANG_WINGC
+			// The factory only transports P1's parts. Rejoin the team after Shhh's
+			// post-assembly transmission, before the guide starts the next puzzle.
+			if( MultiplayerMgr.IsLocalCoop() ) {
+				CPlayer::CoopPlaceStartingPartners( TRUE, 0 );
+				if( !CPlayer::CoopReviveForCheckpoint() ) break;
+				CPlayer::CoopPlaceStartingPartners( TRUE, 0 );
+				DEVPRINTF( "Spy factory: partners regrouped after post-assembly transmission.\n" );
+			}
+#endif
+
 			m_pAmbientEmitter = CFSoundGroup::AllocAndPlaySound( CSpyVsSpySoundCenter::GetGroup( CSpyVsSpySoundCenter::SOUND_SEARCH_AMBIENT ), TRUE, NULL, 0.0f );
 			CEmitterFader::Fade( m_pAmbientEmitter, 0.0f, _STAGE3_AMBIENT_VOL, 2.0f );
 
@@ -4740,7 +4928,7 @@ void CSearchStage::_WorkGuyState( u32 uNumLockersOpen ) {
 				}
 
 				if( !bWarned ) {
-					CItemInst *pItem = CSpyVsSpy::GetGlitch()->m_pInventory->IsItemInInventory( "chip" );
+					CItemInst *pItem = _SpyTeamChip();
 					BOOL bHasAll = FALSE;
 
 					if( pItem ) {
@@ -4785,14 +4973,7 @@ void CSearchStage::_WorkGuyState( u32 uNumLockersOpen ) {
 		break;
 		case GUY_STATE_CLOSE_LOCKER:
 			if( bAtGotoPoint ) {
-				for( u32 i = 0; i < NUM_LOCKERS; ++i ) {
-					if( m_Lockers[i].IsOpen() ) {
-						m_Lockers[i].ForceClose();
-						CFSoundGroup::PlaySound( CSpyVsSpySoundCenter::GetGroup( CSpyVsSpySoundCenter::SOUND_LOCKER_CLOSE ) );
-
-						break;
-					}
-				}
+				_CloseInspectionLockers();
 
 				CFSoundGroup *pGroup = CSpyVsSpySoundCenter::GetGroup( CSpyVsSpySoundCenter::SOUND_OPEN_LOCKER_WARNING );
 				f32 fIdle;
@@ -4921,8 +5102,8 @@ void CSearchStage::_WorkGuyState( u32 uNumLockersOpen ) {
 				m_fUnitChase = _STAGE3_DELAY_CHASE_UNIT; // delay a bit
 				m_fTimeTillChase = _STAGE3_TIME_TILL_CHASE;
 
-				m_Camera.m_Pos_WS = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
-				m_Camera.m_Quat_WS.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );	
+				m_Camera.m_Pos_WS = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
+				m_Camera.m_Quat_WS.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
 				
 				m_ChasePos = m_Camera.m_Pos_WS;
 				m_ChaseQuat = m_Camera.m_Quat_WS;
@@ -4982,6 +5163,13 @@ void CSearchStage::_WorkGuyState( u32 uNumLockersOpen ) {
 }
 
 void CSearchStage::_CheckDeath( void ) {
+#if FANG_WINGC
+	// The inspection's lethal solo failure path cannot recover while a co-op
+	// partner is alive, and partner collisions can move P1 outside its tiny zone.
+	// Keep the guide scripted instead of entering the hostile/kill-only state.
+	if( MultiplayerMgr.IsLocalCoop() ) return;
+#endif
+
 	BOOL bDead = FALSE;
 	BOOL bController = FALSE;
 
@@ -5105,8 +5293,8 @@ void CSearchStage::_CameraChaseWork( void ) {
 
 		CFCamera* pCam = fcamera_GetCameraByIndex( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex );
 
-		m_ChasePos = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
-		m_ChaseQuat.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );	
+		m_ChasePos = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
+		m_ChaseQuat.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
 	
 		gamecam_SwitchPlayerToSimpleCamera( PLAYER_CAM( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex ), &m_Camera );
 		CSpyVsSpy::TakeControlFromPlayer( TRUE );
@@ -5368,6 +5556,17 @@ void CBattleStage::SwitchTo( void ) {
 
 	pInv->SetCurWeapon( INV_INDEX_PRIMARY, pPrimary, FALSE, TRUE );
 	pInv->SetCurWeapon( INV_INDEX_SECONDARY, pSecondary, FALSE, TRUE );
+#if FANG_WINGC
+	for( s32 n = 0; MultiplayerMgr.IsLocalCoop() && n < CPlayer::m_nPlayerCount; ++n ) {
+		CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+		if( pBot ) { pBot->DontIgnoreBotVBotCollision(); pBot->m_vecCamPosAdj.Zero(); pBot->m_vecCamLookAdj.Zero(); }
+		CHud2::GetHudForPlayer(n)->EnableDrawFlags(CHud2::DRAW_GLITCH_HUD);
+		GameCamType_e type;
+		CCamBot *pCamera = (CCamBot *)gamecam_GetCameraManByIndex(PLAYER_CAM(n),&type);
+		if(type==GAME_CAM_TYPE_ROBOT_3RD) pCamera->SetAlwaysOverride(FALSE);
+	}
+	CSpyVsSpy::CoopSyncStage( "RLauncher L1", "Empty Secondary", TRUE );
+#endif
 
 	_SetFinished( FALSE );
 }
@@ -5445,6 +5644,8 @@ void CBattleStage::_BattleWork( void ) {
 
 		pInv->SetCurWeapon( INV_INDEX_PRIMARY, pPrimary, FALSE, TRUE );
 		pInv->SetCurWeapon( INV_INDEX_SECONDARY, pSecondary, FALSE, TRUE );
+
+		CSpyVsSpy::CoopSyncStage( "Empty Primary", "Empty Secondary", FALSE );
 
 		// Open up the door so we know where to go.
 		m_pBattleDoor->ForceGotoPos( 1, CDoorEntity::GOTOREASON_UNKNOWN );
@@ -5544,6 +5745,7 @@ FCLASS_ALIGN_PREFIX class CProgramStage : public CSpyVsSpyStage {
 //----------------------------------------------------------------------------------------------------------------------------------
 public:
 	CProgramStage();
+	BOOL Contains(CEntity *body) const {return m_bPackUp && m_pCrate && body && body->GetParent()==m_pCrate;}
 	virtual ~CProgramStage() { }
 
 	BOOL Load( LevelEvent_e eEvent );
@@ -5729,6 +5931,7 @@ void CProgramStage::Restore( void ) {
 	SwitchTo();
 
 	CSpyVsSpy::GetGlitch()->Relocate_Xlat_WS( &m_SpawnPoint );
+	CSpyVsSpy::CoopSyncStage( "Empty Primary", "Empty Secondary", TRUE );
 }
 
 void CProgramStage::Work( void ) { 
@@ -5766,7 +5969,19 @@ void CProgramStage::Work( void ) {
 			_CrateMove();
 		break;
 		case STATE_IDLE:
-
+#if FANG_WINGC
+			if(m_pCrate->NormHealth()<=0 || !m_pCrate->IsInWorld()) {
+				CBot *lead=CSpyVsSpy::GetGlitch();
+				if(lead->GetParent()==m_pCrate) {
+					m_pCrate->SetCollisionFlag(FALSE);
+					if(CPlayer::RecoverFromStoryCarrier(lead)) {lead->DetachFromParent();lead->MobilizeBot();}
+				}
+				if(CSpyVsSpy::CoopPackingWaiting() && lead->GetParent()!=m_pCrate && !lead->IsInAir()) {
+					CSpyVsSpy::CoopSyncStage(NULL,NULL,TRUE);
+					DEVPRINTF("Factory packing: partner wait ended after box exit.\n");
+				}
+			}
+#endif
 		break;
 	}
 
@@ -5780,6 +5995,14 @@ void CProgramStage::SwitchTo( void ) {
 	m_fProgramTime = 0.0f;
 	m_fTimeTillNextRumble = 0.0f;
 
+#if FANG_WINGC
+	// Retail funnyname disables animation driving in its builder. Its clock
+	// otherwise stays at the initial pose forever, blocking packing completion.
+	m_pCrate->DriveMeshWithAnim( TRUE );
+	m_pCrate->AlwaysWork( TRUE );
+	m_pArms->DriveMeshWithAnim( TRUE );
+	m_pArms->AlwaysWork( TRUE );
+#endif
 	m_pCrate->UserAnim_Pause( TRUE );
 	m_pCrate->UserAnim_SetSpeedMult( 1.0f );
 	m_pCrate->UserAnim_SetClampMode( TRUE );
@@ -5805,6 +6028,7 @@ void CProgramStage::SwitchTo( void ) {
 
 	CSpyVsSpy::AttackDisable( TRUE );
 	CSpyVsSpy::TurnOffHUD( TRUE );
+	CSpyVsSpy::CoopSyncStage( "Empty Primary", "Empty Secondary", TRUE );
 
 //	m_fParticleAngle = 0.0f;
 
@@ -5905,6 +6129,21 @@ void CProgramStage::_CrateWork( void ) {
 
 		if( fDistSq <= 1.5f ) {
 			m_bPackUp = TRUE;
+#if FANG_WINGC
+			// The animated walls are not a stable moving floor. Carry the story
+			// body explicitly until the box's authored destruction detaches it.
+			CSpyVsSpy::GetGlitch()->Attach_ToParent_WithGlue_WS(m_pCrate);
+			for( s32 n=1; MultiplayerMgr.IsLocalCoop() && n<CPlayer::m_nPlayerCount; ++n ) {
+				CPlayer *pPlayer=&Player_aPlayer[n];
+				CBot *pBot=(CBot *)pPlayer->m_pEntityOrig;
+				if(!pBot) continue;
+				pPlayer->ZeroControls(); pPlayer->m_HumanControl.Zero();
+				pPlayer->DisableEntityControl();
+				pBot->ZeroVelocity(); pBot->ImmobilizeBot();
+				pBot->DrawEnable(FALSE,TRUE);
+			}
+			DEVPRINTF("Factory packing: closing the box; partners held until safe exit.\n");
+#endif
 			m_pCrate->UserAnim_Pause( FALSE );
 			m_pArms->UserAnim_Pause( FALSE );
 			CSpyVsSpy::TakeControlFromPlayer( TRUE );
@@ -5919,6 +6158,9 @@ void CProgramStage::_CrateWork( void ) {
 			m_eStageState = STATE_BOX_MOVE;
 			m_fUnitInterp = 0.0f;
 			m_CrateStart = m_pCrate->MtxToWorld()->m_vPos;
+#if FANG_WINGC
+			DEVPRINTF("Factory packing: box closed; starting conveyor.\n");
+#endif
 
 			CFAudioEmitter *pEmitter = CFSoundGroup::AllocAndPlaySound( CSpyVsSpySoundCenter::GetGroup( CSpyVsSpySoundCenter::SOUND_CONVEYOR_LOOP ) );
 			CEmitterFader::FadeInAndOut( pEmitter, 0.0f, 1.0f, fmath_Inv( _PROGRAM_MOVE_TIME ) + 2.0f, 0.1f, TRUE );
@@ -5940,10 +6182,19 @@ void CProgramStage::_CrateMove( void ) {
 	if( m_fUnitInterp == 1.0f ) {
 		m_eStageState = STATE_IDLE;
 		m_bDialogStarted = TRUE;
+#if FANG_WINGC
+		DEVPRINTF("Factory packing: delivery complete; P1 restored, partners watching until safe exit.\n");
+#endif
 
 		CSpyVsSpy::TakeControlFromPlayer( FALSE );
 		CSpyVsSpy::AttackDisable( FALSE );
 		CSpyVsSpy::TurnOffHUD( FALSE );
+		CSpyVsSpy::CoopSyncStage( "Empty Primary", "Empty Secondary", FALSE );
+#if FANG_WINGC
+		// Partners watch the boxed story actor until he exits onto checked ground.
+		for(s32 n=1;MultiplayerMgr.IsLocalCoop() && n<CPlayer::m_nPlayerCount;++n)
+			CHud2::GetHudForPlayer(n)->SetDrawEnabled(FALSE);
+#endif
 		CSpyVsSpy::GetGlitch()->ShakeCamera( 0.5f, 0.75f );
 
 		CFSoundGroup *pGroup = CSpyVsSpySoundCenter::GetGroup( CSpyVsSpySoundCenter::SOUND_CRANE_MOVE_STOP );
@@ -6148,14 +6399,24 @@ _ExitWithError:
 	return FALSE;
 }
 
+static CHud2 *_SpyTransmissionHud( void ) {
+	const s32 nPlayer = MultiplayerMgr.IsLocalCoop() ? 0 : CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex;
+	return CHud2::GetHudForPlayer( nPlayer );
+}
+
+static void _SpyTransmissionStop( void ) {
+	if( MultiplayerMgr.IsLocalCoop() ) CHud2::TransmissionShared_Stop( TRUE );
+	else _SpyTransmissionHud()->TransmissionMsg_Stop();
+}
+
 void CSpyVsSpy::UnloadLevel( void ) {
 	if( !m_bLevelInitted ) {
 		return;
 	}
 
 	if( CSpyVsSpy::GetGlitch() && ( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex != -1 ) && 
-		!CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_IsDonePlaying() ) {
-		CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_Stop();
+		!_SpyTransmissionHud()->TransmissionMsg_IsDonePlaying() ) {
+		_SpyTransmissionStop();
 	}
 
 	CSpyVsSpySoundCenter::Unload();
@@ -6187,7 +6448,7 @@ void CSpyVsSpy::Work( void ) {
 	FASSERT( m_pGame );
 
 	if( m_pCommonData->m_bHaveMessage ) {
-		if( !CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_IsDonePlaying() ) {
+		if( !_SpyTransmissionHud()->TransmissionMsg_IsDonePlaying() ) {
 			if( m_pCommonData->m_bStreamBlock ) {
 				return;
 			}
@@ -6218,8 +6479,8 @@ void CSpyVsSpy::CheckpointRestore( s32 nCheckpoint ) {
 	}
 
 	// Make sure this happens before the restore since we start the message in the restore
-	if( !CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_IsDonePlaying() ) {
-		CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_Stop();
+	if( !_SpyTransmissionHud()->TransmissionMsg_IsDonePlaying() ) {
+		_SpyTransmissionStop();
 	}
 
 	CEmitterFader::Reset();
@@ -6236,11 +6497,14 @@ void CSpyVsSpy::CheckpointRestore( s32 nCheckpoint ) {
 
 void CSpyVsSpy::StreamStart( cchar *pszName, BOOL bBlock /*= FALSE */, BOOL bCanSkip/* = FALSE*/ ) {
 	// !!Nate - this is temp since we have an extra Restore() at level load
-	if( !CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_IsDonePlaying() ) {
+	if( !_SpyTransmissionHud()->TransmissionMsg_IsDonePlaying() ) {
 		return;
 	}
 
-	if( !CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_Start( CHud2::TRANSMISSION_AUTHOR_AGENT_SHHH, pszName, 1.0f, TRUE ) ) {
+	const BOOL bStarted = MultiplayerMgr.IsLocalCoop() ?
+		CHud2::TransmissionShared_Start( CHud2::TRANSMISSION_AUTHOR_AGENT_SHHH, pszName, 1.0f, TRUE ) :
+		_SpyTransmissionHud()->TransmissionMsg_Start( CHud2::TRANSMISSION_AUTHOR_AGENT_SHHH, pszName, 1.0f, TRUE );
+	if( !bStarted ) {
 		DEVPRINTF( "CSpyVsSpy::StreamStart(): Failed to start stream '%s'.\n", pszName );
 		return;
 	}
@@ -6271,33 +6535,145 @@ f32 CSpyVsSpy::GetMoveTime( f32 fUnitTime ) {
 	return FMATH_FPOT( fUnitTime, m_pConfigValues->fDDRMoveTimeMax, m_pConfigValues->fDDRMoveTimeMin );
 }
 
-void CSpyVsSpy::TurnOffHUD( BOOL bOff, BOOL bNoReticle/* = FALSE*/, BOOL bNoWeaponSel/* = FALSE*/ ) {
-	if( bOff ) {
-		CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->SetDrawEnabled( FALSE );
-		CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->SetWSEnable( FALSE );
-
-		if( !bNoReticle ) {
-			CSpyVsSpy::GetGlitch()->ReticleEnable( FALSE );
-		}
-	} else {
-		CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->SetDrawEnabled( TRUE );
-		CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->SetWSEnable( !bNoWeaponSel );
-		
-		if( !bNoReticle ) {
-			CSpyVsSpy::GetGlitch()->ReticleEnable( TRUE );
-		}
+void CSpyVsSpy::TurnOffHUD( BOOL bOff, BOOL bNoReticle, BOOL bNoWeaponSel ) {
+	s32 nCount = 1;
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() ) nCount = CPlayer::m_nPlayerCount;
+#endif
+	for( s32 n = 0; n < nCount; ++n ) {
+		CBot *pBot = n ? (CBot *)Player_aPlayer[n].m_pEntityOrig : GetGlitch();
+		if( !pBot ) continue;
+		CHud2 *pHud = CHud2::GetHudForPlayer( pBot->m_nPossessionPlayerIndex );
+		pHud->SetDrawEnabled( !bOff );
+		pHud->SetWSEnable( !bOff && !bNoWeaponSel );
+		if( !bNoReticle ) pBot->ReticleEnable( !bOff );
 	}
-
 	m_pCommonData->m_bHudState = bOff;
 }
 
 void CSpyVsSpy::AttackDisable( BOOL bOff ) {
-	if( bOff ) {
-		CSpyVsSpy::GetGlitch()->SetBotFlag_DontAllowFire();
-	} else {
-		CSpyVsSpy::GetGlitch()->ClearBotFlag_DontAllowFire();
+	s32 nCount = 1;
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() ) nCount = CPlayer::m_nPlayerCount;
+#endif
+	for( s32 n = 0; n < nCount; ++n ) {
+		CBot *pBot = n ? (CBot *)Player_aPlayer[n].m_pEntityOrig : GetGlitch();
+		if( !pBot ) continue;
+		if( bOff ) pBot->SetBotFlag_DontAllowFire();
+		else pBot->ClearBotFlag_DontAllowFire();
 	}
 }
+
+#if FANG_WINGC
+void CSpyVsSpy::CoopSyncStage( cchar *pszPrimary, cchar *pszSecondary, BOOL bRegroup ) {
+	if( !MultiplayerMgr.IsLocalCoop() ) return;
+	if( bRegroup ) {
+		CPlayer::CoopPlaceStartingPartners( TRUE, 0 );
+		CPlayer::CoopReviveForCheckpoint();
+		CPlayer::CoopPlaceStartingPartners( TRUE, 0 );
+	}
+	CHud2 *pLeadHud = CHud2::GetHudForPlayer( 0 );
+	const u32 leadEnabled = pLeadHud->DrawFlagsEnabled( CHud2::DRAW_GLITCH_HUD );
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		CPlayer *pPlayer = &Player_aPlayer[n];
+		CBot *pBot = (CBot *)pPlayer->m_pEntityOrig;
+		if( !pBot || !pBot->m_pInventory ) continue;
+		CHud2 *pHud = CHud2::GetHudForPlayer( n );
+		pHud->EnableDrawFlags( CHud2::DRAW_GLITCH_HUD );
+		pHud->DisableDrawFlags( CHud2::DRAW_GLITCH_HUD & ~leadEnabled );
+		pHud->SetDrawEnabled( pLeadHud->IsDrawEnabled() );
+		pHud->SetWSEnable( pLeadHud->IsWSEnabled() );
+		cchar *aNames[2] = { pszPrimary, pszSecondary };
+		for( s32 slot = 0; slot < 2; ++slot ) {
+			if( !aNames[slot] ) continue;
+			CItemInst *pItem = pBot->m_pInventory->IsWeaponInInventory( aNames[slot] );
+			if( !pItem ) {
+				CCollectable::GiveWeaponToPlayer( pBot, aNames[slot] );
+				pItem = pBot->m_pInventory->IsWeaponInInventory( aNames[slot] );
+			}
+			if( pItem ) pBot->m_pInventory->SetCurWeapon( slot ? INV_INDEX_SECONDARY : INV_INDEX_PRIMARY, pItem, FALSE, TRUE );
+		}
+		if( pszPrimary && !fclib_stricmp( pszPrimary, "Empty Primary" ) ) pBot->ReticleEnable( FALSE );
+		if( n && bRegroup && !pBot->IsDeadOrDying() ) {
+			pBot->MobilizeBot();
+			pBot->DrawEnable( TRUE, TRUE );
+			pPlayer->EnableEntityControl();
+			aibrainman_ConfigurePlayerBotBrain( pBot->AIBrain(), n );
+			ai_SetRace( pBot->AIBrain(), ai_GetRace( GetGlitch()->AIBrain() ) );
+			pBot->m_vecCamPosAdj.Zero();
+			pBot->m_vecCamLookAdj.Zero();
+			gamecam_SwitchPlayerTo3rdPersonCamera( PLAYER_CAM(n), pBot );
+		}
+	}
+	DEVPRINTF( "Co-op: factory stage synchronizes %d players (%s / %s, regroup %d).\n",
+		CPlayer::m_nPlayerCount, pszPrimary ? pszPrimary : "unchanged", pszSecondary ? pszSecondary : "unchanged", bRegroup );
+}
+
+BOOL CSpyVsSpy::CoopIndividualViews() {
+ if(!IsFactoryActive() || !MultiplayerMgr.IsLocalCoop()) return FALSE;
+ if(m_pGame->m_eCurrentStage==STAGE_SEARCH)
+  return ((CSearchStage *)m_pGame->m_pSearchStage)->CoopIndividualViews();
+ return FALSE;
+}
+
+void CSpyVsSpy::ConstrainPackingControls(CEntity *body, CHumanControl *controls) {
+	if(!controls || !IsFactoryActive() || m_pGame->m_eCurrentStage!=STAGE_PROGRAM || body!=GetGlitch()) return;
+	if(!((CProgramStage *)m_pGame->m_pProgramStage)->Contains(body)) return;
+	// The carried actor may aim/select/fire to break out, but must not jump or
+	// walk through animated walls before the authored box exit. Solo also needs this.
+	controls->m_fForward=controls->m_fStrafeRight=controls->m_fCrossDown=0;
+	controls->m_nPadFlagsJump=0;
+}
+
+BOOL CSpyVsSpy::CoopPackingWaiting() {
+	if(!IsFactoryActive() || !MultiplayerMgr.IsLocalCoop() || m_pGame->m_eCurrentStage!=STAGE_PROGRAM) return FALSE;
+	CBot *partner=(CBot *)Player_aPlayer[1].m_pEntityOrig;
+	return partner && !partner->IsDrawEnabled() && !Player_aPlayer[1].HasEntityControl();
+}
+
+BOOL CSpyVsSpy::PortTestEscort(u32 test) {
+ char mode[32];GetEnvironmentVariableA("MA_PORT_TEST_COOP_POLISH",mode,sizeof(mode));
+ if(fclib_stricmp(mode,"spy-escort") || !IsFactoryActive()) return FALSE;
+ return ((CSearchStage *)m_pGame->m_pSearchStage)->PortTestEscort(test);
+}
+
+BOOL CSpyVsSpy::PortTestInspection(u32 test) {
+ char mode[32];GetEnvironmentVariableA("MA_PORT_TEST_COOP_POLISH",mode,sizeof(mode));
+ if(fclib_stricmp(mode,"spy-inspection") || !IsFactoryActive()) return FALSE;
+ return ((CSearchStage *)m_pGame->m_pSearchStage)->PortTestInspection(test);
+}
+
+BOOL CSpyVsSpy::PortTestDance( u32 nTest ) {
+	if( !IsFactoryActive() ) return FALSE;
+	return ((CDDRStage *)m_pGame->m_pDanceStage)->PortTestParty( nTest );
+}
+
+BOOL CSpyVsSpy::PortTestStage( u32 nStage ) {
+	char mode[32];
+	GetEnvironmentVariableA( "MA_PORT_TEST_COOP_POLISH", mode, sizeof(mode) );
+	if( (fclib_stricmp(mode,"spy-party") && fclib_stricmp(mode,"spy-escort") && fclib_stricmp(mode,"spy-packing") && fclib_stricmp(mode,"spy-resume") && fclib_stricmp(mode,"spy-inspection")) || !IsFactoryActive() ) return FALSE;
+	if( nStage == 0 ) { m_pGame->m_eCurrentStage = STAGE_DANCE; m_pGame->m_pCurrentStage = m_pGame->m_pDanceStage; }
+	else if( nStage == 1 ) { m_pGame->m_eCurrentStage = STAGE_BATTLE; m_pGame->m_pCurrentStage = m_pGame->m_pBattleStage; }
+	else if(nStage==2) {m_pGame->m_eCurrentStage=STAGE_SEARCH;m_pGame->m_pCurrentStage=m_pGame->m_pSearchStage;}
+	else if(nStage==3) {m_pGame->m_eCurrentStage=STAGE_PROGRAM;m_pGame->m_pCurrentStage=m_pGame->m_pProgramStage;}
+	else return FALSE;
+	m_pCommonData->m_bHaveMessage = FALSE;
+	_SpyTransmissionStop();
+	if(nStage==1) {
+		// Explicit opt-in test/resume needs the loadout normally awarded by training.
+		for(s32 n=0;n<CPlayer::m_nPlayerCount;++n) {
+			CBot *bot=(CBot *)Player_aPlayer[n].m_pEntityOrig;
+			if(!bot) continue;
+			CCollectable::GiveWeaponToPlayer(bot,"RLauncher L1",1);
+			CCollectable::GiveWeaponToPlayer(bot,"Empty Secondary",1);
+		}
+	}
+	m_pGame->m_pCurrentStage->Restore();
+	return TRUE;
+}
+#else
+void CSpyVsSpy::CoopSyncStage( cchar *, cchar *, BOOL ) {}
+#endif
 
 CEntity *CSpyVsSpy::FindEntity( cchar *pszName, const u64 &uTypeBits/* = 0*/, BOOL bRequired/* = TRUE*/ ) {
 	CEntity *pEntity;
@@ -6322,16 +6698,24 @@ CEntity *CSpyVsSpy::FindEntity( cchar *pszName, const u64 &uTypeBits/* = 0*/, BO
 }
 
 void CSpyVsSpy::TakeControlFromPlayer( BOOL bTake, BOOL bCanSkip/* = FALSE*/ ) {
+	CPlayer *pPlayer = CPlayer::m_pCurrent;
+#if FANG_WINGC
+	// The factory stages operate on P1's story body. In co-op the last worked
+	// player can be P2-P4, so return human control to the same body as the AI.
+	if( MultiplayerMgr.IsLocalCoop() ) pPlayer = &Player_aPlayer[0];
+	DEVPRINTF("Port: spy factory %s control for player %d.\n",
+		bTake ? "takes" : "restores", pPlayer->m_nPlayerIndex + 1);
+#endif
 	if( !bTake ) {
 		// Give control back to the player
 		aibrainman_Deactivate( Player_aPlayer[ 0 ].m_pEntityCurrent->AIBrain() );
-		CPlayer::m_pCurrent->EnableEntityControl();
+		pPlayer->EnableEntityControl();
 		aibrainman_ConfigurePlayerBotBrain( Player_aPlayer[ 0 ].m_pEntityCurrent->AIBrain(), 0 );
 		game_LeaveLetterbox( FALSE );
 	} else {
 		game_LeaveLetterbox( FALSE );
 		game_EnterLetterbox( NULL, FALSE, bCanSkip );
-		CPlayer::m_pCurrent->DisableEntityControl();
+		pPlayer->DisableEntityControl();
 		aibrainman_Activate( Player_aPlayer[0].m_pEntityCurrent->AIBrain() );
 	}
 }
@@ -6407,7 +6791,9 @@ void CSpyVsSpy::PlayBotTalk( CBot *pBot, u32 uType, f32 *fTime/* = NULL*/ ) {
 }
 
 void CSpyVsSpy::ListenerOrientationCallback( u32 uPlayerIndex ) {
-	FASSERT( !uPlayerIndex );
+	// Every local co-op listener follows the shared crane camera during this
+	// sequence. The retail zero-only assertion rejected the second listener.
+	FASSERT( !uPlayerIndex || (MultiplayerMgr.IsLocalCoop() && uPlayerIndex < (u32)CPlayer::m_nPlayerCount) );
 	FASSERT( MultiplayerMgr.IsSinglePlayer() );
 
 	CFXfm xfmListener;
@@ -6639,8 +7025,8 @@ void CSpyVsSpy::_ClearDataMembers( void ) {
 
 void CSpyVsSpy::_CheckpointRestore( s32 nCheckpoint ) {
 	if( m_pCommonData->m_bHaveMessage ) {
-		if( CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_IsDonePlaying() ) {
-			CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->TransmissionMsg_Stop();
+		if( _SpyTransmissionHud()->TransmissionMsg_IsDonePlaying() ) {
+			_SpyTransmissionStop();
 		}
 
 		m_pCommonData->m_bHaveMessage = FALSE;

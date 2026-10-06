@@ -38,7 +38,7 @@ BOOL checkpoint_InitSystem( void );
 void checkpoint_UninitSystem( void );
 BOOL checkpoint_LevelInit( void );
 BOOL checkpoint_Save( s32 nCheckpoint, BOOL bPrintText, CESphere* pESphere = NULL );
-BOOL checkpoint_Restore( s32 nCheckpoint, BOOL bPrintText );
+BOOL checkpoint_Restore( s32 nCheckpoint, BOOL bPrintText, cchar *pszReason = "unspecified" );
 void checkpoint_Work( void );
 void checkpoint_Draw( void );
 
@@ -319,6 +319,32 @@ BOOL playerprofile_InitSystem( void );
 void playerprofile_UninitSystem( void );
 void playerprofile_Set( s32 nPlayer, CPlayerProfile *pProfile );
 CPlayerProfile *playerprofile_Get( s32 nPlayer );
+
+#if FANG_WINGC
+// PC local co-op campaign saves (gamesave.cpp). A campaign belongs to player 1's profile and is kept
+// in the save root's Co-op folder under that profile's name (fstorage_PcCoop*), so the profile's own
+// single-player game is untouched. It holds a record per player who has played it, found by profile
+// name: their level progress and per-level inventory, as in a profile. Player 1's record sets the
+// campaign's level and difficulty. Partners who join later, or who missed levels, start from
+// player 1's inventory for the levels they missed; players without a saved profile are not kept.
+
+// Loads the campaign of the profile pwszOwner, or starts a new one. NULL or empty: no profile, so
+// nothing is saved. Returns TRUE when a saved campaign was found.
+BOOL coopsave_Load( cwchar *pwszOwner );
+BOOL coopsave_CanSave( void );
+// Player 1's record: what the campaign menus (Start / Continue / Replay) show and change.
+GameSave_ProfileData_t *coopsave_GetOwnerData( void );
+// Starts playing: fills each player's session profile (papSession, player order) from their record
+// and their own profile's settings (papPersonal). bNewGame resets every record to the first level
+// (the menus have already reset player 1's). The session profiles are virtual.
+void coopsave_BeginSession( const CPlayerProfile *const *papPersonal, CPlayerProfile *const *papSession, u32 nPlayers, BOOL bNewGame );
+// A level was completed: copies the session profiles into their records and writes the campaign.
+BOOL coopsave_SaveSession( void );
+// Persist only the player's co-op look setting; do not checkpoint campaign progress/inventory.
+BOOL coopsave_SaveLookSensitivity( const CPlayerProfile *pSession );
+void coopsave_EndSession( void );
+BOOL coopsave_IsSessionActive( void );
+#endif
 
 
 

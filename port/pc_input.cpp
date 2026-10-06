@@ -1,4 +1,5 @@
 #include "pc_input.h"
+#include "pc_pad_routing.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +17,11 @@ static volatile LONG s_connected[FPADIO_MAX_DEVICES];	// by XInput pad index
 static DWORD s_lastProbe[FPADIO_MAX_DEVICES];
 static volatile LONG s_autoPortPad[FPADIO_MAX_DEVICES];	// AUTO: pad index + 1 dealt to each port, 0 for none
 static volatile LONG s_autoPlayers = 2;
+static PcSessionPadRouting s_joinRouting, s_soloRouting;
+static bool s_explicitLocalJoin;
+static volatile LONG s_soloPortPad[FPADIO_MAX_DEVICES];
+static volatile LONG s_blockedPadButtons[FPADIO_MAX_DEVICES];
+static volatile LONG s_sampledPortPad[FPADIO_MAX_DEVICES];
 static volatile LONG s_autoDealt;			// AUTO: the session's first deal is done
 static volatile LONG s_padAssignmentSerial;
 static CRITICAL_SECTION s_padLock;			// AUTO dealing: sampling thread and session start
@@ -357,20 +363,36 @@ static const char *PromptStyleName(PcPromptStyle style) {
 	}
 }
 
+// settings.ini sits in the port's save root beside the Profiles and Co-op folders (see
+// fdx8storage.cpp): MA_PORT_SAVE_DIR (-save-dir), else %APPDATA%\MAGITS. The first time it is missing
+// there, the earlier %LOCALAPPDATA%\Metal Arms Source Port\settings.ini is copied in.
 static bool PromptSettingsPath(char *path, size_t capacity) {
-	char root[MAX_PATH];
-	DWORD length = GetEnvironmentVariableA("LOCALAPPDATA", root, sizeof(root));
-	if (!length || length >= sizeof(root)) {
-		length = GetEnvironmentVariableA("APPDATA", root, sizeof(root));
-	}
-	if (!length || length >= sizeof(root)) return false;
-
 	char directory[MAX_PATH + 32];
-	const int directoryLength = _snprintf(directory, sizeof(directory), "%s\\Metal Arms Source Port", root);
-	if (directoryLength <= 0 || directoryLength >= sizeof(directory)) return false;
+	DWORD length = GetEnvironmentVariableA("MA_PORT_SAVE_DIR", directory, MAX_PATH);
+	const bool defaultRoot = !length;
+	if (length >= MAX_PATH) return false;
+	if (defaultRoot) {
+		char root[MAX_PATH];
+		length = GetEnvironmentVariableA("APPDATA", root, sizeof(root));
+		if (!length || length >= sizeof(root)) return false;
+		const int directoryLength = _snprintf(directory, sizeof(directory), "%s\\MAGITS", root);
+		if (directoryLength <= 0 || directoryLength >= sizeof(directory)) return false;
+	}
 	CreateDirectoryA(directory, NULL);
 	const int pathLength = _snprintf(path, capacity, "%s\\settings.ini", directory);
-	return pathLength > 0 && pathLength < capacity;
+	if (pathLength <= 0 || pathLength >= capacity) return false;
+
+	if (defaultRoot && GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
+		char root[MAX_PATH], oldPath[MAX_PATH + 64];
+		length = GetEnvironmentVariableA("LOCALAPPDATA", root, sizeof(root));
+		if (length && length < sizeof(root)) {
+			const int oldLength = _snprintf(oldPath, sizeof(oldPath), "%s\\Metal Arms Source Port\\settings.ini", root);
+			if (oldLength > 0 && oldLength < sizeof(oldPath)) {
+				CopyFileA(oldPath, path, TRUE);
+			}
+		}
+	}
+	return true;
 }
 
 static PcPromptStyle LoadPromptStyleSetting() {
@@ -553,6 +575,7 @@ int pcinput_PadForPort(PcInputLayout layout, u32 port) {
 	if (port >= FPADIO_MAX_DEVICES) return -1;
 	if (layout == PCINPUT_LAYOUT_AUTO) return (int)InterlockedCompareExchange(&s_autoPortPad[port], 0, 0) - 1;
 	if (layout == PCINPUT_LAYOUT_SEPARATE) return port == 0 ? -1 : int(port) - 1;
+	if (!s_localCoopSession && s_padLockReady) return (int)InterlockedCompareExchange(&s_soloPortPad[port],0,0)-1;
 	return int(port);
 }
 
@@ -572,17 +595,36 @@ static void UpdateAutoPadAssignmentLocked() {
 	const DWORD now = GetTickCount();
 	bool connected[FPADIO_MAX_DEVICES];
 	u32 connectedCount = 0;
+	int soloActivePad=-1;
 	for (u32 pad = 0; pad < FPADIO_MAX_DEVICES; pad++) {
 		connected[pad] = InterlockedCompareExchange(&s_connected[pad], 0, 0) != 0;
 		if (s_getState && (connected[pad] || now - s_lastProbe[pad] >= XINPUT_REPROBE_MS)) {
 			XINPUT_STATE padState;
 			s_lastProbe[pad] = now;
 			connected[pad] = s_getState(pad, &padState) == ERROR_SUCCESS;
+			if(connected[pad] && soloActivePad<0) {
+				const XINPUT_GAMEPAD &g=padState.Gamepad;
+				if(g.wButtons || g.bLeftTrigger>XINPUT_GAMEPAD_TRIGGER_THRESHOLD || g.bRightTrigger>XINPUT_GAMEPAD_TRIGGER_THRESHOLD || abs(g.sThumbLX)>XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || abs(g.sThumbLY)>XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || abs(g.sThumbRX)>XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || abs(g.sThumbRY)>XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE) soloActivePad=(int)pad;
+			}
 			InterlockedExchange(&s_connected[pad], connected[pad] ? 1 : 0);
 		}
 		if (connected[pad]) connectedCount++;
 	}
 	bool changed = false;
+	if ((!s_localCoopSession && s_layout==PCINPUT_LAYOUT_SHARED) || s_explicitLocalJoin) {
+		unsigned mask=0;
+		for(u32 pad=0;pad<FPADIO_MAX_DEVICES;++pad) if(connected[pad]) mask|=1u<<pad;
+		PcSessionPadRouting &routing=s_localCoopSession?s_joinRouting:s_soloRouting;
+		if(!s_localCoopSession && soloActivePad>=0) routing.owned[0]=soloActivePad;
+		routing.Update(mask);
+		for(u32 port=0;port<FPADIO_MAX_DEVICES;++port) {
+			volatile LONG *entry=s_localCoopSession?&s_autoPortPad[port]:&s_soloPortPad[port];
+			const LONG value=routing.routed[port]+1;
+			if(InterlockedExchange(entry,value)!=value) changed=true;
+		}
+		if(changed) InterlockedIncrement(&s_padAssignmentSerial);
+		return;
+	}
 	int portOfPad[FPADIO_MAX_DEVICES];
 	for (u32 pad = 0; pad < FPADIO_MAX_DEVICES; pad++) portOfPad[pad] = -1;
 	for (u32 port = 0; port < FPADIO_MAX_DEVICES; port++) {
@@ -643,21 +685,55 @@ u32 pcinput_KeyboardPort() { return 0; }
 
 PcInputLayout pcinput_Layout() { return s_localCoopSession ? s_localCoopLayout : s_layout; }
 void pcinput_SetLocalCoopSession(bool active, PcInputLayout layout, u32 players) {
-	if (active && layout == PCINPUT_LAYOUT_AUTO && s_padLockReady) {
-		EnterCriticalSection(&s_padLock);
-		for (u32 port = 0; port < FPADIO_MAX_DEVICES; port++) InterlockedExchange(&s_autoPortPad[port], 0);
-		InterlockedExchange(&s_autoPlayers, (LONG)(players < 1 ? 1 : players > FPADIO_MAX_DEVICES ? FPADIO_MAX_DEVICES : players));
-		InterlockedExchange(&s_autoDealt, 0);
-		for (u32 pad = 0; pad < FPADIO_MAX_DEVICES; pad++) s_lastProbe[pad] = GetTickCount() - XINPUT_REPROBE_MS;
+	if(layout!=PCINPUT_LAYOUT_SHARED && layout!=PCINPUT_LAYOUT_SEPARATE && layout!=PCINPUT_LAYOUT_AUTO) layout=PCINPUT_LAYOUT_SHARED;
+	if(s_padLockReady) EnterCriticalSection(&s_padLock);
+	s_explicitLocalJoin=false;
+	s_localCoopLayout=layout;s_localCoopSession=active;
+	if(active && layout==PCINPUT_LAYOUT_AUTO && s_padLockReady) {
+		for(u32 port=0;port<FPADIO_MAX_DEVICES;++port) InterlockedExchange(&s_autoPortPad[port],0);
+		InterlockedExchange(&s_autoPlayers,(LONG)(players<1?1:players>FPADIO_MAX_DEVICES?FPADIO_MAX_DEVICES:players));
+		InterlockedExchange(&s_autoDealt,0);
+		for(u32 pad=0;pad<FPADIO_MAX_DEVICES;++pad) s_lastProbe[pad]=GetTickCount()-XINPUT_REPROBE_MS;
+		UpdateAutoPadAssignmentLocked();InterlockedIncrement(&s_padAssignmentSerial);
+	} else if(!active && s_padLockReady) {
 		UpdateAutoPadAssignmentLocked();
-		InterlockedIncrement(&s_padAssignmentSerial);
-		s_localCoopLayout = layout;
-		s_localCoopSession = active;
-		LeaveCriticalSection(&s_padLock);
-		return;
 	}
-	s_localCoopLayout = layout;
-	s_localCoopSession = active;
+	if(s_padLockReady) LeaveCriticalSection(&s_padLock);
+}
+
+// Preserve the controller that opened the menu as P1, regardless of XInput slot.
+void pcinput_BeginLocalJoin(u32 ownerPort) {
+	if(!s_padLockReady) return;
+	EnterCriticalSection(&s_padLock);
+	const int ownerPad=ownerPort<FPADIO_MAX_DEVICES && InterlockedCompareExchange(&s_portPromptsForPad[ownerPort],0,0)?pcinput_PadForPort(pcinput_Layout(),ownerPort):-1;
+	s_joinRouting.Reset(true,ownerPad);
+	s_explicitLocalJoin=true;s_localCoopSession=true;s_localCoopLayout=PCINPUT_LAYOUT_AUTO;
+	InterlockedExchange(&s_autoPlayers,FPADIO_MAX_DEVICES);
+	for(u32 pad=0;pad<FPADIO_MAX_DEVICES;++pad) {
+		s_lastProbe[pad]=GetTickCount()-XINPUT_REPROBE_MS;
+		XINPUT_STATE state={};
+		InterlockedExchange(&s_blockedPadButtons[pad],s_getState && s_getState(pad,&state)==ERROR_SUCCESS ? state.Gamepad.wButtons : 0);
+	}
+	UpdateAutoPadAssignmentLocked();InterlockedIncrement(&s_padAssignmentSerial);
+	LeaveCriticalSection(&s_padLock);
+}
+void pcinput_ClaimLocalJoinPort(u32 port) {
+	if(!s_padLockReady) return;
+	EnterCriticalSection(&s_padLock);
+	if(s_explicitLocalJoin) s_joinRouting.Claim(port);
+	LeaveCriticalSection(&s_padLock);
+}
+void pcinput_KeepLocalJoinPlayers(u32 mask) {
+	if(!s_padLockReady) return;
+	EnterCriticalSection(&s_padLock);
+	if(s_explicitLocalJoin) {s_joinRouting.KeepJoined(mask);UpdateAutoPadAssignmentLocked();}
+	LeaveCriticalSection(&s_padLock);
+}
+void pcinput_FinishLocalJoin(u32 mask) {
+	if(!s_padLockReady) return;
+	EnterCriticalSection(&s_padLock);
+	if(s_explicitLocalJoin) {s_joinRouting.Finish(mask);UpdateAutoPadAssignmentLocked();}
+	LeaveCriticalSection(&s_padLock);
 }
 
 bool pcinput_ParsePromptStyle(const char *text, PcPromptStyle *style) {
@@ -740,10 +816,21 @@ void pcinput_GetDeviceInfo(u32 index, FPadio_DeviceInfo_t *info) {
 	for (u32 i = 0; i < FPADIO_MAX_INPUTS; i++) info->aeInputIDs[i] = (FPadio_InputID_e)(i + 1);
 }
 
+// Remapping a join preview must not replay a held A/B on another player's row.
+static void MaskRoutingButtons(u32 port, int pad, XINPUT_GAMEPAD *state) {
+	const LONG old=InterlockedExchange(&s_sampledPortPad[port],pad+1);
+	if(pad<0) return;
+	if(old!=pad+1 && s_explicitLocalJoin && s_joinRouting.joining)
+		InterlockedExchange(&s_blockedPadButtons[pad],state->wButtons);
+	const LONG blocked=InterlockedCompareExchange(&s_blockedPadButtons[pad],0,0)&state->wButtons;
+	InterlockedExchange(&s_blockedPadButtons[pad],blocked);
+	state->wButtons&=~blocked;
+}
+
 void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 	PcInputState state = {};
 	if (index >= FPADIO_MAX_DEVICES) { memset(sample, 0, sizeof(*sample)); return; }
-	if (index == 0 && pcinput_Layout() == PCINPUT_LAYOUT_AUTO) UpdateAutoPadAssignment();
+	if (index == 0 && (pcinput_Layout() == PCINPUT_LAYOUT_AUTO || (!s_localCoopSession && s_layout==PCINPUT_LAYOUT_SHARED))) UpdateAutoPadAssignment();
 	const int pad = pcinput_PadForPort(pcinput_Layout(), index);
 	const bool keyboard = index == pcinput_KeyboardPort();
 	const DWORD now = GetTickCount();
@@ -755,6 +842,7 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 		InterlockedExchange(&s_connected[pad], connected ? 1 : 0);
 		if (connected) state.pad = padState.Gamepad;
 	}
+	MaskRoutingButtons(index,pad,&state.pad);
 	state.connected = pcinput_XInputConnected(index);
 	// Aiming with the right stick hands target assistance back to the controller.
 	if (keyboard && state.connected &&
@@ -852,8 +940,12 @@ bool pcinput_WindowMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 			}
 		}
 	}
-	if (message == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT && (MouseLook() || MenuDrawsPointer())) {
-		SetCursor(NULL); return true;
+	if (message == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT) {
+		// The unfocused window always uses an arrow. A stale menu-pointer flag
+		// must not hide it, or inherit the startup busy cursor from the window class.
+		const bool hide = GetForegroundWindow() == s_window && (MouseLook() || MenuDrawsPointer());
+		SetCursor(hide ? NULL : LoadCursor(NULL, IDC_ARROW));
+		return true;
 	}
 	if (!MouseLook()) {
 		if (message == WM_MOUSEMOVE || message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK ||

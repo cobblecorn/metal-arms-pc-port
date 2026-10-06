@@ -55,6 +55,8 @@ private:
 
 	f32 m_fDeltaHeightPerSec;
 	f32 m_fTime;
+	f32 m_fHeightOffset;
+	f32 m_fDamageIntensity;
     	
 	CFLiquidVolume *m_pLiquid;
 	CFTexInst *m_pTexInst[2];
@@ -74,6 +76,7 @@ public:
 	BOOL Create( cchar *pszEntityName=NULL, const CFMtx43A *pMtx=NULL, cchar *pszAIBuilderName=NULL );
 	
 	// Public functions for scripting or whatever.
+	f32 GetDamageIntensity( void ) const { return m_fDamageIntensity; }
 	void ChangeLiquidHeight(f32 fDelta);
 	void ChangeLiquidHeight_Time(f32 fDeltaHeight, f32 fTime);
 
@@ -101,6 +104,10 @@ protected:
 	virtual void ClassHierarchyWork( void );
 
 	static CDamageProfile *m_pDamageProfile[3];
+public:
+	virtual void CheckpointSaveSelect( s32 nCheckpoint );
+	virtual BOOL CheckpointSave( void );
+	virtual void CheckpointRestore( void );
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // Private Functions:
@@ -139,6 +146,8 @@ public:
 	f32 m_fDropFreq;
 	f32 m_fCullDist;
 	f32 m_fOpacity; //for texture type.
+	BOOL m_bEnableRender;
+	f32 m_fDamageIntensity;
 	f32 m_fTile;
 	f32 m_fBumpTile;
 	f32 m_fGlowScale;

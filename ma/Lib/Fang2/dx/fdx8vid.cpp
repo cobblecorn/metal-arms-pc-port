@@ -2541,7 +2541,13 @@ static BOOL _CreateWindow( void )
 	// disable the screensaver from kicking on
 	SystemParametersInfo( SPI_SETSCREENSAVEACTIVE, FALSE, 0, 0 );
 
+#if defined(MA_PC_INPUT)
+	// Startup may still display Windows' app-starting cursor. Do not store it
+	// as this window's permanent cursor when gameplay releases the mouse.
+	fdx8vid_SetCursor( LoadCursor( NULL, IDC_ARROW ) );
+#else
 	fdx8vid_SetCursor( GetCursor() );
+#endif
 #endif
 
 	// Clear back color, depth, and stencil buffers...

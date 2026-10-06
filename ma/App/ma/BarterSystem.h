@@ -85,5 +85,7 @@ extern void bartersystem_AbortActiveMode(void);
 extern BOOL bartersystem_SetAttractRadius(u32 uWhichTable, f32 fAttractMusicRadius, f32 fAttractSpeechRadius);
 
 extern BOOL bartersystem_IsBarterBot(const CEntity* pEntity);
+// Brief, shopper-specific feedback after an empty co-op offer; does not change stock.
+extern BOOL bartersystem_HasEmptyOfferNotice(const CEntity* pPlayer);
 
 #endif

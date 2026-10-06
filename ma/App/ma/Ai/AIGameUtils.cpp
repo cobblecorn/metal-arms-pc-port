@@ -24,6 +24,7 @@
 #include "../meshtypes.h"
 #include "../MultiplayerMgr.h"
 #include "../player.h"
+#include "../level.h"
 #include "../site_botweapon.h"
 #include "../vehiclerat.h"
 
@@ -470,6 +471,62 @@ s32 aiutils_GetNumPlayers(void)
 }
 
 
+#if FANG_WINGC
+static BOOL _IsWastelandCageOccupant( CEntity *pEntity ) {
+	if( Level_nLoadedIndex < 0 || fclib_stricmp( Level_aInfo[Level_nLoadedIndex].pszWorldResName, "WEWJjourn01" ) ||
+		!pEntity || !(pEntity->TypeBits() & ENTITY_BIT_BOTZOM) || !pEntity->Name() ) return FALSE;
+	return !fclib_stricmp( pEntity->Name(), "pipezom1" ) || !fclib_stricmp( pEntity->Name(), "pipezom2" );
+}
+
+static BOOL _IsCagedWastelandZombie( CEntity *pEntity ) {
+	return _IsWastelandCageOccupant( pEntity ) && !((CBot *)pEntity)->Recruit_IsRecruited();
+}
+
+BOOL aiutils_CanScriptRecruitWastelandZombie( CBot *pBot, CBot *pRecruiter, const CFVec3A *pEpicenter ) {
+	// ZombieBots have neither the recruitable-class flag nor an open data port. The
+	// authored cage-release Bot_Recruit calls must bypass those two ordinary restrictions.
+	// A grenade supplies an epicenter, so it retains the normal recruitment rules.
+	return !pEpicenter && MultiplayerMgr.IsSinglePlayer() && _IsWastelandCageOccupant( pBot ) &&
+		pBot->IsCreated() && pBot->IsInWorld() && !pBot->IsDeadOrDying() &&
+		!pBot->Recruit_IsRecruited() && pBot->m_nOwnerPlayerIndex < 0 &&
+		pBot->m_nPossessionPlayerIndex < 0 && !pBot->DataPort_IsBeingShocked() && !pBot->DataPort_IsReserved() &&
+		!pBot->Recruit_IsInstanceForbidden() &&
+		pRecruiter && pRecruiter != pBot && pRecruiter->IsCreated() && pRecruiter->IsInWorld() &&
+		!pRecruiter->IsDeadOrDying() && pRecruiter->m_nPossessionPlayerIndex >= 0;
+}
+
+void aiutils_EnsureFreedWastelandZombieFollowsPlayer( CEntity *pEntity ) {
+	if( !MultiplayerMgr.IsSinglePlayer() || !_IsWastelandCageOccupant( pEntity ) ) return;
+	CBot *pBot = (CBot *)pEntity;
+	// The retail cage-destruction script recruits each bot. Wait for its shock to finish;
+	// friendliness alone must never recruit a still-caged bot or override human possession.
+	if( !pBot->IsCreated() || !pBot->IsInWorld() || pBot->IsDeadOrDying() ||
+		!pBot->Recruit_IsRecruited() || pBot->DataPort_IsBeingShocked() ||
+		pBot->m_nPossessionPlayerIndex >= 0 ) return;
+	CAIBrain *pBrain = pBot->AIBrain();
+	if( !pBrain || !pBrain->GetFlag_Active() ) return;
+
+	// Prefer Glitch/P1, with a surviving partner while P1 is dead. Following the current
+	// controlled body also keeps the allies useful during normal possession.
+	for( s32 i=0; i<CPlayer::m_nPlayerCount && i<MAX_PLAYERS; ++i ) {
+		CEntity *pPlayerEntity = Player_aPlayer[i].m_pEntityCurrent;
+		if( !pPlayerEntity || !(pPlayerEntity->TypeBits() & ENTITY_BIT_BOT) || pPlayerEntity == pEntity ) continue;
+		CBot *pPlayerBot = (CBot *)pPlayerEntity;
+		CAIBrain *pLeader = pPlayerBot->AIBrain();
+		if( !pPlayerBot->IsCreated() || !pPlayerBot->IsInWorld() || pPlayerBot->IsDeadOrDying() ||
+			!pLeader || !pLeader->GetFlag_Active() ) continue;
+		if( pBrain->GetLeader() == pLeader && pBrain->GetCurFollowerThoughtPtr() ) return;
+		// Retry after a checkpoint/failed thought without restarting a healthy formation.
+		if( pBrain->GetLeader() == pLeader ) pBrain->StopFollowing();
+		pBrain->SetFlag_Buddy_Ctrl_Auto();
+		if( pBrain->AssignLeader( pLeader ) ) {
+			DEVPRINTF( "Port: freed cage ally '%s' follows player %d.\n", pBot->Name(), i+1 );
+		}
+		return;
+	}
+}
+#endif
+
 BOOL aiutils_IsFriendly(CEntity* pSelfEntity, CEntity* pEntityToTest, f32 *pfSuspiciousOfFriendship)
 {
 	if (pfSuspiciousOfFriendship)
@@ -479,6 +536,9 @@ BOOL aiutils_IsFriendly(CEntity* pSelfEntity, CEntity* pEntityToTest, f32 *pfSus
 
 	if (pSelfEntity && pEntityToTest)
 	{
+#if FANG_WINGC
+		if( _IsCagedWastelandZombie( pSelfEntity ) || _IsCagedWastelandZombie( pEntityToTest ) ) return TRUE;
+#endif
 		// Special rules for multiplayer
 		if (MultiplayerMgr.IsMultiplayer())
 		{

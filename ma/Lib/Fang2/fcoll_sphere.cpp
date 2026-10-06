@@ -801,9 +801,56 @@ static BOOL _IntersectStaticSphereAndTriangles( const FkDOP_Node_t *pTestNode, c
 //	fT:				Filled in with unit time at which sphere collides with polygon edge
 //	vImpact:		Filled in with the  point on edge that is hit
 //
-static void _ProjectSphereAgainstEdge( const CFVec3A &vSphereCenter, f32 fRadius, const CFVec3A &vTravel, 
+#if FANG_WINGC
+// Find the entry root only. Float determinant subtraction can fabricate an entry
+// when a RAT moves almost parallel to a long edge; that produces a negative push.
+static BOOL _SphereSweepEntryTime( double a, double b, double c, double fLimit, double &fTime )
+{
+	if( !(a > 0.0) || !(c >= 0.0) ) return FALSE;
+	const double d = b*b - 4.0*a*c;
+	if( !(d >= 0.0) ) return FALSE;
+	const double r = sqrt(d);
+	const double q = -0.5 * (b + (b < 0.0 ? -r : r));
+	double t0, t1;
+	if( q == 0.0 ) t0 = t1 = -b/(2.0*a);
+	else { t0 = q/a; t1 = c/q; }
+	if( t1 < t0 ) { const double t=t0; t0=t1; t1=t; }
+	if( !(t0 >= 0.0 && t0 < fLimit) ) return FALSE;
+	fTime = t0;
+	return TRUE;
+}
+#endif
+
+static void _ProjectSphereAgainstEdge( const CFVec3A &vSphereCenter, f32 fRadius, const CFVec3A &vTravel,
 							  const CFVec3A &vVert0, const CFVec3A &vVert1, f32 &fT, CFVec3A &vImpact )
 {
+#if FANG_WINGC
+	// Project onto the plane perpendicular to the edge before solving the sweep.
+	// Keep relative coordinates, dot products and roots in double precision.
+	const double ex=(double)vVert1.x-vVert0.x, ey=(double)vVert1.y-vVert0.y, ez=(double)vVert1.z-vVert0.z;
+	const double cx=(double)vSphereCenter.x-vVert0.x, cy=(double)vSphereCenter.y-vVert0.y, cz=(double)vSphereCenter.z-vVert0.z;
+	const double vx=vTravel.x, vy=vTravel.y, vz=vTravel.z;
+	const double ee=ex*ex+ey*ey+ez*ez;
+	const double rr=(double)fRadius*fRadius;
+	double t;
+	if( ee > 0.0 ) {
+		const double ce=(cx*ex+cy*ey+cz*ez)/ee, ve=(vx*ex+vy*ey+vz*ez)/ee;
+		const double px=cx-ce*ex, py=cy-ce*ey, pz=cz-ce*ez;
+		const double dx=vx-ve*ex, dy=vy-ve*ey, dz=vz-ve*ez;
+		if( _SphereSweepEntryTime(dx*dx+dy*dy+dz*dz, 2.0*(px*dx+py*dy+pz*dz), px*px+py*py+pz*pz-rr, fT, t) ) {
+			const double u=ce+t*ve;
+			if( u >= 0.0 && u <= 1.0 ) {
+				fT=(f32)t;
+				vImpact.Set((f32)(vVert0.x+u*ex), (f32)(vVert0.y+u*ey), (f32)(vVert0.z+u*ez));
+			}
+		}
+	}
+	// Each triangle edge tests its first endpoint, including degenerate edges.
+	if( _SphereSweepEntryTime(vx*vx+vy*vy+vz*vz, 2.0*(cx*vx+cy*vy+cz*vz), cx*cx+cy*cy+cz*cz-rr, fT, t) ) {
+		fT=(f32)t;
+		vImpact=vVert0;
+	}
+#else
 	static CFVec3A __vTempHit;
 	static CFVec3A __vCenterDelta;
 	static CFVec3A __vEdge;
@@ -910,6 +957,7 @@ static void _ProjectSphereAgainstEdge( const CFVec3A &vSphereCenter, f32 fRadius
 	} 
 	
 	// fDiscriminant is negative so sphere misses vertex, too
+#endif
 }
 
 

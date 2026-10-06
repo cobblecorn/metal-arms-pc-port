@@ -93,6 +93,9 @@ public:
 	void SwitchTo( void );
 
 	void TossSparksFromBot( CBot *pBot );
+#if FANG_WINGC
+	BOOL PortTestParty( u32 nTest );
+#endif
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // Private definitions
@@ -192,6 +195,22 @@ private:
 // Private data
 //----------------------------------------------------------------------------------------------------------------------------------
 private:
+#if FANG_WINGC
+	struct CoopDanceState {
+		CFVec3A offset;
+		u32 flags;
+		f32 align, position, look, move;
+	};
+	CoopDanceState m_aCoopDance[4];
+	CFWorldMesh *m_apCoopHolo[3];
+	BOOL m_bCoopRetryPending;
+	BOOL _CoopActive();
+	void _CoopPlacePlayers();
+	void _CoopCommandState( BOOL bExecute );
+	void _CoopCheckPlayers();
+	BOOL _CoopFinishCommand();
+	void _CoopHologramsWork();
+#endif
 	u32 m_uFlags;
 	StageState_e m_eStageState;
 

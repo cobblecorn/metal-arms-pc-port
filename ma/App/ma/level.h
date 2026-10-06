@@ -171,6 +171,7 @@ extern void level_Draw( void );
 extern cchar *level_GetSteamingAudioFilename( u32 nIndex, BOOL &rbTreatAsMusicStream );
 extern int level_StartStream( cchar *pszFilename, u32 nNumLoops=1, f32 fVolume=1.0f, s32 nStreamIndex=-1, BOOL bTreatAsMusicStream=TRUE );
 extern void level_StopStream( cchar *pszFilename );
+extern CFAudioStream *level_GetStreamByName( cchar *pszFilename );
 extern void level_StopAllStreams( void ); 
 extern void level_SetCurStreamVolume( f32 fNewVolume );
 extern void level_RestartAllStreams( void );
@@ -199,6 +200,7 @@ extern void level_DuckAudio( f32 fDuckVol = LEVEL_DEFAULT_DUCK_VOLUME); //ducks 
 extern void level_UnduckAudio( void ); //decrements the nDuckCount variable
 
 // movie functions:
+extern cutscene_Handle_t level_GetEndingMovieHandle( void );
 extern void level_SetIntroMovieHandle( cutscene_Handle_t hCutscene );
 extern void level_PlayIntroMovie();
 

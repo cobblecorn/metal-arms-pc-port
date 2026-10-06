@@ -317,6 +317,56 @@ BOOL CBotAAGun::Create( s32 nPlayerIndex, BOOL bInstallDataPort, cchar *pszEntit
 	return CBot::Create( &m_BotDef, nPlayerIndex, bInstallDataPort, pszEntityName, pMtx, pszAIBuilderName );
 }
 
+#if FANG_WINGC
+// Copy configuration, never driver/animation/controls or checkpoint ownership.
+BOOL CBotAAGun::PortCreateDefenseGun( const CBotAAGun *pOriginal, cchar *pszName, const CFMtx43A *pMtx ) {
+	if( !Create( -1, FALSE, pszName, pMtx, "Default" ) ) {
+		return FALSE;
+	}
+	// Runtime clones need the same world-owned teardown as authored entities.
+	// Otherwise their brains/list entries survive until the resource frame dies.
+	SetAutoDelete( TRUE );
+	m_bLimitHeading = pOriginal->m_bLimitHeading;
+	m_fMaxHeading = pOriginal->m_fMaxHeading;
+	m_fMinHeading = pOriginal->m_fMinHeading;
+	m_fMinPitch = pOriginal->m_fMinPitch;
+	m_fMaxPitch = pOriginal->m_fMaxPitch;
+	m_fHeadingPerSec = pOriginal->m_fHeadingPerSec;
+	m_fPitchPerSec = pOriginal->m_fPitchPerSec;
+	m_bMorterAttachment = pOriginal->m_bMorterAttachment;
+	SetHealthContainerCount( pOriginal->HealthContainerCount() );
+	SetNormHealth( pOriginal->NormHealth() );
+	SetArmorProfile( pOriginal->GetArmorProfile() );
+	SetInvincible( pOriginal->IsInvincible() );
+	InitialTeam( pOriginal->GetTeam() );
+	EnableDriverExit( FALSE );
+	EnableEnterMsgDisplay( FALSE );
+	return TRUE;
+}
+
+BOOL CBotAAGun::PortBoardDefensePlayer( CBot *pBot ) {
+	if( !pBot || !pBot->IsPlayerBot() || !pBot->IsInWorld() || pBot->IsDeadOrDying() ) {
+		return FALSE;
+	}
+	if( m_pDriverBot == pBot ) {
+		return TRUE;
+	}
+	if( m_eStationStatus != CVehicle::STATION_STATUS_EMPTY || m_pDriverBot ||
+		pBot->GetCurMech() || !pBot->Controls() || pBot->SwitchingWeapons() ) {
+		return FALSE;
+	}
+	// This mission starts seated: bypass the proximity test and long entry jump.
+	DriverEnter( pBot, m_apszBoneNameTable[BONE_ATTACHPOINT_BOT] );
+	return TRUE;
+}
+
+BOOL CBotAAGun::PortDefensePlayerReady( CBot *pBot ) const {
+	return pBot && m_pDriverBot == pBot &&
+		m_eStationStatus == CVehicle::STATION_STATUS_OCCUPIED &&
+		m_eCameraState == CAMERA_STATE_IN_VEHICLE;
+}
+#endif
+
 void CBotAAGun::ClassHierarchyDestroy( void ) { 
 
 	fforce_Kill( &m_hForce );
@@ -1231,7 +1281,11 @@ void CBotAAGun::_CameraTransitionWork( void ) {
 	case CAMERA_STATE_START_ENTER_VEHICLE:
 		m_fUnitCameraTransition = 0.0f;
 		m_eCameraState			= CAMERA_STATE_ENTERING_VEHICLE;
-		pCamera					= gamecam_GetActiveCamera();
+#if FANG_WINGC
+		pCamera = fcamera_GetCameraByIndex( m_pCameraBot->m_nPossessionPlayerIndex );
+#else
+		pCamera = gamecam_GetActiveCamera();
+#endif
 		m_ManCamMtx				= pCamera->GetFinalXfm()->m_MtxR;
 		m_TransCamMtx			= pCamera->GetFinalXfm()->m_MtxR;
 		pCamera->GetFOV( &m_CamInfo.m_fHalfFOV );
@@ -1252,7 +1306,11 @@ void CBotAAGun::_CameraTransitionWork( void ) {
 	case CAMERA_STATE_START_EXIT_VEHICLE:
 		m_fUnitCameraTransition = 0.0f;
 		m_eCameraState			= CAMERA_STATE_EXITING_VEHICLE;
-		pCamera					= gamecam_GetActiveCamera();
+#if FANG_WINGC
+		pCamera = fcamera_GetCameraByIndex( m_pCameraBot->m_nPossessionPlayerIndex );
+#else
+		pCamera = gamecam_GetActiveCamera();
+#endif
 		m_ManCamMtx				= pCamera->GetFinalXfm()->m_MtxR;
 		m_TransCamMtx			= pCamera->GetFinalXfm()->m_MtxR;
 		pCamera->GetFOV( &m_CamInfo.m_fHalfFOV );

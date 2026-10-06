@@ -60,3 +60,25 @@ The export's raw animation JSON keeps the source clip names, durations, and bone
 importer saves the rigs upright for Z-up tools, centers them at ground level, and spaces them by their
 measured bounds. It leaves source texture alpha disconnected from surface opacity because these bot
 textures use that channel as a mask; this avoids ghosted-looking models during external export.
+
+## Separate static OBJ packages
+
+The vendor blend also exports one standalone, textured OBJ package per robot:
+
+- Shady: [`Shady.obj`](../build/export/character_porting_kit_20260928/obj/Shady/Shady.obj) and
+  [`Shady_OBJ.zip`](../build/export/character_porting_kit_20260928/obj/Shady_OBJ.zip)
+- Slim: [`Slim.obj`](../build/export/character_porting_kit_20260928/obj/Slim/Slim.obj) and
+  [`Slim_OBJ.zip`](../build/export/character_porting_kit_20260928/obj/Slim_OBJ.zip)
+
+Each ZIP contains that robot's OBJ, MTL, required TGA textures, and an import note. Keep the OBJ, MTL,
+and textures together when importing. These meshes are static rest poses with Z up, centered in X/Y, and
+grounded at Z=0; OBJ does not carry the skeleton or animation actions. Use the vendor `.blend` above for
+animation work.
+
+Rebuild the packages from the repository root with Blender 5.x:
+
+```powershell
+blender --background build/export/character_porting_kit_20260928/metal_arms_vendors.blend `
+  --python tools/export_vendor_obj.py -- `
+  --output build/export/character_porting_kit_20260928/obj
+```

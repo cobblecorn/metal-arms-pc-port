@@ -26,6 +26,9 @@
 #include "botAAGun.h"
 #include "fres.h"
 #include "player.h"
+#if FANG_WINGC
+#include "MultiplayerMgr.h"
+#endif
 #include "AI\AiApi.h"
 #include "AI\AIEnviro.h"
 #include "AI\AIGameUtils.h"
@@ -193,6 +196,11 @@ typedef struct {
 
 	// the human gun
 	CBotAAGun *pAAGun;
+#if FANG_WINGC
+	CBotAAGun *apDefenseGuns[4];
+	s32 nDefensePlayers;
+	BOOL bDefenseIntroFinished;
+#endif
 
 	// data on the spawn pts & their paths
 	_SpawnPtData_t aSpawnData[_NUM_SPAWN_PTS];
@@ -244,6 +252,58 @@ static f32 _RandomWithBiasTowardMinValue( f32 fUnitBiasFactor, f32 fMin, f32 fMa
 static void _MusicWork( void );
 static BOOL _AreAllSpawnPtsUnused( void );
 static BOOL _WalkToJumpPoint( void );
+
+#if FANG_WINGC
+static BOOL _CreateCoopDefenseGuns( void ) {
+	_pLevelData->nDefensePlayers = MultiplayerMgr.IsLocalCoop() ? CPlayer::m_nPlayerCount : 1;
+	if( _pLevelData->nDefensePlayers < 1 || _pLevelData->nDefensePlayers > 4 ) {
+		return FALSE;
+	}
+	_pLevelData->apDefenseGuns[0] = _pLevelData->pAAGun;
+	static const char *apszNames[4] = { "biggun", "coop_defense_p2", "coop_defense_p3", "coop_defense_p4" };
+	for( s32 i=1; i < _pLevelData->nDefensePlayers; ++i ) {
+		CFMtx43A Mtx = *_pLevelData->pAAGun->MtxToWorld();
+		// Alternating sides leaves the original gun and scripted jump point intact.
+		f32 fOffset = (i & 1) ? 16.0f * ((i + 1) / 2) : -16.0f * (i / 2);
+		Mtx.m_vPos.x += Mtx.m_vRight.x * fOffset;
+		Mtx.m_vPos.z += Mtx.m_vRight.z * fOffset;
+		CBotAAGun *pGun = fnew CBotAAGun;
+		if( !pGun || !pGun->PortCreateDefenseGun( _pLevelData->pAAGun, apszNames[i], &Mtx ) ) {
+			fdelete( pGun );
+			for( s32 j=1; j < i; ++j ) {
+				fdelete( _pLevelData->apDefenseGuns[j] );
+				_pLevelData->apDefenseGuns[j] = NULL;
+			}
+			return FALSE;
+		}
+		_pLevelData->apDefenseGuns[i] = pGun;
+		DEVPRINTF( "Co-op defense: P%d gun at %.2f %.2f %.2f\n", i + 1, Mtx.m_vPos.x, Mtx.m_vPos.y, Mtx.m_vPos.z );
+	}
+	return TRUE;
+}
+
+static BOOL _CoopDefenseTeamReady( void ) {
+	_pLevelData->pAAGun->EnableDriverExit( FALSE );
+	if( _pLevelData->nDefensePlayers <= 1 ) {
+		return _pLevelData->pAAGun->IsGunInUse();
+	}
+	BOOL bReady = TRUE;
+	for( s32 i=0; i < _pLevelData->nDefensePlayers; ++i ) {
+		CBot *pBot = (CBot *)Player_aPlayer[i].m_pEntityOrig;
+		CBotAAGun *pGun = _pLevelData->apDefenseGuns[i];
+		pGun->EnableDriverExit( FALSE );
+		pGun->EnableDriverMovement( TRUE );
+		pGun->EnableEnterMsgDisplay( FALSE );
+		if( i > 0 ) {
+			pGun->PortBoardDefensePlayer( pBot );
+		}
+		if( !pGun->PortDefensePlayerReady( pBot ) ) {
+			bReady = FALSE;
+		}
+	}
+	return bReady;
+}
+#endif
 
 /////////////////////
 // public functions:
@@ -697,8 +757,18 @@ BOOL mg_holdyourground_LevelLoad( LevelEvent_e eEvent ) {
     
 	_ResetSuckMeterData();
 
+#if FANG_WINGC
+	if( !_CreateCoopDefenseGuns() ) {
+		goto _EXIT_WITH_ERROR;
+	}
+#endif
+
 	// start the transmission
+#if FANG_WINGC
+	CHud2::GetHudForPlayer(0)->TransmissionMsg_Start( CHud2::TRANSMISSION_AUTHOR_COLONEL_ALLOY, _pLevelData->hAlloy, 1.0f, FALSE );
+#else
 	CHud2::GetCurrentHud()->TransmissionMsg_Start( CHud2::TRANSMISSION_AUTHOR_COLONEL_ALLOY, _pLevelData->hAlloy, 1.0f, FALSE );
+#endif
 
 	return TRUE;
 
@@ -733,7 +803,11 @@ void mg_holdyourground_LevelWork( void ) {
 	case _STATE_WAIT_TO_GET_INTO_GUN:
 		// wait for the player to get into the gun and have all of the bots pulled from the world
 		if( _PullAllBotsFromTheWorld() && _WalkToJumpPoint() ) {
+#if FANG_WINGC
+			if( _CoopDefenseTeamReady() ) {
+#else
 			if( _pLevelData->pAAGun->IsGunInUse() ) {
+#endif
 				// time to move to the active state
 				_pLevelData->nState = _STATE_ACTIVE;
 				_pLevelData->fTimer = 0.0f;
@@ -858,7 +932,7 @@ void mg_holdyourground_LevelWork( void ) {
 			DEVPRINTF( "MG_HoldYourGround_Work() : restarting the level\n" );
 #endif
 			// restart the level
-			checkpoint_Restore( 0, FALSE );
+			checkpoint_Restore( 0, FALSE, "hold-your-ground:restart" );
 		}
 		break;
 
@@ -920,6 +994,12 @@ void mg_holdyourground_PlayerLost( void ) {
 		_pLevelData->pAAGun->EnableDriverMovement( FALSE );
 
 		_pLevelData->pAAGun->ReticleEnable( FALSE );
+#if FANG_WINGC
+		for( s32 nPlayer=1; nPlayer < _pLevelData->nDefensePlayers; ++nPlayer ) {
+			_pLevelData->apDefenseGuns[nPlayer]->EnableDriverMovement( FALSE );
+			_pLevelData->apDefenseGuns[nPlayer]->ReticleEnable( FALSE );
+		}
+#endif
 
 		// slow all rats down 
 		u32 i;
@@ -955,6 +1035,9 @@ void mg_HoldYourGround_Restore( void ) {
 		_pLevelData->fAlarmVolume = 0.0f;
 
 		_pLevelData->nWalkState = _WALK_STATES_START;
+#if FANG_WINGC
+		_pLevelData->bDefenseIntroFinished = FALSE;
+#endif
 		
 		u32 i;
 		for( i=0; i < _pLevelData->nNumRats; i++ ) {
@@ -1457,7 +1540,17 @@ static BOOL _AreAllSpawnPtsUnused( void ) {
 // returns TRUE when the bot has walked to the point and jumped into the gun
 static BOOL _WalkToJumpPoint( void ) {
 	CFVec3A Temp;
-	CBot *pPlayerBot = (CBot *)CPlayer::m_pCurrent->m_pEntityCurrent;
+#if FANG_WINGC
+	CPlayer *pPlayer = &Player_aPlayer[0];
+	CHud2 *pIntroHud = CHud2::GetHudForPlayer(0);
+	if( _pLevelData->bDefenseIntroFinished ) {
+		return TRUE;
+	}
+#else
+	CPlayer *pPlayer = CPlayer::m_pCurrent;
+	CHud2 *pIntroHud = CHud2::GetCurrentHud();
+#endif
+	CBot *pPlayerBot = (CBot *)pPlayer->m_pEntityCurrent;
 	FASSERT( pPlayerBot->TypeBits() & ENTITY_BIT_BOT );
 	CAIBrain *pBrain = pPlayerBot->AIBrain();
 
@@ -1465,7 +1558,13 @@ static BOOL _WalkToJumpPoint( void ) {
 
 	case _WALK_STATES_START:
 		// configure the player for a cutscene
-		CPlayer::m_pCurrent->DisableEntityControl();		
+#if FANG_WINGC
+		for( s32 i=1; i < _pLevelData->nDefensePlayers; ++i ) {
+			Player_aPlayer[i].DisableEntityControl();
+			Player_aPlayer[i].ZeroControls();
+		}
+#endif
+		pPlayer->DisableEntityControl();
 		pPlayerBot->HeadStopLook();
 		aibrainman_Activate( pBrain );
 		ai_NotifyCutSceneBegin();
@@ -1500,7 +1599,7 @@ static BOOL _WalkToJumpPoint( void ) {
 		_pLevelData->pAAGun->ActionNearby( pPlayerBot );
 		// undo all of the cutscene stuff
 		aibrainman_Deactivate( pBrain );
-		CPlayer::m_pCurrent->EnableEntityControl();
+		pPlayer->EnableEntityControl();
 		aibrainman_ConfigurePlayerBotBrain( pBrain, 0 );
 		ai_NotifyCutSceneEnd();
 		pPlayerBot->HeadLook();
@@ -1510,10 +1609,16 @@ static BOOL _WalkToJumpPoint( void ) {
 		break;
 
 	case _WALK_STATES_DONE:
-		if( CHud2::GetCurrentHud()->TransmissionMsg_IsDonePlaying() ) {
+		if( pIntroHud->TransmissionMsg_IsDonePlaying() ) {
 			CBot::SetCutscenePlaying( FALSE );
 			game_LeaveLetterbox();         
 			_pLevelData->bPlayedFirstTime = TRUE;
+#if FANG_WINGC
+			for( s32 i=1; i < _pLevelData->nDefensePlayers; ++i ) {
+				Player_aPlayer[i].EnableEntityControl();
+			}
+			_pLevelData->bDefenseIntroFinished = TRUE;
+#endif
 			return TRUE;	
 		}		
 		break;

@@ -45,6 +45,12 @@ extern void letterbox_Reset( void );
 extern f32 letterbox_GetUnitSlideOnAmount( void );
 extern LetterboxState_e letterbox_GetState( void );
 
+#if FANG_WINGC
+// Local co-op (PC): a player revived after dying gets their HUD back (it went off at death); while
+// the letterbox is up it comes back when the bars leave.
+extern void letterbox_PortRestoreHud( s32 nPlayer );
+#endif
+
 
 #endif
 

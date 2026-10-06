@@ -25,6 +25,7 @@
 #include "fmath.h"
 #include "ftext.h"
 #include "gamepad.h"
+#include "gameloop.h"
 #if PROTRACK_ENABLE == 1
 
 const s32 kPROTRACK_NAME_LEN=64;
@@ -667,6 +668,14 @@ BOOL PROTRACK_ISMENUON(void)
 
 void PROTRACK_WORK(void)
 {
+#if FANG_WINGC
+	// The debug port shares gameplay controls on PC. Only enable the legacy
+	// fire/fire/jump shortcut when the player explicitly enables debug UI.
+	if (!Gameloop_bDrawDebugInfo) {
+		_bProTrackMenuOn = FALSE;
+		return;
+	}
+#endif
 	if (!CProfile::s_pProTrackRoot)
 		return;
 	

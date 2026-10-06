@@ -23,6 +23,9 @@
 #include "BarterSound.h"
 #include "BarterSystem.h"
 #include "level.h"
+#if FANG_WINGC
+#include "MultiplayerMgr.h"
+#endif
 
 
 #define _BARTER_ATTRACT_STREAMING_FILENAME	"Barter_Attr"
@@ -54,8 +57,20 @@ BOOL CBarterSound::Create() {
 void CBarterSound::StartBarteringTune( void ) {
 	if( m_eCurMode != MODE_BARTER ) {
 		Stop();
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() ) {
+			// Keep the mission track to resume after shopping. Use the free
+			// speech slot for this tune instead of destroying every stream.
+			level_StopStreamingSpeech();
+			level_PauseMusic( TRUE );
+			m_bMusicPaused = TRUE;
+			level_StartStream( _BARTER_SHOP_STREAMING_FILENAME, 0, _BARTER_SHOP_VOLUME, -1, TRUE );
+		} else
+#endif
+		{
 		level_StopAllStreams();
 		level_StartStream( _BARTER_SHOP_STREAMING_FILENAME, 0, _BARTER_SHOP_VOLUME, 0, TRUE);
+		}
 		m_bBarterTunePlaying = TRUE;
 		m_eCurMode = MODE_BARTER;
 		m_fUnitVolume = _BARTER_SHOP_VOLUME;
@@ -72,6 +87,20 @@ void CBarterSound::Stop( BOOL bFadeOut ) {
 		}
 	} else {
 		// Stop immediately...
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() ) {
+			// Radio speech can replace the shared speech channel. Stop only
+			// our named tracks, and release the music pause even after removal.
+			level_StopStream( _BARTER_ATTRACT_STREAMING_FILENAME );
+			level_StopStream( _BARTER_SHOP_STREAMING_FILENAME );
+			if( m_bMusicPaused ) level_PauseMusic( FALSE );
+			m_bMusicPaused = FALSE;
+			m_bBarterTunePlaying = FALSE;
+			m_eCurMode = MODE_NOT_PLAYING;
+			m_fUnitVolume = 0.0f;
+			return;
+		}
+#endif
 		if( m_eCurMode != MODE_NOT_PLAYING ) {
 			level_StopStreamingSpeech();
             
@@ -94,6 +123,13 @@ void CBarterSound::UpdateAttractMusic( const CFVec3A *pBarterPos_WS, f32 fRadius
 		return;
 	}
 
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() && !level_GetStreamByName( _BARTER_ATTRACT_STREAMING_FILENAME ) ) {
+		if( m_eCurMode == MODE_ATTRACT ) Stop();
+		// Do not restart the attract loop over a transmission that replaced it.
+		if( level_IsStreamingSpeechPlaying() ) return;
+	}
+#endif
 	m_fUnitVolume = _BARTER_ATTRACT_VOLUME;
 
 	f32 fDist = pBarterPos_WS->Dist( pPlayerMtx->m_vPos );
@@ -126,6 +162,9 @@ void CBarterSound::UpdateAttractMusic( const CFVec3A *pBarterPos_WS, f32 fRadius
 	
 		// Update volume and pan...
 		CFAudioStream *pAudioStream = level_GetStreamingSpeechAudioStream();
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() ) pAudioStream = level_GetStreamByName( _BARTER_ATTRACT_STREAMING_FILENAME );
+#endif
 		if( pAudioStream ) {
 			f32 fPan;
 			CFVec3A UnitPlayerToBarterXZ_WS;
@@ -168,6 +207,10 @@ void CBarterSound::Work( void ) {
 		}
 
 		CFAudioStream *pAudioStream = level_GetStreamingSpeechAudioStream();
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() ) pAudioStream = level_GetStreamByName(
+			m_bBarterTunePlaying ? _BARTER_SHOP_STREAMING_FILENAME : _BARTER_ATTRACT_STREAMING_FILENAME );
+#endif
 		if( pAudioStream ) {
 			pAudioStream->SetVolume( m_fUnitVolume );
 		}

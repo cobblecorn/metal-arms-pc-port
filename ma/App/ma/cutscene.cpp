@@ -138,6 +138,10 @@ BOOL cutscene_Start( cutscene_Handle_t hCutscene, f32 fNormalizedVolume ){
 	_bAllowEarlyTermination = ( pCutsceneStruct->uNumTimesPlayed > 0 || game_IsCurrentGameAReplay() );
 #endif
 
+#if FANG_WINGC
+	const f32 fUserVolume = CPlayer::m_fSfxVolumeCache >= 0.0f ? CPlayer::m_fSfxVolumeCache : faudio_GetSfxMasterVol();
+	fNormalizedVolume *= fUserVolume * 0.5f;
+#endif
 	fmovie2_Play( pCutsceneStruct->szFilename, fNormalizedVolume );
 	if( fmovie2_GetStatus() == FMOVIE2_STATUS_PLAYING ){
 		//we have successfully loaded the movies, so lets hijack the

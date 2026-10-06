@@ -68,6 +68,10 @@
 #define _TRANSMISSION_FADEOUT_SECS			0.5f
 #define _TRANSMISSION_FLASH_SECS			0.5f
 #define _TRANSMISSION_BOX_ALPHA				0.8f
+#define _TRANSMISSION_AREA_UL_X				0.245f
+#define _TRANSMISSION_AREA_UL_Y				0.630f
+#define _TRANSMISSION_AREA_LR_X				0.70f
+#define _TRANSMISSION_AREA_LR_Y				0.725f
 
 #define _RADAR_BLIP_COLOR_FRIENDLY_R	1.0f
 #define _RADAR_BLIP_COLOR_FRIENDLY_G	1.0f
@@ -2822,6 +2826,7 @@ BOOL CHud2::Create(s32 nPlayerIndex)
 	m_pTransmissionAudioEmitter = NULL;
 	m_pwszTransmissionAuthor = NULL;
 	m_bTransmissionAbortWithCutScene = FALSE;
+	m_bTransmissionMirror = FALSE;
 
 	m_pTransmissionAntennaMeshEntity = fnew CMeshEntity;
 	if( m_pTransmissionAntennaMeshEntity == NULL ) {
@@ -3037,10 +3042,10 @@ BOOL CHud2::Create(s32 nPlayerIndex)
 	oTextArea.fNumberOfLines = 2.0f;
 	oTextArea.fLineSpacing = 0.008f;
 	oTextArea.ohFont = '1';
-	oTextArea.fUpperLeftX = 0.245f;
-	oTextArea.fUpperLeftY = 0.630f;
-	oTextArea.fLowerRightX = 0.70f;
-	oTextArea.fLowerRightY = 0.725f;
+	oTextArea.fUpperLeftX = _TRANSMISSION_AREA_UL_X;
+	oTextArea.fUpperLeftY = _TRANSMISSION_AREA_UL_Y;
+	oTextArea.fLowerRightX = _TRANSMISSION_AREA_LR_X;
+	oTextArea.fLowerRightY = _TRANSMISSION_AREA_LR_Y;
 	oTextArea.oHorzAlign = FTEXT_HORZ_ALIGN_CENTER;
 	oTextArea.oColorBackground.Set( 0.0f, 0.0f, 0.2f, _TRANSMISSION_BOX_ALPHA );
 	oTextArea.oColorBorder.Set( 0.0f, 0.0f, 0.1f, 1.0f );
@@ -3651,8 +3656,39 @@ f32 CHud2::GetUnitSelfDestruct()
 
 // =============================================================================================================
 
+// Mission radio audio plays once; each co-op HUD owns its visual and antenna.
+void CHud2::TransmissionShared_Stop( BOOL bFadeOut ) {
+	if( !MultiplayerMgr.IsLocalCoop() ) { GetCurrentHud()->TransmissionMsg_Stop( bFadeOut ); return; }
+	for( s32 n = CPlayer::m_nPlayerCount - 1; n >= 0; --n ) Player_aPlayer[n].m_Hud.TransmissionMsg_Stop( bFadeOut );
+}
+
+BOOL CHud2::TransmissionShared_Start( TransmissionAuthor_e nAuthorIndex, FSndFx_FxHandle_t hSndFx, f32 fUnitVolume, BOOL bAbortWithCutScene ) {
+	if( !MultiplayerMgr.IsLocalCoop() ) return GetCurrentHud()->TransmissionMsg_Start( nAuthorIndex, hSndFx, fUnitVolume, bAbortWithCutScene );
+	TransmissionShared_Stop( FALSE );
+	if( !Player_aPlayer[0].m_Hud.TransmissionMsg_Start( nAuthorIndex, hSndFx, fUnitVolume, bAbortWithCutScene ) ) return FALSE;
+	for( s32 n = 1; n < CPlayer::m_nPlayerCount; ++n ) {
+		CHud2 &hud = Player_aPlayer[n].m_Hud;
+		hud.m_bTransmissionMirror = TRUE;
+		hud._TransmissionMsg_Start( nAuthorIndex, bAbortWithCutScene );
+	}
+	return TRUE;
+}
+
+BOOL CHud2::TransmissionShared_Start( TransmissionAuthor_e nAuthorIndex, cchar *pszFile, f32 fUnitVolume, BOOL bAbortWithCutScene ) {
+	if( !MultiplayerMgr.IsLocalCoop() ) return GetCurrentHud()->TransmissionMsg_Start( nAuthorIndex, pszFile, fUnitVolume, bAbortWithCutScene );
+	TransmissionShared_Stop( FALSE );
+	if( !Player_aPlayer[0].m_Hud.TransmissionMsg_Start( nAuthorIndex, pszFile, fUnitVolume, bAbortWithCutScene ) ) return FALSE;
+	for( s32 n = 1; n < CPlayer::m_nPlayerCount; ++n ) {
+		CHud2 &hud = Player_aPlayer[n].m_Hud;
+		hud.m_bTransmissionMirror = TRUE;
+		hud._TransmissionMsg_Start( nAuthorIndex, bAbortWithCutScene );
+	}
+	return TRUE;
+}
+
 BOOL CHud2::TransmissionMsg_Start( TransmissionAuthor_e nAuthorIndex, FSndFx_FxHandle_t hSndFx, f32 fUnitVolume, BOOL bAbortWithCutScene ) {
 	TransmissionMsg_Stop( FALSE );
+	m_bTransmissionMirror = FALSE;
 
 	if( nAuthorIndex<0 || nAuthorIndex>=TRANSMISSION_AUTHOR_COUNT ) {
 		return FALSE;
@@ -3675,6 +3711,7 @@ BOOL CHud2::TransmissionMsg_Start( TransmissionAuthor_e nAuthorIndex, FSndFx_FxH
 
 BOOL CHud2::TransmissionMsg_Start( TransmissionAuthor_e nAuthorIndex, cchar *pszStreamingFileName, f32 fUnitVolume, BOOL bAbortWithCutScene ) {
 	TransmissionMsg_Stop( FALSE );
+	m_bTransmissionMirror = FALSE;
 
 	if( nAuthorIndex<0 || nAuthorIndex>=TRANSMISSION_AUTHOR_COUNT ) {
 		return FALSE;
@@ -3707,7 +3744,7 @@ void CHud2::_TransmissionMsg_Start( TransmissionAuthor_e nAuthorIndex, BOOL bAbo
 	m_bTransmissionAbortWithCutScene = bAbortWithCutScene;
 
 	CEntity *pGlitch = Player_aPlayer[m_nPlayerIdx].m_pEntityOrig;
-	if( pGlitch->TypeBits() & ENTITY_BIT_BOTGLITCH ) {
+	if( pGlitch && (pGlitch->TypeBits() & ENTITY_BIT_BOTGLITCH) ) {
 		CFMtx43A AntennaMtx;
 
 		AntennaMtx.Identity();
@@ -3741,10 +3778,11 @@ void CHud2::TransmissionMsg_Stop( BOOL bFadeOut ) {
 		if( m_pTransmissionAudioEmitter ) {
 			m_pTransmissionAudioEmitter->Destroy();
 			m_pTransmissionAudioEmitter = NULL;
-		} else {
+		} else if( !m_bTransmissionMirror ) {
 			level_StopStreamingSpeech();
 		}
 
+		m_bTransmissionMirror = FALSE;
 		m_nTransmissionState = TRANSMISSION_STATE_IDLE;
 		m_fTransmissionsTimer = 0.0f;
 		m_pwszTransmissionAuthor = NULL;
@@ -3769,6 +3807,44 @@ BOOL CHud2::Transmission_GetAbortWithCutSceneFlag( void ) const {
 
 
 // =============================================================================================================
+
+#if defined(MA_PC_INPUT)
+BOOL CHud2::PcWeaponSelectTap(u32 uWhichSide, CInventory *pInventory, BOOL bCycle)
+{
+	if( uWhichSide > 1 || !pInventory || !m_bWSEnabled ||
+		m_eWeaponSelectState != WEAPONSELECTSTATE_IDLE ) return FALSE;
+
+	if( m_eCurHudMode == HUDMODE_SLOSH || m_eCurHudMode == HUDMODE_KRUNK ||
+		m_eCurHudMode == HUDMODE_MIL || m_eCurHudMode == HUDMODE_MOZER ) {
+		// Borrowed bots retain their original reload-only button behavior.
+		return !bCycle && pInventory->m_pfcnCallback &&
+			pInventory->m_pfcnCallback( IREASON_RELOAD, pInventory, 0, 0 );
+	}
+	if( m_eCurHudMode != HUDMODE_GLITCH || !DrawFlagsEnabled(DRAW_WEAPONSELECT) ) return FALSE;
+	m_eQSState = QSSTATE_WAITINGFORCLEANSTART;
+	const u32 uCount = pInventory->m_auNumWeapons[uWhichSide];
+	const u32 uCurrent = pInventory->m_auCurWeapon[uWhichSide];
+	if( !uCount || uCount > ItemInst_uMaxInventoryWeapons || uCurrent >= uCount ) return FALSE;
+	if( !bCycle ) {
+		// Use the retail reload/target-clear callback without starting any selector animation.
+		return pInventory->m_pfcnCallback &&
+			pInventory->m_pfcnCallback( IREASON_RELOAD, pInventory, uWhichSide, uCurrent );
+	}
+	for( u32 uStep = 1; uStep < uCount; ++uStep ) {
+		const u32 uNext = (uCurrent + uStep) % uCount;
+		CItem *pItem = pInventory->m_aoWeapons[uWhichSide][uNext].m_pItemData;
+		if( !pItem || !pItem->m_pszCodeName || !fclib_stricmp( pItem->m_pszCodeName, "Empty Primary" ) ||
+			!fclib_stricmp( pItem->m_pszCodeName, "Empty Secondary" ) ) continue;
+		// The normal callback rejects missing runtime assets and restores the previous selection.
+		if( pInventory->SetCurWeapon( uWhichSide, uNext, TRUE, TRUE ) ) {
+			m_auFlashing[uWhichSide] = CHud2_uNumFlashes;
+			m_afFlashAlpha[uWhichSide] = 1.0f;
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+#endif
 
 BOOL CHud2::StartWeaponSelect(u32 uWhichSide, CInventory *pInventory, BOOL bDelay)
 {
@@ -3898,6 +3974,9 @@ void CHud2::SetWasher(BOOL bVisible)
 		if(m_oWasherDisplay.m_eState == WASHERSTATE_OFF)
 		{
 			m_oWasherDisplay.m_fTimer = 0.0f;
+			// A shop can reveal this HUD after its Work pass; initialize before the same frame draws.
+			CFVec3 vecStart(1.0f - fWasherWidth, fWasherIconTE, 0.0f);
+			m_oWasherDisplay.SetUL(&vecStart, m_pviewOrtho3d);
 			m_oWasherDisplay.m_eState = WASHERSTATE_SLIDINGON;
 		}
 	}
@@ -4009,6 +4088,15 @@ void CHud2::Work(CInventory *pInventory)
 		CheckControls();
 	// DFS temp disable quickcycle	else
 	// DFS temp disable quickcycle		QuickCycleWork(pInventory);
+
+#if defined(MA_PC_INPUT)
+	if( m_nWhichWeaponSelectIsActive >= 0 &&
+		!(m_uButtons & auActivateButton[m_nWhichWeaponSelectIsActive]) ) {
+		// Finish the current scroll, but never queue movement repeats after button release.
+		m_nWSPendingScroll = 0;
+		m_uButtonsLatched &= ~(JINPUT_MOVEUP | JINPUT_MOVEDOWN);
+	}
+#endif
 
 	//// Do the work for the items that are flying up to the item pickup region.
 	//
@@ -4297,6 +4385,7 @@ void CHud2::Work(CInventory *pInventory)
 		case WEAPONSELECTSTATE_SCROLLINGOFF:
 		{
 			FASSERT(m_nWhichWeaponSelectIsActive != -1);
+#if !defined(MA_PC_INPUT)
 
 			//// Check to see if the player has repressed an activate button.
 			//
@@ -4339,6 +4428,7 @@ void CHud2::Work(CInventory *pInventory)
 
 				break;
 			}
+#endif
 			//
 			////
 
@@ -4369,11 +4459,14 @@ void CHud2::Work(CInventory *pInventory)
 				m_auWSCurSelected[1] = pInventory->m_auCurWeapon[1];*/
 
 				// Update 
+#if !defined(MA_PC_INPUT)
 				s32 nInactiveWS = 1 - m_nWhichWeaponSelectIsActive;
+#endif
 //				m_aWSItem[nInactiveWS][m_auWSCurSelected[nInactiveWS]].m_vecCurUL.Set(afWeaponLE[nInactiveWS], afWeaponTE[nInactiveWS], 0.0f);
 //				m_aWSItem[nInactiveWS][m_auWSCurSelected[nInactiveWS]].UpdateTextArea(nInactiveWS);
 
 				m_nWhichWeaponSelectIsActive = -1;
+#if !defined(MA_PC_INPUT)
 				if((m_uButtons & auActivateButton[nInactiveWS]) != 0)
 				{
 					m_eWeaponSelectState = WEAPONSELECTSTATE_IDLE;
@@ -4383,6 +4476,10 @@ void CHud2::Work(CInventory *pInventory)
 				{
 					m_eWeaponSelectState = WEAPONSELECTSTATE_IDLE;
 				}
+#else
+				// PC opening is owned by the input gesture's hold timer, including the other hand.
+				m_eWeaponSelectState = WEAPONSELECTSTATE_IDLE;
+#endif
 				break;
 			}
 			//
@@ -4677,7 +4774,24 @@ void CHud2::Draw( CInventory *pInventory ) {
 					fUnitAlpha = m_fTransmissionsTimer * (1.0f / _TRANSMISSION_FADEOUT_SECS);
 				}
 
+#if FANG_WINGC
+				// ftext draws the box later, from the area's coordinates at that time, so the area
+				// itself goes where the text goes (Hud2_XFormPrintf moves only the text). In split
+				// screen the transform isn't the identity and the box stayed behind, off-centre.
+				FTextArea_t *pMsgArea = ftext_GetAttributes( m_hMessage );
+				pMsgArea->fUpperLeftX = _TRANSMISSION_AREA_UL_X;
+				pMsgArea->fUpperLeftY = _TRANSMISSION_AREA_UL_Y;
+				pMsgArea->fLowerRightX = _TRANSMISSION_AREA_LR_X;
+				pMsgArea->fLowerRightY = _TRANSMISSION_AREA_LR_Y;
+				f32 afUnusedCoords[4];
+				_XFormTextArea( m_hMessage, afUnusedCoords );
+				wchar wszMsg[160];
+				_snwprintf( wszMsg, 160, L"~C707099%02u%ls\n%ls", (u32)(fUnitAlpha * 99.0f), Game_apwszPhrases[GAMEPHRASE_INCOMING_TRANSMISSION], m_pwszTransmissionAuthor );
+				wszMsg[159] = 0;
+				ftext_Printf( m_hMessage, wszMsg );
+#else
 				Hud2_XFormPrintf( m_hMessage, L"~C707099%02u%ls\n%ls", (u32)(fUnitAlpha * 99.0f), Game_apwszPhrases[GAMEPHRASE_INCOMING_TRANSMISSION], m_pwszTransmissionAuthor );
+#endif
 
 				xfmTotal.PopModel();
 			}
@@ -4920,9 +5034,11 @@ void CHud2::Draw( CInventory *pInventory ) {
 		{
 #if defined(MA_PC_INPUT)
 			const u32 nPromptPort = Player_aPlayer[m_nPlayerIdx].m_nControllerIndex;
-			if( pcinput_UseKeyboardPromptsForPort( nPromptPort ) || pcinput_UsePlayStationPromptsForPort( nPromptPort ) ) {
+			if( pcinput_UseKeyboardPromptsForPort( nPromptPort ) ) {
+				// The text already names the exit key; an extra keycap overlaps the split-screen HUD.
+			} else if( pcinput_UsePlayStationPromptsForPort( nPromptPort ) ) {
 				// The possession exit icon is laid out in the radar's local 640x480 space. Draw the
-				// replacement in viewport space so the keyboard cap and PS glyph match its position
+				// PlayStation glyph in viewport space so it matches the original icon position
 				// at every resolution and in split screen.
 				const f32 fLocalX = 0.5f * (m_avtxButton[0].Pos_MS.x + m_avtxButton[1].Pos_MS.x);
 				const f32 fLocalY = 0.5f * (m_avtxButton[0].Pos_MS.y + m_avtxButton[2].Pos_MS.y);
@@ -4931,13 +5047,8 @@ void CHud2::Draw( CInventory *pInventory ) {
 				const f32 fIconW = fScale * FMATH_FABS( m_avtxButton[1].Pos_MS.x - m_avtxButton[0].Pos_MS.x );
 				const f32 fIconH = fScale * FMATH_FABS( m_avtxButton[0].Pos_MS.y - m_avtxButton[2].Pos_MS.y );
 				CFXfm::PopModel();
-				if( pcinput_UsePlayStationPromptsForPort( nPromptPort ) ) {
-					wpr_drawutils_DrawPlayStationGlyph( 3, fScreenX - pVP->HalfRes.x, pVP->HalfRes.y - fScreenY,
-						0.40f * FMATH_MIN( fIconW, fIconH ) );
-				} else {
-					wpr_drawutils_DrawKeyCapCentered( L"Q", fScreenX / pVP->Res.x, fScreenY / pVP->Res.y, L'C',
-						fIconH / ( pVP->Res.y * 0.041f ), 0.0f, pVP->HalfRes.x, pVP->HalfRes.y, NULL, NULL, NULL, NULL );
-				}
+				wpr_drawutils_DrawPlayStationGlyph( 3, fScreenX - pVP->HalfRes.x, pVP->HalfRes.y - fScreenY,
+					0.40f * FMATH_MIN( fIconW, fIconH ) );
 				xfmTotal.PushModel();
 				fdraw_SetTexture( &_texControls );
 				fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECALTEX_AT );
@@ -5743,6 +5854,11 @@ void CHud2::_TransmissionWork( void ) {
 		break;
 
 	case TRANSMISSION_STATE_ON:
+		if( m_bTransmissionMirror ) {
+			const CHud2 &source = Player_aPlayer[0].m_Hud;
+			if( source.m_nTransmissionState == TRANSMISSION_STATE_IDLE || source.m_nTransmissionState == TRANSMISSION_STATE_FADING_OUT ) TransmissionMsg_Stop();
+			break;
+		}
 		if( m_pTransmissionAudioEmitter ) {
 			// Banked audio...
 

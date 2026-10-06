@@ -3732,7 +3732,7 @@ void CColiseumMiniGame::EndGame()
 	else
 	{
 		//I don't have enough points to continue, restart the level.
-		checkpoint_Restore(0, FALSE);
+		checkpoint_Restore( 0, FALSE, "coliseum:restart" );
 	}
 }
 

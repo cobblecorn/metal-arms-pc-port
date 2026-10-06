@@ -241,7 +241,11 @@ void fdx8xfm_SetViewDXMatrix( BOOL bUsingVertexShaders )
 //
 void fxfm_SetViewAndWorldSpaceModelMatrices( void )
 {
+	// World geometry can follow a view-space particle or overlay draw.
+	// Refresh the view before computing world/view/projection constants.
+	fdx8xfm_SetViewDXMatrix( TRUE );
 	fdx8xfm_SetCustomDXMatrix( D3DTS_WORLDMATRIX(0), &CFMtx43A::m_IdentityMtx, TRUE );
+	fdx8xfm_SetCustomDXMatrix( D3DTS_WORLDMATRIX(0), &CFMtx43A::m_IdentityMtx, FALSE );
 	fdx8_SetRenderState_VERTEXBLEND( D3DVBF_DISABLE );
 }
 

@@ -76,7 +76,7 @@ static BOOL _ConvertAnimation( void *pData, u32 nBytes, cchar *pszResName )
 		((nFlags & FANIM_BONEFLAGS_16BIT_SECS) ? 2 : 4);
 	const u32 nTransStride = (nFlags & FANIM_BONEFLAGS_COMP_TRANSLATION) ? 6 : 12;
 	const u32 nOrientStride = (nFlags & FANIM_BONEFLAGS_COMP_ORIENTATION) ? 8 : 16;
-	struct _TrackRange_t { u32 nStart, nEnd; };
+	struct _TrackRange_t { u32 nStart, nEnd, nScalarBytes; };
 	_TrackRange_t aTrackRange[FDATA_MAX_BONE_COUNT * 6];
 	u32 nTrackRangeCount = 0;
 
@@ -125,8 +125,10 @@ static BOOL _ConvertAnimation( void *pData, u32 nBytes, cchar *pszResName )
 				DEVPRINTF( "gcdata: invalid key data in GameCube animation '%s' (bone %u track %u).\n", pszResName ? pszResName : "(unnamed)", i, k );
 				return FALSE;
 			}
+			aTrackRange[nTrackRangeCount].nScalarBytes = nTimeStride;
 			aTrackRange[nTrackRangeCount].nStart = anTimeOffset[k];
 			aTrackRange[nTrackRangeCount++].nEnd = anTimeOffset[k] + nTimeBytes;
+			aTrackRange[nTrackRangeCount].nScalarBytes = nDataAlignment;
 			aTrackRange[nTrackRangeCount].nStart = anDataOffset[k];
 			aTrackRange[nTrackRangeCount++].nEnd = anDataOffset[k] + nDataBytes;
 		}
@@ -134,46 +136,50 @@ static BOOL _ConvertAnimation( void *pData, u32 nBytes, cchar *pszResName )
 
 	for( u32 i=0; i<nTrackRangeCount; i++ )
 		for( u32 j=i+1; j<nTrackRangeCount; j++ )
-			if( aTrackRange[i].nStart < aTrackRange[j].nEnd && aTrackRange[j].nStart < aTrackRange[i].nEnd )
+			if( aTrackRange[i].nStart < aTrackRange[j].nEnd && aTrackRange[j].nStart < aTrackRange[i].nEnd &&
+				aTrackRange[i].nScalarBytes != aTrackRange[j].nScalarBytes )
 			{
-				DEVPRINTF( "gcdata: overlapping key arrays in GameCube animation '%s'.\n", pszResName ? pszResName : "(unnamed)" );
+				DEVPRINTF( "gcdata: incompatible overlapping key arrays in GameCube animation '%s'.\n", pszResName ? pszResName : "(unnamed)" );
 				return FALSE;
 			}
+
+	// Retail animations (including the factory builder) share portions of key
+	// arrays. Merge compatible scalar ranges so each serialized value is swapped
+	// once; converting each bone separately would swap shared bytes back to BE.
+	for( u32 i=1; i<nTrackRangeCount; i++ )
+	{
+		_TrackRange_t range = aTrackRange[i];
+		u32 j = i;
+		while( j && aTrackRange[j-1].nStart > range.nStart )
+		{
+			aTrackRange[j] = aTrackRange[j-1];
+			j--;
+		}
+		aTrackRange[j] = range;
+	}
+	u32 nMergedCount = 0;
+	for( u32 i=0; i<nTrackRangeCount; i++ )
+	{
+		const _TrackRange_t range = aTrackRange[i];
+		if( nMergedCount && range.nStart <= aTrackRange[nMergedCount-1].nEnd &&
+			range.nScalarBytes == aTrackRange[nMergedCount-1].nScalarBytes )
+		{
+			if( range.nEnd > aTrackRange[nMergedCount-1].nEnd )
+				aTrackRange[nMergedCount-1].nEnd = range.nEnd;
+		}
+		else aTrackRange[nMergedCount++] = range;
+	}
 
 	FAnim_t *pAnim = (FAnim_t *)pData;
 	pAnim->ChangeEndian();
 	FAnimBone_t *pBoneArray = (FAnimBone_t *)(pBytes + nBoneOffset);
-	for( u32 i=0; i<nBoneCount; i++ )
+	for( u32 i=0; i<nBoneCount; i++ ) pBoneArray[i].ChangeEndian();
+	for( u32 i=0; i<nMergedCount; i++ )
 	{
-		FAnimBone_t *pBone = &pBoneArray[i];
-		const u32 nBonePos = nBoneOffset + i * sizeof(FAnimBone_t);
-		const u16 anKeyCount[3] = {
-			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nSKeyCount) ),
-			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nTKeyCount) ),
-			_ReadBE16( pBytes + nBonePos + offsetof(FAnimBone_t, nOKeyCount) )
-		};
-		const u32 anTimeOffset[3] = {
-			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paSKeyUnitTime) ),
-			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paTKeyUnitTime) ),
-			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paOKeyUnitTime) )
-		};
-		const u32 anDataOffset[3] = {
-			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paSKeyData) ),
-			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paTKeyData) ),
-			_ReadBE32( pBytes + nBonePos + offsetof(FAnimBone_t, paOKeyData) )
-		};
-		pBone->ChangeEndian();
-
-		if( nTimeStride == 2 )
-			for( u32 k=0; k<3; k++ ) _ConvertBE16Array( pBytes + anTimeOffset[k], anKeyCount[k] );
-		else if( nTimeStride == 4 )
-			for( u32 k=0; k<3; k++ ) _ConvertBE32Array( pBytes + anTimeOffset[k], anKeyCount[k] );
-
-		_ConvertBE32Array( pBytes + anDataOffset[0], anKeyCount[0] );
-		if( nFlags & FANIM_BONEFLAGS_COMP_TRANSLATION ) _ConvertBE16Array( pBytes + anDataOffset[1], anKeyCount[1] * 3 );
-		else _ConvertBE32Array( pBytes + anDataOffset[1], anKeyCount[1] * 3 );
-		if( nFlags & FANIM_BONEFLAGS_COMP_ORIENTATION ) _ConvertBE16Array( pBytes + anDataOffset[2], anKeyCount[2] * 4 );
-		else _ConvertBE32Array( pBytes + anDataOffset[2], anKeyCount[2] * 4 );
+		const _TrackRange_t &range = aTrackRange[i];
+		const u32 nCount = (range.nEnd - range.nStart) / range.nScalarBytes;
+		if( range.nScalarBytes == 2 ) _ConvertBE16Array( pBytes + range.nStart, nCount );
+		else if( range.nScalarBytes == 4 ) _ConvertBE32Array( pBytes + range.nStart, nCount );
 	}
 
 	static u32 nLoggedAnimations = 0;
@@ -774,7 +780,7 @@ static void _DecodeCmprPlane( const u8 *pSource, u32 nWidth, u32 nHeight, u32 *p
 					anColor[1][0] = _Expand5( (nColor1 >> 11) & 31 );
 					anColor[1][1] = _Expand6( (nColor1 >> 5) & 63 );
 					anColor[1][2] = _Expand5( nColor1 & 31 );
-					if( nColor0 > nColor1 || !bOneBitAlpha )
+					if( nColor0 > nColor1 )
 					{
 						for( u32 nChannel = 0; nChannel < 3; nChannel++ )
 						{
@@ -855,7 +861,7 @@ static BOOL _DecodeUncompressedGCTile( u32 nFormat, const u8 *pTile, u32 nTileX,
 				}
 				else
 				{
-					nA = _Expand4( (nColor >> 12) & 7 );
+					nA = (u8)((((nColor >> 12) & 7) * 255 + 3) / 7);
 					nR = _Expand4( (nColor >> 8) & 15 );
 					nG = _Expand4( (nColor >> 4) & 15 );
 					nB = _Expand4( nColor & 15 );

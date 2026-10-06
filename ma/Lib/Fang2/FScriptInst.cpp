@@ -22,6 +22,9 @@
 //#include <string.h>			// For memset().
 #include "FScriptInst.h"
 #include "FScriptSystem.h"
+#if FANG_PLATFORM_WIN
+#include "pc_script_goals.h"
+#endif
 
 // =============================================================================================================
 // Private definitions:
@@ -55,6 +58,9 @@ BOOL CFScriptInst::Init( CFScript *pScript, void *pObject )
 		return FALSE;
 	}
 
+#if FANG_PLATFORM_WIN
+	PortPatchScriptGoals( pScript->m_szScriptFileName, &m_oAMX );
+#endif
 	amx_Register(&m_oAMX, core_Natives, -1);
 	amx_Register(&m_oAMX, console_Natives, -1);
 	if( amx_Register(&m_oAMX, CFScriptSystem::m_paNativeFunc, CFScriptSystem::m_uNumNatives) != AMX_ERR_NONE ) {

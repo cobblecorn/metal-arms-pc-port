@@ -364,6 +364,9 @@ extern void game_SetupRenderTargets();
 
 // controller functions:
 extern void game_ControlModeWork( void );
+#if defined(MA_PC_INPUT)
+extern void game_PcResetWeaponSelect( void );
+#endif
 extern ControlMode_e game_GetControlMode();
 
 // work/draw functions:
@@ -373,6 +376,10 @@ extern BOOL game_Draw( void );
 // misc functions:
 extern BOOL game_BeginCutScene( cchar *pszCutSceneTitle=NULL, BOOL bImmediate=FALSE );
 extern BOOL game_EndCutScene( BOOL bImmediate=FALSE ); 
+#if FANG_WINGC
+// Prefer P1 for the story; keep a living substitute throughout a co-op cutscene.
+extern s32 game_GetStoryPlayerIndex( void );
+#endif
 
 extern BOOL game_EnterLetterbox( cchar *pszCutSceneName=NULL, BOOL bImmediate=FALSE, BOOL bAllowMovieSkip=TRUE ); // Do we want to immediately enter letterbox (ie, no scrolling on of bars)
 extern BOOL game_LeaveLetterbox( BOOL bImmediate = FALSE); // Do we want to immediately exit letterbox? (No scrolling?)

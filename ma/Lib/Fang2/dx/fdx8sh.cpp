@@ -1499,7 +1499,7 @@ void fsh_ActivateFullScrTargets(BOOL bActivate)
 //Reset fullscreen targets, render targets are cleared on each load, so this puts the reflection target back.
 void fsh_ResetFullScrRenderTarget()
 {
-#if FANG_PLATFORM_XB
+#if FANG_PLATFORM_XB || FANG_WINGC
 	ftex_AddRenderTarget(_pFullScrTarget, fsh_FullScrCallback, TRUE, 0, FALSE, TRUE, NULL);
 #endif
 
@@ -2301,10 +2301,11 @@ FINLINE void _SetVertexShader_Fast(u32 nBaseIdx)
 	u32 nRemapIdx, nShader;
 
 	nRemapIdx = _anVShaderRemap[nBaseIdx-1][_nVertexType];
-	nShader = _anVShaderRemap[nBaseIdx-1][_nVertexType];
+	nShader = _anVShader_Handle[nRemapIdx];
 	if (_nCurrentVtxShader != nShader)
 	{
 		FDX8_SetVertexShader(nShader);
+		_nCurrentVtxShader = nShader;
 	}
 }
 
@@ -2312,7 +2313,12 @@ FINLINE void _SetVertexShader_Fast(u32 nBaseIdx)
 FSTATIC void _SetVertexShader(u32 nBaseIdx)
 {
 	u32 nRemapIdx, nShader;
-	if (nBaseIdx == VSHADER_BASE_ENV_POINT1_DIR1)
+	if (nBaseIdx == VSHADER_BASE_VCOLOR && fsh_bUseExtColorStream && !FSh_bShadowRender)
+	{
+		nRemapIdx = VSHADER_VCOLOR_EXTSTREAM;
+		nShader = _anVShader_Handle[nRemapIdx];
+	}
+	else if (nBaseIdx == VSHADER_BASE_ENV_POINT1_DIR1)
 	{
 		if (_nLightCount == 0)
 		{
@@ -3375,7 +3381,7 @@ FINLINE u32 fsh_GetCurrentNumPasses(BOOL *pbFastPass)
 			//of lightmaps.
 			m_nLM = 0;
 			m_nLMMode = LM_NONE;
-			if (FSh_pnLightMapInputRegisters)
+			if (FSh_pnLightMapInputRegisters && !fsh_bUseExtColorStream)
 			{
 				m_nLM = FSh_pnLightMapInputRegisters[0];
 				if (m_nLM > 0 && FSh_pnLightMapInputRegisters[1])
@@ -3443,7 +3449,7 @@ u32 fsh_GetNumDiffusePasses(u32 shaderID, u32 diffuseID, BOOL *pbFastPass)
 				_bFastShader = TRUE;
 
 				m_nLMMode = LM_NONE;
-				if (FSh_pnLightMapInputRegisters)
+				if (FSh_pnLightMapInputRegisters && !fsh_bUseExtColorStream)
 				{
 					m_nLM = FSh_pnLightMapInputRegisters[0];
 
@@ -3482,7 +3488,7 @@ u32 fsh_GetNumDiffusePasses(u32 shaderID, u32 diffuseID, BOOL *pbFastPass)
 	//Calculate the lightmap cost based on the number of lightmaps.
 	//The LMMode is also set (or cleared) here.
 	m_nLMMode = LM_NONE;
-	if (FSh_pnLightMapInputRegisters)
+	if (FSh_pnLightMapInputRegisters && !fsh_bUseExtColorStream)
 	{
 		m_nLM = FSh_pnLightMapInputRegisters[0];
 
@@ -3624,6 +3630,35 @@ void _SetupSimpleShader()
 
 	_SetVertexShader_Fast(VSHADER_BASE_PASSTHRU);
 	_SetPixelShader_Fast(PSHADER_COLOR);
+}
+
+// PC's tolerant multipass depth test cannot preserve a cutout using depth alone.
+// Repeat its alpha test in the surface pass so transparent holes remain open.
+static BOOL _SurfaceNeedsCutoutTest(u32 nShaderID)
+{
+	switch(nShaderID)
+	{
+		case FSHADERS_cBASE:
+		case FSHADERS_cBASE_DETAIL:
+		case FSHADERS_cBASE_LERP_tLAYER:
+		case FSHADERS_cBASE_LERP_vLAYER:
+		case FSHADERS_cBASE_LERP_pLAYER:
+		case FSHADERS_cBASE_LERP_tLAYER_DETAIL:
+		case FSHADERS_cBASE_LERP_vLAYER_DETAIL:
+		case FSHADERS_cBASE_LERP_pLAYER_DETAIL:
+			return TRUE;
+	}
+	return FALSE;
+}
+
+static void _SetSurfaceCutoutTest()
+{
+	if(FSh_shaderType == SHADERTYPE_SURFACE && _SurfaceNeedsCutoutTest(_nSurfaceShaderID))
+	{
+		fdx8_SetRenderState_ALPHATESTENABLE(TRUE);
+		fdx8_SetRenderState_ALPHAFUNC(D3DCMP_GREATER);
+		fdx8_SetRenderState_ALPHAREF(0x7f);
+	}
 }
 
 //Setup render states such as Blend mode, Alphatest, Ztest, Alpha/Color write and Material Constants
@@ -3862,11 +3897,15 @@ void _SetRenderStates()
 			}
 			else
 			{
-				//Subsequent passes do not write z values, use z equal and thus does not need to do alpha testing.
+				// Subsequent passes do not write depth. PC's tolerant depth comparison
+				// also requires repeating cutout alpha rejection in the surface pass.
 				fdx8_SetRenderState_ZWRITEENABLE( FALSE );
 				fdx8_SetRenderState_ZFUNC( D3DCMP_EQUAL );
 
 				fdx8_SetRenderState_ALPHATESTENABLE( FALSE );
+#if FANG_WINGC
+				_SetSurfaceCutoutTest();
+#endif
 			}
 		}
 	}
@@ -5644,9 +5683,15 @@ void fsh_CheckVB()
 
 		if (!FSh_bShadowRender)
 		{
+			// A VB switch must preserve the combined environment/lighting shader.
+			// The diffuse descriptor alone omits its reflection coordinates.
+			if( _bFastShader && FSh_bUseFastPass ) {
+				_HandleFastShader();
+				return;
+			}
 			u32 nVShader = _aShaderRenderStates[_nShaderID].vShader;
 
-			if (!fdx8sh_bStream1Set) { m_nLMMode = LM_NONE; }
+			if (!fdx8sh_bStream1Set || fsh_bUseExtColorStream) { m_nLMMode = LM_NONE; }
 
 			if (m_nLMMode > LM_NONE)
 			{
@@ -6075,7 +6120,9 @@ FSTATIC BOOL _WindowCreatedCallback( FDX8VidEvent_e nEvent )
 
 void fsh_FullScrCallback(void *pUserData)
 {
-#if FANG_PLATFORM_XB
+#if FANG_PLATFORM_XB || FANG_WINGC
+	// Reflection rendering must not leave its view matrix on the main viewport.
+	const CFXfm savedView = *FXfm_pView;
 	u8 nCubeView;
 	s32 i, idx=-1;
 	f32 fMinDist=FMATH_MAX_FLOAT, fDist;
@@ -6184,6 +6231,7 @@ void fsh_FullScrCallback(void *pUserData)
 			fviewport_Clear(FVIEWPORT_CLEARFLAG_ALL, 0.0f, 0.0f, 0.0f, 1.0f, 0);
 		}
 	}
+	savedView.InitStackWithView();
 #endif
 }
 
@@ -6291,6 +6339,7 @@ void fsh_ChangeRenderPlane(u32 nPlaneID, CFVec3 *pQuad, CFColorRGB *fogClr, f32 
 {
 	u32 i;
 	f32 fdy;
+	if( nPlaneID >= _nNumRenderPlanes ) return;
 	fsh_Render_Plane_t *pPlane = &_aRenderPlanes[nPlaneID]; 
 	fdy = pQuad[0].y - pPlane->Quad[0].vPos.y;
 	for (i=0; i<pPlane->nVtx; i++)
@@ -6298,14 +6347,15 @@ void fsh_ChangeRenderPlane(u32 nPlaneID, CFVec3 *pQuad, CFColorRGB *fogClr, f32 
 		pPlane->Quad[i].vPos.y += fdy;
 	}
 
-	_aRenderPlanes[ _nNumRenderPlanes ].fFogDensity = fFogDensity;
+	pPlane->vCen.y += fdy;
+	pPlane->fFogDensity = fFogDensity;
 	if (fogClr)
 	{
-		_aRenderPlanes[ _nNumRenderPlanes ].fogClr = *fogClr;
+		pPlane->fogClr = *fogClr;
 	}
 	else
 	{
-		_aRenderPlanes[ _nNumRenderPlanes ].fogClr = CFColorRGB(1,1,1);
+		pPlane->fogClr = CFColorRGB(1,1,1);
 	}
 		
 	pPlane->d3dClr = D3DCOLOR_COLORVALUE(pPlane->fogClr.fRed, pPlane->fogClr.fGreen, pPlane->fogClr.fBlue, pPlane->fOpacity);
@@ -6603,6 +6653,9 @@ void fsh_RenderPlane(u32 nPlaneID, f32 fScaleU, f32 fScaleV, f32 fScrollU, f32 f
 
 	fdx8xfm_SetViewDXMatrix( TRUE );
 	fdx8xfm_SetCustomDXMatrix( D3DTS_WORLDMATRIX(0), &CFMtx43A::m_IdentityMtx, TRUE );
+	// FVF passes use the fixed-function matrix, not vertex shader constants.
+	fdx8xfm_SetCustomDXMatrix( D3DTS_WORLDMATRIX(0), &CFMtx43A::m_IdentityMtx, FALSE );
+	fdx8_SetRenderState_VERTEXBLEND( D3DVBF_DISABLE );
 	
 	FDX8_SetVertexShader(D3DFVF_XYZ | D3DFVF_TEX4);
 	_nCurrentVtxShader = D3DFVF_XYZ | D3DFVF_TEX4;
@@ -6613,6 +6666,7 @@ void fsh_RenderPlane(u32 nPlaneID, f32 fScaleU, f32 fScaleV, f32 fScrollU, f32 f
 	fdx8_SetRenderState_ALPHABLENDENABLE(FALSE);
 	fdx8_SetRenderState_ALPHATESTENABLE(FALSE);
 
+	FDX8_pDev->SetRenderState( D3DRS_ZENABLE, D3DZB_TRUE );
 	fdx8_SetRenderState_ZFUNC( D3DCMP_LESSEQUAL );
 
 	FDX8_pDev->SetVertexShaderConstant(CV_EYE_POS_WORLD, &FXfm_pView->m_MtxR.m44.m_vPos, 1);
@@ -6785,6 +6839,7 @@ void _MoveOut(f32 fScale, CFVec3& vFwd)
 	OffsMtx.m_vX.Set(vFwd.x*fScale+1.0f, 0.0f, 0.0f); OffsMtx.m_vY.Set(0.0f, vFwd.y*fScale+1.0f, 0.0f); OffsMtx.m_vZ.Set(0.0f, 0.0f, vFwd.z*fScale+1.0f); OffsMtx.m_vPos.Zero();
 
 	fdx8xfm_SetCustomDXMatrix( D3DTS_WORLDMATRIX(0), &OffsMtx, TRUE );
+	fdx8xfm_SetCustomDXMatrix( D3DTS_WORLDMATRIX(0), &OffsMtx, FALSE );
 }
 
 #include "fliquid.h"
@@ -6794,6 +6849,18 @@ void fsh_DrawLiquidMesh(u32 nType, u16 nVtx, u16 nPrim, void *pMesh, u16 *pIdx, 
 #if FANG_PLATFORM_DX
 
 	if (!pEMBM) return;
+
+	// CFLiquidMesh already transforms its vertices to world space on the CPU.
+	// Never inherit a preceding bot's world matrix or skinning state.
+	fdx8xfm_SetViewDXMatrix( TRUE );
+	fxfm_SetViewAndWorldSpaceModelMatrices();
+	fdx8xfm_SetCustomDXMatrix( D3DTS_WORLDMATRIX(0), &CFMtx43A::m_IdentityMtx, FALSE );
+	FDX8_pDev->SetVertexShaderConstant(CV_EYE_POS_WORLD, &FXfm_pView->m_MtxR.m44.m_vPos, 1);
+	// Fog and masked geometry can leave ALWAYS/EQUAL depth or alpha testing.
+	// Falls are world geometry, so each draw establishes its own visibility state.
+	FDX8_pDev->SetRenderState( D3DRS_ZENABLE, D3DZB_TRUE );
+	fdx8_SetRenderState_ZFUNC( D3DCMP_LESSEQUAL );
+	fdx8_SetRenderState_ALPHATESTENABLE( FALSE );
 
 	if ( !(nType&RP_EMISSIVE) )
 	{
@@ -6827,8 +6894,13 @@ void fsh_DrawLiquidMesh(u32 nType, u16 nVtx, u16 nPrim, void *pMesh, u16 *pIdx, 
 		vCen.Set( 0, 0, 0, 1 );//pPlane->vCen.x, pPlane->vCen.y, pPlane->vCen.z, 1.0f);
 		FDX8_pDev->SetVertexShaderConstant(CV_FIXED_COLOR, &vCen, 1);
 
+		#if FANG_PLATFORM_WIN
+		FDX8_SetVertexShader(_anVShader_Handle[VSHADER_LIQUID_FALL_REFLECT]);
+		_nCurrentVtxShader = _anVShader_Handle[VSHADER_LIQUID_FALL_REFLECT];
+		#else
 		FDX8_SetVertexShader(_anVShader_Handle[VSHADER_PLANAR_REFLECT]);
 		_nCurrentVtxShader = _anVShader_Handle[VSHADER_PLANAR_REFLECT];
+		#endif
 		_SetPixelShader(PSHADER_CUBE_REFLECT);
 
 		fdx8_SetRenderState_CULLMODE( D3DCULL_NONE );
@@ -6897,6 +6969,8 @@ void fsh_DrawLiquidMesh(u32 nType, u16 nVtx, u16 nPrim, void *pMesh, u16 *pIdx, 
 	}
 	else if (pLayer0)
 	{
+		FDX8_SetVertexShader(D3DFVF_XYZ | D3DFVF_TEX3);
+		_nCurrentVtxShader = D3DFVF_XYZ | D3DFVF_TEX3;
 		fdx8_SetRenderState_TEXTUREFACTOR(0xffffffff);//pPlane->d3dClr);
 		fdx8_SetRenderState_ALPHABLENDENABLE(FALSE);
 		fdx8_SetRenderState_ALPHATESTENABLE(FALSE);
@@ -6955,8 +7029,8 @@ void fsh_DrawLiquidMesh(u32 nType, u16 nVtx, u16 nPrim, void *pMesh, u16 *pIdx, 
 			ftex_SetTexAddress(1, TRUE, TRUE);
 			ftex_SetTexAddress(2, TRUE, TRUE);
 
-			FDX8_SetVertexShader(D3DFVF_XYZ | D3DFVF_TEX4);
-			_nCurrentVtxShader = D3DFVF_XYZ | D3DFVF_TEX4;
+			FDX8_SetVertexShader(D3DFVF_XYZ | D3DFVF_TEX3);
+			_nCurrentVtxShader = D3DFVF_XYZ | D3DFVF_TEX3;
 
 			if (pLayer0	&& pLayer1)
 			{
@@ -6999,6 +7073,15 @@ void fsh_DrawLiquidMesh(u32 nType, u16 nVtx, u16 nPrim, void *pMesh, u16 *pIdx, 
 				}
 			}
 		}
-	}				
+	}
+	// DrawIndexedPrimitiveUP unbinds stream 0; invalidate the cached selection
+	// so the next normal mesh binds its buffer again (as fsh_RenderPlane does).
+	FDX8_pDev->SetStreamSource(0, NULL, 0);
+	fdx8vb_UncacheSelected();
+	fdx8_SetRenderState_CULLMODE( D3DCULL_CCW );
+	fdx8tex_SetTexture(0, NULL, 0);
+	fdx8tex_SetTexture(1, NULL, 1);
+	fdx8tex_SetTexture(2, NULL, 2);
+	fdx8tex_SetTexture(3, NULL, 3);
 #endif
 }

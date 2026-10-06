@@ -142,6 +142,7 @@ FCLASS_ALIGN_PREFIX class CFLiquidVolume
 		
 		CFLiquidVolume *m_pConnect;
 		BOOL m_bRender;
+		BOOL m_bRenderEnabled;
 		
 		f32 m_fRadius, m_fRadius2;
 		f32 m_fCullDist2, m_fGeoDraw;
@@ -265,7 +266,7 @@ FCLASS_ALIGN_PREFIX class CFLiquidMesh
 
 		LiquidType_e m_nType;
 		CFColorRGB m_Clr;
-		f32 m_fExp, m_fNextExp, m_fCurExp, m_AnimTarget; //curvature function Fc(x) = 1 - (x-1)^m_fExp, where x = [0, 1 gd]
+		f32 m_fExp, m_fNextExp, m_fCurExp, m_AnimTarget; //curvature function Fc(x) = 1 - (1-x)^m_fExp, x in [0,1]
 
 		CFVec3A m_vExt;
 		CFMtx43A m_Mtx, m_MtxI;
@@ -273,6 +274,7 @@ FCLASS_ALIGN_PREFIX class CFLiquidMesh
 		CFTexInst *m_pTexInst[MAX_NUM_LAYERS];
 
 		u16 m_nVtx, m_nIdx;
+		u32 m_nLastFrameWork;
 		f32 m_fSpeed;
 		f32 m_fOpacity;
 

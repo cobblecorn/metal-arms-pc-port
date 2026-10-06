@@ -37,8 +37,6 @@
 #include "ItemRepository.h"
 #include "weapon.h"
 #include "MultiplayerMgr.h"
-#include "weapon_gren.h"
-#include "weapon_emp.h"
 #include "sas_user.h"
 
 #define _COLLECTABLE_CSV					( "goodies.csv" )
@@ -59,10 +57,6 @@
 #define _HUD_MESSAGE_TIME					( 3.5f )
 #define _PICKUP_RADIUS_MULTIPLY				( 0.75f ) // Was 2.0f, then was 1.5f
 #define _MAX_BATTERIES						( 6 )
-#if FANG_WINGC
-extern "C" int port_GetCutEnemies( void );	// main_win.cpp: -cut-enemies (also gates cut items)
-#endif
-
 #define _EUK_MESH_ID						( 50 )
 
 #define ITEM_UNKNOWN						( -1 )
@@ -137,8 +131,6 @@ static const NameType_t _collectableTypes[] = {
 	{ "Wrench",				COLLECTABLE_WEAPON_WRENCH },
 	{ "Recruiter Grenade",	COLLECTABLE_WEAPON_RECRUITER },
 #if FANG_WINGC
-	{ "Nuke Grenade",		COLLECTABLE_WEAPON_NUKE },
-	{ "Water Grenade",		COLLECTABLE_WEAPON_WATER },
 	{ "megawasher",		COLLECTABLE_MEGA_WASHER },
 #endif
 };
@@ -337,6 +329,14 @@ BOOL CCollectableType::Setup( void ) {
 		return TRUE;
 	}
 
+#if FANG_WINGC
+	// World pickups can remain for partners while each HUD and the shop borrow display meshes.
+	if( MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 ) {
+		const u32 nMinimum = 2 * CPlayer::m_nPlayerCount + 3;
+		if( m_uMeshPoolSize < nMinimum ) m_uMeshPoolSize = nMinimum;
+	}
+#endif
+
 	// _SetupAnimation() mush happen before the normal mesh pool is created
 	if( !_SetupAnimation() ) {
 		goto _ExitWithError;
@@ -495,6 +495,11 @@ CFWorldMesh *CCollectableType::GetWorldMesh( BOOL *pbIsEUKMesh/* = NULL*/ ) {
 		}
 	}
 
+#if FANG_WINGC
+	// Checkpoint restore returns the whole pool at once; a new HUD/shop borrower must not
+	// inherit the previous world pickup's per-player visibility predicate.
+	if( pMesh ) pMesh->SetDrawFilter( NULL, NULL );
+#endif
 	return pMesh;
 }
 
@@ -902,9 +907,6 @@ BOOL CCollectable::InitSystem( void ) {
 	if( !_LoadCollectableCSV() ) {
 		goto _ExitInitSystemWithError;
 	}
-#if FANG_WINGC
-	_PortAddCutGrenadeTypes();
-#endif
 
 	m_hSpecialPickup = (FParticle_DefHandle_t) fresload_Load( FPARTICLE_RESTYPE, _COLLECTABLE_SPECIAL_PICKUP );
 
@@ -1193,6 +1195,9 @@ CCollectable *CCollectable::GetCollectable( BOOL bAllocateNewIfEmpty/* = FALSE*/
 
 				while( pCollectable ) {	
 					if( !pCollectable->m_bUsedInScript &&
+#if FANG_WINGC
+						!pCollectable->_IsPersonalWeapon() &&
+#endif
 						( pCollectable->m_pCollectableType->m_eType != COLLECTABLE_CHIP ) &&
 						( pCollectable->m_pCollectableType->m_eType != COLLECTABLE_SECRET_CHIP ) ) {
 						ReturnCollectable( pCollectable );
@@ -1210,6 +1215,17 @@ CCollectable *CCollectable::GetCollectable( BOOL bAllocateNewIfEmpty/* = FALSE*/
 				// !!Nate - TODO don't pull anything that is really needed, eg chips, etc
 				// We didn't find any washers to take, so take whatever is at the head
 				if( pCollectable == NULL ) {
+#if FANG_WINGC
+					if( MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 ) {
+						pCollectable = GetCollectable( TRUE );
+						if( pCollectable && !pCollectable->Create() ) {
+							flinklist_Remove( &m_CollectablePoolAlive, pCollectable );
+							fdelete( pCollectable );
+							return NULL;
+						}
+						return pCollectable;
+					}
+#endif
 					pCollectable = (CCollectable *) flinklist_GetHead( &m_CollectablePoolAlive );
 
 					// We can't re-use anything that is used in a script, it will wreak havok
@@ -1244,6 +1260,10 @@ CCollectable *CCollectable::GetCollectable( BOOL bAllocateNewIfEmpty/* = FALSE*/
 	pCollectable->m_bInActiveList = TRUE;
 	pCollectable->m_bOverPoolAlloc = FALSE;
 	pCollectable->m_bUsedInScript = FALSE;
+#if FANG_WINGC
+	pCollectable->m_nCoopCollectedMask = 0;
+	pCollectable->m_nRecipientPlayer = -1;
+#endif
 
 	return pCollectable;
 }
@@ -1336,11 +1356,6 @@ CollectableType_e CCollectable::ClassifyPlayerWeapon( CWeapon *pWeap ) {
 			return (CollectableType_e) ( COLLECTABLE_WEAPON_RIVET_GUN_L1 + uUpgrade );
 		break;
 		case CWeapon::WEAPON_TYPE_GRENADE:
-#if FANG_WINGC
-			if( ((CWeaponGren *)pWeap)->IsPortNuke() ) {
-				return COLLECTABLE_WEAPON_NUKE;
-			}
-#endif
 			return COLLECTABLE_WEAPON_CORING_CHARGE;
 		break;
 		case CWeapon::WEAPON_TYPE_BLASTER:
@@ -1368,11 +1383,6 @@ CollectableType_e CCollectable::ClassifyPlayerWeapon( CWeapon *pWeap ) {
 			return (CollectableType_e) ( COLLECTABLE_WEAPON_SCOPE_L1 + uUpgrade );
 		break;
 		case CWeapon::WEAPON_TYPE_EMP:
-#if FANG_WINGC
-			if( ((CWeaponEMP *)pWeap)->IsPortWater() ) {
-				return COLLECTABLE_WEAPON_WATER;
-			}
-#endif
 			return COLLECTABLE_WEAPON_EMP;
 		break;
 		case CWeapon::WEAPON_TYPE_MAGMABOMB:
@@ -1395,15 +1405,6 @@ CollectableType_e CCollectable::ClassifyPlayerWeapon( CWeapon *pWeap ) {
 void CCollectable::NotifyCollectableUsedInWorld( cchar *pszName, BOOL bFromBot/* = FALSE*/ ) {
 	CCollectableType *pType = NULL;
 	cchar *pszLookName = pszName;
-#if FANG_WINGC
-	// A level using Coring Charges or EMP Grenades may also get the cut Nuke/Water Grenades in their place.
-	{
-		CCollectableType *pBase = _FindCollectableType( pszName );
-		if( pBase && (pBase->m_eType == COLLECTABLE_WEAPON_CORING_CHARGE || pBase->m_eType == COLLECTABLE_WEAPON_EMP) ) {
-			NotifyCollectableUsedInWorld( pBase->m_eType == COLLECTABLE_WEAPON_EMP ? COLLECTABLE_WEAPON_WATER : COLLECTABLE_WEAPON_NUKE, FALSE );
-		}
-	}
-#endif
 
 	// NKM - This is a hack since we want "coring charge" but the LDs have "coringcharge" in all the worlds.
 	if( !fclib_stricmp( _CORING_CHARGE_LDS, pszName ) ) {
@@ -1439,13 +1440,6 @@ void CCollectable::NotifyCollectableUsedInWorld( CollectableType_e eType, BOOL b
 	if( eType == COLLECTABLE_UNKNOWN ) {
 		return;
 	}
-#if FANG_WINGC
-	if( eType == COLLECTABLE_WEAPON_CORING_CHARGE ) {
-		NotifyCollectableUsedInWorld( COLLECTABLE_WEAPON_NUKE, FALSE );
-	} else if( eType == COLLECTABLE_WEAPON_EMP ) {
-		NotifyCollectableUsedInWorld( COLLECTABLE_WEAPON_WATER, FALSE );
-	}
-#endif
 
 	CCollectableType *pType = NULL;
 
@@ -1655,6 +1649,15 @@ _ExitWithError:
 	return FALSE;
 }
 
+#if FANG_WINGC
+static s32 _CoopGrantRecipient( const CBot *pBot ) {
+	for( s32 n=0; n < CPlayer::m_nPlayerCount; ++n ) {
+		if( Player_aPlayer[n].m_pEntityCurrent == pBot || Player_aPlayer[n].m_pEntityOrig == pBot ) return n;
+	}
+	return -1;
+}
+#endif
+
 BOOL CCollectable::GiveToPlayer( CBot *pBot, CollectableType_e eType, f32 fScale ) {
 	FASSERT( pBot );
 	FASSERT( fScale > 0.0f );
@@ -1665,7 +1668,11 @@ BOOL CCollectable::GiveToPlayer( CBot *pBot, CollectableType_e eType, f32 fScale
 	Mtx.m_vPos = pBot->MtxToWorld()->m_vPos;
 	Mtx.m_vPos.Add( CFVec3A::m_UnitAxisY );
 
+	#if FANG_WINGC
+	return _PlaceIntoWorld( _FindCollectableType( eType ), &Mtx, NULL, fScale, 0.0f, -1, NULL, _CoopGrantRecipient( pBot ) );
+#else
 	return PlaceIntoWorld( eType, &Mtx, NULL, fScale );
+#endif
 }
 
 BOOL CCollectable::GiveToPlayer( CBot *pBot, cchar *pszCollectableName, f32 fScale ) {
@@ -1679,10 +1686,34 @@ BOOL CCollectable::GiveToPlayer( CBot *pBot, cchar *pszCollectableName, f32 fSca
 	Mtx.m_vPos = pBot->MtxToWorld()->m_vPos;
 	Mtx.m_vPos.Add( CFVec3A::m_UnitAxisY );
 
+	#if FANG_WINGC
+	return _PlaceIntoWorld( _FindCollectableType( pszCollectableName ), &Mtx, NULL, fScale, 0.0f, -1, NULL, _CoopGrantRecipient( pBot ) );
+#else
 	return PlaceIntoWorld( pszCollectableName, &Mtx, NULL, fScale );
+#endif
 }
 
 BOOL CCollectable::GiveWeaponToPlayer( CBot *pBot, cchar *pszWeaponName, s32 nAmmoCount ) {
+#if defined(MA_PC_INPUT)
+	// Direct grants also use HUD/special-pickup helpers. Supply their recipient
+	// context instead of inheriting whoever last touched a world collectable.
+	if( !pBot || !pszWeaponName ) return FALSE;
+	CBot *pPreviousBot = m_pCollectBot;
+	CHud2 *pPreviousHud = m_pCollectHud;
+	CPlayer *pPreviousPlayer = m_pPlayer;
+	const s32 nPlayer = _CoopGrantRecipient( pBot );
+	m_pCollectBot = pBot;
+	m_pCollectHud = nPlayer >= 0 ? CHud2::GetHudForPlayer( nPlayer ) : NULL;
+	m_pPlayer = nPlayer >= 0 ? &Player_aPlayer[nPlayer] : NULL;
+	const BOOL bResult = _GiveWeaponToPlayerScoped( pBot, pszWeaponName, nAmmoCount );
+	m_pCollectBot = pPreviousBot;
+	m_pCollectHud = pPreviousHud;
+	m_pPlayer = pPreviousPlayer;
+	return bResult;
+}
+
+BOOL CCollectable::_GiveWeaponToPlayerScoped( CBot *pBot, cchar *pszWeaponName, s32 nAmmoCount ) {
+#endif
 	FASSERT( pBot );
 	FASSERT( pszWeaponName );
 
@@ -1733,6 +1764,21 @@ BOOL CCollectable::GiveWeaponToPlayer( CBot *pBot, cchar *pszWeaponName, s32 nAm
 			uEUK = pItemInst->m_nUpgradeLevel - 1;
 		}
 	} else {
+#if defined(MA_PC_INPUT)
+		// A direct grant can request a gun whose resources/pickup pool weren't
+		// prepared for this level. Reject it before the retail grant indexes the pool.
+		CItem *pItem = CItemRepository::RetrieveEntry( pszWeaponName, NULL );
+		if( !pItem ) return FALSE;
+		const u32 nSide = pItem->IsSecondaryOnly() ? INV_INDEX_SECONDARY : INV_INDEX_PRIMARY;
+		if( pInv->m_auNumWeapons[nSide] >= ItemInst_uMaxInventoryWeapons ) return FALSE;
+		u32 nPickup;
+		for( nPickup=0; nPickup < pInv->m_uNumPickupWeapons; ++nPickup ) {
+			const CInventory::WeaponPickupInfo_t &pickup = pInv->m_PickupWeaponInfo[nPickup];
+			if( pickup.pItem && pickup.pWeapon && !pickup.bUsed && pickup.pWeapon->IsCreated() &&
+				!fclib_stricmp( pItem->m_pszCodeName, pickup.pItem->m_pszCodeName ) ) break;
+		}
+		if( nPickup == pInv->m_uNumPickupWeapons ) return FALSE;
+#endif
 		if( IsPrimaryWeaponType( pCollect ) ) {
 			_PickupSpecialItem( pCollect );
 		} else {
@@ -1864,6 +1910,10 @@ BOOL CCollectable::CheckpointSave( void ) {
 	CFCheckPoint::SaveData( m_fSpawnTime );
 	CFCheckPoint::SaveData( m_nCurAmmoCount );
 	CFCheckPoint::SaveData( m_bUsedInScript );
+#if FANG_WINGC
+	CFCheckPoint::SaveData( m_nCoopCollectedMask );
+	CFCheckPoint::SaveData( m_nRecipientPlayer );
+#endif
 
 	return TRUE;
 }
@@ -1880,6 +1930,10 @@ void CCollectable::CheckpointRestore( void ) {
 	CFCheckPoint::LoadData( m_fSpawnTime );
 	CFCheckPoint::LoadData( m_nCurAmmoCount );
 	CFCheckPoint::LoadData( m_bUsedInScript );
+#if FANG_WINGC
+	CFCheckPoint::LoadData( m_nCoopCollectedMask );
+	CFCheckPoint::LoadData( m_nRecipientPlayer );
+#endif
 
 	if( !m_bInActiveList && bInWorld ) {
 		flinklist_Remove( &m_CollectablePoolDead, this );
@@ -1943,15 +1997,6 @@ BOOL CCollectable::ClassHierarchyBuild( void ) {
 	_ClearDataMembers();
 
 	m_pCollectableType = pBuilder->m_pCollectableType;
-#if FANG_WINGC
-	{
-		CCollectableType *pSwapped = _PortCutGrenadeSwap( m_pCollectableType, &MtxToWorld()->m_vPos, TRUE );
-		if( pSwapped != m_pCollectableType ) {
-			m_pCollectableType = pSwapped;
-			pBuilder->m_nAmmo = -1;		// the new type's own pickup count (one grenade)
-		}
-	}
-#endif
 
 	if( _CheckRemapItem( pBuilder ) ) {
 		// If we got here, we re-mapped to something that shouldn't be in the world
@@ -2528,20 +2573,11 @@ BOOL CCollectable::_PlaceIntoWorld( CCollectableType *pType,
 									f32 fScale/* = 1.0f*/, 
 									f32 fSpawnTime/* = 0.0f*/, 
 									s32 nAmmoCount/* = -1*/, 
-									CEntity *pSpawnIgnoreEntity/* = NULL*/ ) {
+									CEntity *pSpawnIgnoreEntity/* = NULL*/, s32 nRecipientPlayer/* = -1*/ ) {
 	if( pType == NULL ) {
 		return FALSE;
 	}
 
-#if FANG_WINGC
-	{
-		CCollectableType *pSwapped = _PortCutGrenadeSwap( pType, &pMtx->m_vPos, FALSE );
-		if( pSwapped != pType ) {
-			pType = pSwapped;
-			nAmmoCount = -1;
-		}
-	}
-#endif
 	CCollectable *pCollectable = GetCollectable();
 
 	if( pCollectable == NULL ) {
@@ -2549,6 +2585,9 @@ BOOL CCollectable::_PlaceIntoWorld( CCollectableType *pType,
 	}
 
 	pCollectable->m_pCollectableType = pType;
+#if FANG_WINGC
+	pCollectable->m_nRecipientPlayer = nRecipientPlayer;
+#endif
 
 	if( pCollectable->m_pCollectableType == NULL ) {
 		DEVPRINTF( "CCollectable::_PlaceIntoWorld(): Invalid collectable type.\n" );
@@ -2726,94 +2765,6 @@ void CCollectable::_ForceSpecialMeshesToNull( CCollectableType *pCollectType ) {
 	}
 }
 
-#if FANG_WINGC
-// The Nuke and Water Grenade pickups clone the Coring Charge and EMP Grenade pickups (sounds, pool size,
-// HUD scale) with the unused retail pickup models gp_snuke and gp_swater, one grenade per pickup.
-void CCollectable::_PortAddCutGrenadeTypes( void ) {
-	static const struct { cchar *pszBase; cchar *pszName; cchar *pszMesh; CollectableType_e eType; } aCut[] = {
-		{ "coring charge", "nuke grenade", "gp_snuke", COLLECTABLE_WEAPON_NUKE },
-		{ "emp grenade", "water grenade", "gp_swater", COLLECTABLE_WEAPON_WATER },
-	};
-	for( u32 i = 0; i < sizeof(aCut) / sizeof(aCut[0]); ++i ) {
-		CCollectableType *pBase = _FindCollectableType( aCut[i].pszBase );
-		if( !pBase || _FindCollectableType( aCut[i].pszName ) ) {
-			continue;
-		}
-		CCollectableType *pType = fnew CCollectableType;
-		if( !pType ) {
-			return;
-		}
-		*pType = *pBase;
-		pType->m_bSetup = FALSE;
-		pType->m_bNeedSetup = FALSE;
-		pType->m_bSpecialEUK = FALSE;
-		pType->m_pszName = CFStringTable::AddString( NULL, aCut[i].pszName );
-		pType->m_pszMeshName = aCut[i].pszMesh;
-		pType->m_pszEUKMeshName = NULL;
-		pType->m_eType = aCut[i].eType;
-		pType->m_nAmmoCount = 1;
-		pType->m_pMeshPool = NULL;
-		pType->m_pMesh = NULL;
-		pType->m_pEUKMeshPool = NULL;
-		pType->m_pEUKMesh = NULL;
-		pType->m_pAnimInst = NULL;
-		pType->m_paAnimCombiners = NULL;
-		if( !CItemRepository::RetrieveEntry( pType->m_pszName, &pType->m_uItemRepositoryIndex ) ) {
-			DEVPRINTF( "CCollectable::_PortAddCutGrenadeTypes(): No item for '%s'.\n", aCut[i].pszName );
-			fdelete( pType );
-			continue;
-		}
-		flinklist_AddTail( &m_CollectableTypeList, pType );
-	}
-}
-
-// Some Coring Charge and EMP Grenade pickups become the cut Nuke and Water Grenades: about one in four
-// Coring Charges and one in three EMP Grenades. Level-placed pickups are picked by position (the same
-// ones every load); dropped pickups roll the same odds, once the cut type's meshes are loaded.
-CCollectableType *CCollectable::_PortCutGrenadeSwap( CCollectableType *pType, const CFVec3A *pPos_WS, BOOL bPlacedInWorld ) {
-	if( !pType || !pPos_WS || !port_GetCutEnemies() ) {
-		return pType;
-	}
-	CollectableType_e eCut;
-	u32 nOneIn;
-	if( pType->m_eType == COLLECTABLE_WEAPON_CORING_CHARGE ) {
-		eCut = COLLECTABLE_WEAPON_NUKE;
-		nOneIn = 4;
-	} else if( pType->m_eType == COLLECTABLE_WEAPON_EMP ) {
-		eCut = COLLECTABLE_WEAPON_WATER;
-		nOneIn = 3;
-	} else {
-		return pType;
-	}
-	CCollectableType *pCut = _FindCollectableType( eCut );
-	if( !pCut ) {
-		return pType;
-	}
-	BOOL bSwap;
-	if( bPlacedInWorld ) {
-		u32 nHash = 2166136261u;
-		const s32 anPos[3] = { (s32)pPos_WS->x, (s32)pPos_WS->y, (s32)pPos_WS->z };
-		for( u32 i = 0; i < 3; ++i ) {
-			for( u32 nByte = 0; nByte < 4; ++nByte ) {
-				nHash = (nHash ^ ((u32)anPos[i] >> (nByte * 8) & 0xFF)) * 16777619u;
-			}
-		}
-		bSwap = (nHash % nOneIn) == 0;
-		if( bSwap ) {
-			pCut->m_bNeedSetup = TRUE;
-		}
-	} else {
-		bSwap = pCut->m_pMeshPool != NULL && fmath_RandomChoice( nOneIn ) == 0;
-	}
-	if( bSwap ) {
-		DEVPRINTF( "Port: a %s pickup at (%.0f, %.0f, %.0f) is a %s (cut content).\n", pType->m_pszName,
-				   pPos_WS->x, pPos_WS->y, pPos_WS->z, pCut->m_pszName );
-		return pCut;
-	}
-	return pType;
-}
-#endif
-
 BOOL CCollectable::_IsWeapon( CCollectableType *pType ) {
 	FASSERT( pType );
 	return IsWeapon( pType->m_eType );
@@ -2833,10 +2784,6 @@ BOOL CCollectable::IsPrimaryWeaponType( CCollectableType *pType ) {
 		case COLLECTABLE_WEAPON_CLEANER:
 		case COLLECTABLE_WEAPON_WRENCH:
 		case COLLECTABLE_WEAPON_RECRUITER:
-#if FANG_WINGC
-		case COLLECTABLE_WEAPON_NUKE:
-		case COLLECTABLE_WEAPON_WATER:
-#endif
 //		case COLLECTABLE_WEAPON_SCOPE_L1:
 //		case COLLECTABLE_WEAPON_SCOPE_L2:
 			return FALSE;
@@ -3104,6 +3051,10 @@ void CCollectable::_EUKMeshSwap( CCollectableType *pType, u32 uEUKCurrent ) {
 }
 
 void CCollectable::_ClearDataMembers( void ) {
+#if FANG_WINGC
+	m_nCoopCollectedMask = 0;
+	m_nRecipientPlayer = -1;
+#endif
 	m_pCollectableType = NULL;
 	m_pWorldMesh = NULL;
 
@@ -3203,6 +3154,9 @@ void CCollectable::_ReturnWorldMesh( void ) {
 		return;
 	}
 
+	#if FANG_WINGC
+	if( m_pWorldMesh ) m_pWorldMesh->SetDrawFilter( NULL, NULL );
+	#endif
 	m_pCollectableType->ReturnWorldMesh( m_pWorldMesh );
 	m_pWorldMesh = NULL;
 }
@@ -3224,6 +3178,13 @@ void CCollectable::_HandleCollision( void ) {
 	NewPos.Add( m_LastPos, MoveFrame );
 
 	m_CollInfo.pTag = NULL;
+
+#if FANG_WINGC
+	// Each moving pickup owns a new collision query. Without this reset, upward
+	// loot repeatedly appends its spawning bot's meshes to the shared scratch
+	// list, eventually overflowing it (especially for multi-mesh Titans).
+	FWorld_nTrackerSkipListCount = 0;
+#endif
 
 	if( m_pSpawnIgnoreEntity ) {
 		if( m_VelocityWS.y >= 0.0f ) {
@@ -3510,8 +3471,20 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 		m_pCollectionCallback( m_pCollectableType->m_eType, m_pCollectBot );
 	}
 
+#if FANG_WINGC
+	BOOL bCollectedByAll = TRUE;
+	if( _IsPersonalWeapon() ) {
+		const s32 nPlayer = (s32)(m_pPlayer - Player_aPlayer);
+		m_nCoopCollectedMask |= 1u << nPlayer;
+		bCollectedByAll = m_nCoopCollectedMask == ((1u << CPlayer::m_nPlayerCount) - 1u);
+		DEVPRINTF( "Co-op pickup: '%s' player %d, claims 0x%x.\n", m_pCollectableType->m_pszName, nPlayer + 1, m_nCoopCollectedMask );
+	}
+	// A respawning pickup starts its next cycle only once the team has collected this one.
+	if( bCollectedByAll && m_fSpawnTime != 0.0f ) {
+#else
 	// Spawn one if needed
 	if( m_fSpawnTime != 0.0f ) {
+#endif
 		_AddSpawnPoint();
 	}
 
@@ -3535,7 +3508,10 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 	}
 
 	// Return the collectable to the pool here after we are done with it
-	ReturnCollectable( this );
+	#if FANG_WINGC
+	if( bCollectedByAll )
+	#endif
+		ReturnCollectable( this );
 
 	return TRUE;
 }
@@ -3937,6 +3913,9 @@ void CCollectable::_ActiveListGetResources( void ) {
 	if( !m_pWorldMesh ) {
 		// Grab a mesh
 		m_pWorldMesh = m_pCollectableType->GetWorldMesh();
+#if FANG_WINGC
+		if( m_pWorldMesh ) m_pWorldMesh->SetDrawFilter( _CoopDrawFilter, this );
+#endif
 
 		if( m_pWorldMesh ) {
 			m_pWorldMesh->m_Xfm.BuildFromMtx( CFMtx43A::m_IdentityMtx, 1.0f );
@@ -4015,6 +3994,18 @@ void CCollectable::_RespawnItem( CCollectableSpawnPoint *pPoint ) {
 	}
 }
 
+#if FANG_WINGC
+BOOL CCollectable::_IsPersonalWeapon() const {
+	return MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 &&
+		m_nRecipientPlayer < 0 && m_pCollectableType && IsWeapon( m_pCollectableType->m_eType );
+}
+BOOL CCollectable::_CoopDrawFilter( CFMeshInst *pMesh, void *pData ) {
+	CCollectable *pPickup = (CCollectable *)pData;
+	if( pPickup->m_nRecipientPlayer >= 0 && pPickup->m_nRecipientPlayer != CPlayer::m_nCurrent ) return FALSE;
+	return !pPickup->_IsPersonalWeapon() || !(pPickup->m_nCoopCollectedMask & (1u << CPlayer::m_nCurrent));
+}
+#endif
+
 s32 CCollectable::_CanPickup( void ) {
 	if( m_pWorldMesh == NULL ) {
 		return -1;
@@ -4026,6 +4017,10 @@ s32 CCollectable::_CanPickup( void ) {
 	s32 uBest = -1;
 
 	for( s32 i = 0; i < CPlayer::m_nPlayerCount; ++i ) {
+#if FANG_WINGC
+		if( m_nRecipientPlayer >= 0 && m_nRecipientPlayer != i ) continue;
+		if( _IsPersonalWeapon() && (m_nCoopCollectedMask & (1u << i)) ) continue;
+#endif
 		CEntity *pPlayer = Player_aPlayer[i].m_pEntityCurrent;
 		CBot *pPlayerBot = (CBot *)(pPlayer);
 
@@ -4041,6 +4036,11 @@ s32 CCollectable::_CanPickup( void ) {
 			continue;
 		}
 
+#if FANG_WINGC
+		if( _IsPersonalWeapon() && (pPlayerBot->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
+			!PlayerNeeds( (CBotGlitch *)pPlayerBot, m_pCollectableType->m_eType, FALSE ) &&
+			!PlayerNeeds( (CBotGlitch *)pPlayerBot, m_pCollectableType->m_eType, TRUE ) ) continue;
+#endif
 		// NKM - Added "don't pick up" flag
 		if( !pPlayerBot->CanPickupItems() ) {
 			continue;

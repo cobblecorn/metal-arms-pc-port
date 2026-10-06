@@ -764,6 +764,12 @@ void fang_Assert( cchar *pszFile, int nLine, cchar *pszExpr ) {
 	int nReturnValue;
 	DEVPRINTF( "*** FANG ASSERTION FAILURE *** File: %s Line: %i Expression: %s\n", pszFile, nLine, pszExpr );
 	port_LogFangAssertionStack( pszFile, nLine );
+	// Opt-in unattended integration tests report a failure and exit instead of leaving a modal dialog.
+	char szCoopTest[32];
+	if( GetEnvironmentVariableA( "MA_PORT_TEST_COOP_POLISH", szCoopTest, sizeof(szCoopTest) ) > 0 ) {
+		DEVPRINTF( "COOP-TEST FAIL: engine assertion; aborting unattended test.\n" );
+		ExitProcess(3); // Engine globals require level shutdown; skip atexit on an aborted frame.
+	}
 
 	_snprintf( szMsgString, __MAX_MSG_LEN, "*** FANG ASSERTION FAILURE ***\n\nFile: %s\nLine: %i\nExpression: %s\n\nClick Ok to continue or Cancel to abort.", pszFile, nLine, pszExpr );
 

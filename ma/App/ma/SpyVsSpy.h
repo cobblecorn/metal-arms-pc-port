@@ -25,6 +25,7 @@
 class CMeshEntity;
 class CBotGlitch;
 class CSearchStage;
+class CHumanControl;
 
 typedef struct {
 	// DDR related values
@@ -109,6 +110,17 @@ public:
 
 	static void TurnOffHUD( BOOL bOff, BOOL bNoReticle = FALSE, BOOL bNoWeaponSel = FALSE );
 	static void AttackDisable( BOOL bOff );
+	static void CoopSyncStage( cchar *pszPrimary, cchar *pszSecondary, BOOL bRegroup );
+#if FANG_WINGC
+	static BOOL IsFactoryActive() { return m_bLevelInitted && m_pGame; }
+	static BOOL PortTestStage( u32 nStage );
+	static BOOL PortTestDance( u32 nTest );
+	static BOOL PortTestEscort(u32 test);
+	static BOOL PortTestInspection(u32 test);
+	static BOOL CoopIndividualViews();
+	static BOOL CoopPackingWaiting();
+	static void ConstrainPackingControls(CEntity *body, CHumanControl *controls);
+#endif
 
 	static CEntity *FindEntity( cchar *pszName, const u64 &uTypeBits = 0, BOOL bRequired = TRUE );
 	static void TakeControlFromPlayer( BOOL bTake, BOOL bCanSkip = FALSE );

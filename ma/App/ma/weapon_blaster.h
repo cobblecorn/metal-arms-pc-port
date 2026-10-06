@@ -297,6 +297,7 @@ private:
 	u32 _L1_TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, const CFVec3A *pProjUnitDir_WS, const CFVec3A *pBuddyFirePos_WS );
 	u32 _L23_TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, const CFVec3A *pProjUnitDir_WS, const CFVec3A *pBuddyFirePos_WS );
 
+	void _ConsumeFiredRound( void );
 	void _L1_Fire( const CFVec3A &vUnitFireDir );
 	void _L23_Fire( const CFVec3A &vUnitFireDir );
 

@@ -247,6 +247,17 @@ void CBotTalkInst::Work() {
 
 	// Check to see if our talking is done.
 	if( m_fCurTimePos >= m_pTalkData->m_fTotalTime ) {
+#if FANG_WINGC
+		// Retail dialogue timings can be shorter than the decoded voice sample
+		// (GL_13m2_130: 2.25 versus 2.71 seconds). Natural scene completion must
+		// leave the finite clip playing; explicit termination/skip still uses End().
+		if( CBot::m_bCutscenePlaying && (m_uFlags & BOTTALKINSTFLAG_FORCE_2D_AUDIO) &&
+			!(m_uFlags & BOTTALKINSTFLAG_AUDIO_DAMAGED) && m_pCurSound &&
+			m_pCurSound->GetState() == FAUDIO_EMITTER_STATE_PLAYING &&
+			m_pCurSound->GetSecondsToPlay() >= 0.0f ) {
+			return;
+		}
+#endif
 		if( m_pTalkData->StickAtEnd() ) {
 			End( m_pTalkData->StickAtEnd() );
 		} else {

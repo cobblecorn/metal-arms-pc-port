@@ -34,6 +34,10 @@ void aiutils_UninitSystem(void);
 CEntity* aiutils_GetPlayerEntity(s32 nPlayerIndex);
 BOOL aiutils_GetPlayerLoc(s32 PlayerIndex, CFVec3A* pReturnLoc);
 s32 aiutils_GetNumPlayers(void);
+#if FANG_WINGC
+BOOL aiutils_CanScriptRecruitWastelandZombie(CBot* pBot, CBot* pRecruiter, const CFVec3A* pEpicenter);
+void aiutils_EnsureFreedWastelandZombieFollowsPlayer(CEntity* pEntity);
+#endif
 BOOL aiutils_IsFriendly(CEntity* pEntity, CEntity* pOtherEntity, f32* pfSuspiciousOfFriendship = NULL);  //Is this entity my friend, and if he is wearing a disguise, how suspicious should I be of it?
 BOOL aiutils_IsPlayer(CEntity* pEntity, u16* pnIndex = NULL);
 BOOL aiutils_GetPlayerIndex(CEntity* pEntity, u16* pnIndex =NULL);

@@ -35,6 +35,7 @@
 #include "wpr_languageselect.h"
 #if defined(MA_PC_INPUT)
 #include "pc_input.h"
+#include "pc_cheats.h"
 #endif
 
 //====================
@@ -188,6 +189,13 @@ BOOL launcher_EnterMenus( LauncherFrom_e nFrom ) {
 		break;
 
 	case LAUNCHER_FROM_GAME:
+#if defined(MA_PC_INPUT)
+		pccheats_Reset();
+		// Leaving a PC session always returns to the retail main menu, including
+		// sessions started directly with -mission or -level.
+		DEVPRINTF( "PC: returning from the game to the main menu.\n" );
+		_ScheduleMenu( _MENU_TYPE_WRAPPERS, FALSE );
+#else
 		// go back to whatever menu was used to lauch the game
 		switch( _nCurState ) {
 
@@ -210,6 +218,7 @@ BOOL launcher_EnterMenus( LauncherFrom_e nFrom ) {
 			FASSERT_NOW;
 			return FALSE;
 		}
+#endif
 		break;
 
 	case LAUNCHER_FROM_STARTUP_OPTIONS:

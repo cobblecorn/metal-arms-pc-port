@@ -1358,11 +1358,7 @@ void CWeaponBlaster::_L1_Fire( const CFVec3A &vUnitFireDir ) {
 	PlaySound( m_pUserProps->pSoundGroupFire );
 
 	// Remove the round we fired from the clip...
-	RemoveFromClip( 1 );
-	if (m_pResourceData->m_paShellWorldMeshArray)
-	{
-		m_pResourceData->m_paShellWorldMeshArray[GetClipAmmo()].RemoveFromWorld();
-	}
+	_ConsumeFiredRound();
 }
 
 
@@ -1504,13 +1500,21 @@ void CWeaponBlaster::_L23_Fire( const CFVec3A &vUnitFireDir ) {
 	PlaySound( m_pUserProps->pSoundGroupFire );
 
 	// Remove the round we fired from the clip...
-	RemoveFromClip( 1 );
-	if (m_pResourceData->m_paShellWorldMeshArray)
-	{
-		m_pResourceData->m_paShellWorldMeshArray[GetClipAmmo()].RemoveFromWorld();
-	}
+	_ConsumeFiredRound();
 }
 
+
+
+// Shell meshes represent remaining rounds, not shots fired. Infinite ammo leaves
+// the clip unchanged; indexing that full count would access past the shell array.
+void CWeaponBlaster::_ConsumeFiredRound( void ) {
+	u16 nBefore = GetClipAmmo();
+	RemoveFromClip( 1 );
+	u16 nAfter = GetClipAmmo();
+	if( m_pResourceData->m_paShellWorldMeshArray && nAfter < nBefore && nAfter < m_pInfo->nClipAmmoMax ) {
+		m_pResourceData->m_paShellWorldMeshArray[nAfter].RemoveFromWorld();
+	}
+}
 
 void CWeaponBlaster::_DrawMuzzleEffects( const CFVec3A *pPos_WS, const CFVec3A *pUnitDir_WS, BOOL bBuddy )
 {

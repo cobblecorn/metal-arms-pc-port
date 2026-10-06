@@ -744,6 +744,16 @@ void CBotSiteWeapon::_Do_Possessed(void)
 		f32 fYawVelocity = m_pData->m_fMaxYawVelocityPossess * m_fControls_RotateCW;
 		f32 fYawDelta = fYawVelocity * FLoop_fPreviousLoopSecs +Player_aPlayer[ m_nPossessionPlayerIndex ].m_fYawAdjust;
 		f32 fPitchVelocity = m_pData->m_fMaxPitchVelocityPossess * m_fControls_AimDown;
+#if defined(MA_PC_INPUT)
+		if( m_pBotDef->m_nSubClass == BOTSUBCLASS_SITEWEAPON_RATGUN ) {
+			// ParseControls already applies the player's inversion preference.
+			const f32 fSensitivity = Player_aPlayer[m_nPossessionPlayerIndex].ComputeLookSensitivityMultiplier();
+			fYawVelocity *= fSensitivity;
+			fPitchVelocity = FMATH_MIN(m_pData->m_fMaxPitchVelocityPossess,
+				m_pData->m_fMaxYawVelocityPossess) * m_fControls_AimDown * fSensitivity;
+			fYawDelta = fYawVelocity * FLoop_fPreviousLoopSecs + Player_aPlayer[m_nPossessionPlayerIndex].m_fYawAdjust;
+		}
+#endif
 		f32 fPitchDelta = fPitchVelocity * FLoop_fPreviousLoopSecs + Player_aPlayer[ m_nPossessionPlayerIndex ].m_fPitchAdjust;
 #if defined(MA_PC_INPUT)
 		// Mouse look turns manned guns directly, as it turns the player's bot.

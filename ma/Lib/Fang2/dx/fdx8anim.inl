@@ -23,6 +23,10 @@
 //
 FINLINE f32 fanim_GenerateRatio_8bit( f32 fValue, u8 nLow, u8 nHigh )
 {
+	// Duplicate timestamps represent a held key, not a division by zero.
+	if( nHigh <= nLow || fValue <= (f32)nLow ) return 0.0f;
+	if( fValue >= (f32)nHigh ) return 1.0f;
+
 	return fmath_Div( fValue - (f32)nLow, (f32)nHigh - (f32)nLow );
 }
 
@@ -32,6 +36,10 @@ FINLINE f32 fanim_GenerateRatio_8bit( f32 fValue, u8 nLow, u8 nHigh )
 //
 FINLINE f32 fanim_GenerateRatio_16bit( f32 fValue, u16 nLow, u16 nHigh )
 {
+	// Duplicate timestamps represent a held key, not a division by zero.
+	if( nHigh <= nLow || fValue <= (f32)nLow ) return 0.0f;
+	if( fValue >= (f32)nHigh ) return 1.0f;
+
 	return fmath_Div( fValue - (f32)nLow, (f32)nHigh - (f32)nLow );
 }
 
@@ -41,6 +49,10 @@ FINLINE f32 fanim_GenerateRatio_16bit( f32 fValue, u16 nLow, u16 nHigh )
 //
 FINLINE f32 fanim_GenerateRatio_32bit( f32 fValue, f32 fLow, f32 fHigh )
 {
+	// Duplicate timestamps represent a held key, not a division by zero.
+	if( fHigh <= fLow || fValue <= (f32)fLow ) return 0.0f;
+	if( fValue >= (f32)fHigh ) return 1.0f;
+
 	return fmath_Div( fValue - fLow, fHigh - fLow );
 }
 

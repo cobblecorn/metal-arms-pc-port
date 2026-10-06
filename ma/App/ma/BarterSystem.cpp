@@ -29,6 +29,7 @@
 #include "entity.h"
 #include "player.h"
 #include "bot.h"
+#include "MultiplayerMgr.h"
 #include "gamecam.h"
 #include "gamepad.h"
 #include "game.h"
@@ -121,6 +122,19 @@ cchar *BarterSystem_apszEventStrings[BARTER_SYSTEM_EVENTS_SLIM_COUNT] = {
 //==================
 // private variables
 
+#if FANG_WINGC
+// The vendors serve one shopper at a time; input, inventory and camera belong to that player.
+static s32 _nBarterPlayer = 0;
+static BOOL _abCoopEmptyOffer[MAX_PLAYERS];
+static s16 _anCoopEmptyOfferPoint[MAX_PLAYERS];
+static u32 _anCoopEmptyOfferTicks[MAX_PLAYERS];
+class CBarterPlayerScope {
+	s32 m_nPrevious;
+public:
+	CBarterPlayerScope( s32 nPlayer ) : m_nPrevious( CPlayer::m_nCurrent ) { CPlayer::SetCurrent( nPlayer ); }
+	~CBarterPlayerScope() { CPlayer::SetCurrent( m_nPrevious ); }
+};
+#endif
 static BOOL8 _bLevelOK = FALSE;
 static BOOL8 _bFirstBarterEncounter = TRUE;
 static BOOL8 _bJustPurchasedItem;
@@ -183,7 +197,7 @@ static CFMtx43A* GetBarterPtMtx(s32 nBarterPtSelected)
 {
 	return _apBarterPts[nBarterPtSelected]->MtxToWorld();
 }
-static void _InitUserInterface(void);
+static void _InitUserInterface(BOOL bCreateText = TRUE);
 static void _DrawUserInterface(void);
 static void _RefreshArrows(BOOL bUpSale=FALSE);
 //=================
@@ -209,6 +223,10 @@ void bartersystem_UninitSystem() {
 }
 
 BOOL bartersystem_InitLevel( cchar *pszCSVFile ) {
+#if FANG_WINGC
+	_nBarterPlayer = 0;
+	for( s32 n=0; n<MAX_PLAYERS; ++n ) _abCoopEmptyOffer[n] = FALSE;
+#endif
 	
 	FASSERT( !_bLevelOK );
 	
@@ -222,6 +240,17 @@ BOOL bartersystem_InitLevel( cchar *pszCSVFile ) {
 		}
 	}
 	
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() && launcher_LaunchedFromWrappers() ) {
+		_bFirstBarterEncounter = TRUE;
+		for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+			if( Player_aPlayer[n].m_pPlayerProfile && Player_aPlayer[n].m_pPlayerProfile->HasVisitedBarterDroidsBefore() ) {
+				_bFirstBarterEncounter = FALSE;
+				break;
+			}
+		}
+	}
+#endif
 	_InitUserInterface();
 
 	//////////////////////////
@@ -321,7 +350,51 @@ void bartersystem_UninitLevel() {
 	}
 }
 
+static void _WorkBarterLevel() {
+	FViewport_t *pPrevious = fviewport_GetActive();
+	fviewport_SetActive( CPlayer::m_pCurrent->m_pViewportSafeOrtho3D );
+	_BarterLevel.Work();
+	fviewport_SetActive( pPrevious );
+}
+
+#if FANG_WINGC
+static s32 _CoopBarterListener() {
+	if( _nBarterPtSelected < 0 || (u32)_nBarterPtSelected >= _nBarterPtCnt ) return -1;
+	f32 fNearest = FMATH_MAX_FLOAT;
+	s32 nListener = -1;
+	for( s32 n=0; n<CPlayer::m_nPlayerCount; ++n ) {
+		CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityCurrent;
+		if( !pBot || !pBot->IsInWorld() || pBot->IsDeadOrDying() ) continue;
+		CFVec3A vDist;
+		vDist.Sub( pBot->MtxToWorld()->m_vPos, _apBarterPts[_nBarterPtSelected]->MtxToWorld()->m_vPos );
+		if( vDist.MagSq() < fNearest ) { fNearest = vDist.MagSq(); nListener = n; }
+	}
+	return nListener;
+}
+#endif
+
 void bartersystem_Work() {
+#if FANG_WINGC
+	if( _bLevelOK && _eState != BARTERSTATE_ACTIVE && _eState != BARTERSTATE_ENDING ) {
+		if( MultiplayerMgr.IsLocalCoop() ) {
+			const s32 nListener = _CoopBarterListener();
+			if( nListener >= 0 ) _nBarterPlayer = nListener;
+			else { _pBarterSound->Stop(); return; }
+		} else {
+			f32 fNearest = FMATH_MAX_FLOAT;
+			for( s32 nPlayer=0; nPlayer < CPlayer::m_nPlayerCount; ++nPlayer ) {
+				CBot *pBot = (CBot *)Player_aPlayer[nPlayer].m_pEntityCurrent;
+				if( !pBot || !pBot->IsInWorld() || pBot->IsDeadOrDying() ) continue;
+				for( u32 nPt=0; nPt < _nBarterPtCnt; ++nPt ) {
+					CFVec3A vDist;
+					vDist.Sub( pBot->MtxToWorld()->m_vPos, _apBarterPts[nPt]->MtxToWorld()->m_vPos );
+					if( vDist.MagSq() < fNearest ) { fNearest = vDist.MagSq(); _nBarterPlayer = nPlayer; }
+				}
+			}
+		}
+	}
+	CBarterPlayerScope playerScope( _nBarterPlayer );
+#endif
 //	s32 nIndex;
 	f32 fDist2;
 	BOOL bCanSeePlayer;
@@ -347,7 +420,7 @@ void bartersystem_Work() {
 			// don't do the regular state machine yet, but do call the work functions
 			bCanSeePlayer = _CanPlayerSeePt( _nBarterPtSelected, fDist2 );
 			_Call_Work( bCanSeePlayer, fDist2 );
-			_BarterLevel.Work();
+			_WorkBarterLevel();
 			return;
 		}
 	}
@@ -459,7 +532,7 @@ void bartersystem_Work() {
 
 		bCanSeePlayer = _CanPlayerSeePt( _nBarterPtSelected, fDist2 );
 		_Call_Work( bCanSeePlayer, fDist2 );
-		_BarterLevel.Work();
+		_WorkBarterLevel();
 		break;
 
 	case BARTERSTATE_ENDING:
@@ -470,7 +543,7 @@ void bartersystem_Work() {
 		}
 		bCanSeePlayer = _CanPlayerSeePt( _nBarterPtSelected, fDist2 );
 		_Call_Work( bCanSeePlayer, fDist2 );
-		_BarterLevel.Work();
+		_WorkBarterLevel();
 		break;
 
 	default:
@@ -549,6 +622,9 @@ BOOL bartersystem_PlaceInWorldAndStartAttracting( cchar *pszPointName ) {
 
 void bartersystem_AbortActiveMode(void)
 {
+#if FANG_WINGC
+	CBarterPlayerScope playerScope( _nBarterPlayer );
+#endif
 	CBarterLevel::m_oTextArea.bVisible = FALSE;
 	ftext_SetAttributes(CBarterLevel::m_hTextDisplay,&CBarterLevel::m_oTextArea);
 
@@ -680,7 +756,7 @@ static const CFColorRGBA _argbaArrowFlash[2] =
 	CFColorRGBA(0.75f, 0.75f, 0.75f, 0.35f),
 };
 
-void _InitUserInterface(void)
+void _InitUserInterface(BOOL bCreateText)
 {
 	FASSERT(CPlayer::m_nCurrent < MAX_PLAYERS);
 	f32 fHalfResX = Player_aPlayer[CPlayer::m_nCurrent].m_pViewportSafeOrtho3D->HalfRes.x;
@@ -760,10 +836,10 @@ void _InitUserInterface(void)
 	_avtxButtonPurchase[1].ST.Set(fU2,fV1);
 	_avtxButtonPurchase[2].ST.Set(fU1,fV2);
 	_avtxButtonPurchase[3].ST.Set(fU2,fV2);
+	_avtxButtonPurchase[0].ColorRGBA.OpaqueWhite();
 	_avtxButtonPurchase[1].ColorRGBA.OpaqueWhite();
 	_avtxButtonPurchase[2].ColorRGBA.OpaqueWhite();
 	_avtxButtonPurchase[3].ColorRGBA.OpaqueWhite();
-	_avtxButtonPurchase[4].ColorRGBA.OpaqueWhite();
 
 #if FANG_PLATFORM_DX
 	const f32 fAcceptX = (-272.0f / 272.0f) * fHalfResX;
@@ -833,6 +909,7 @@ void _InitUserInterface(void)
 	_avtxButtonLeave[2].Pos_MS.Set(fLeaveX,				fLeaveY-fLeaveHeight,100.0f);
 	_avtxButtonLeave[3].Pos_MS.Set(fLeaveX+fLeaveWidth, fLeaveY-fLeaveHeight,100.0f);
 
+	if( !bCreateText ) return;
 	FTextArea_t BuyTextArea;
 	ftext_SetToDefaults(&BuyTextArea);
 	BuyTextArea.fNumberOfLines = 1.0f;
@@ -869,6 +946,7 @@ void _DrawUserInterface(void)
 	if (CBarterLevel::m_oTextArea.bVisible==FALSE)
 		return;
 
+	fviewport_SetActive( CPlayer::m_pCurrent->m_pViewportSafeOrtho3D );
 	_textPurchase.PrintString(Game_apwszPhrases[ GAMEPHRASE_PURCHASE]);
 	_textNoThanks.PrintString(Game_apwszPhrases[ GAMEPHRASE_NO_THANKS]);
 	for(u32 m_nDrawDir = 0; m_nDrawDir < 4; ++m_nDrawDir)
@@ -913,6 +991,8 @@ void _DrawUserInterface(void)
 	fdraw_PrimList(FDRAW_PRIMTYPE_TRISTRIP, _avtxButtonLeave, 4);
 #endif
 
+	// PC button/key glyphs use solid-color drawing; restore textured alpha for the navigation arrows.
+	fdraw_Color_SetFunc(FDRAW_COLORFUNC_DIFFUSETEX_AIAT);
 	fdraw_SetTexture(CHud2::GetTexHud());
 	// selecting turn off unneeded arrows
 	switch (_nCurTableSlotIndex)
@@ -1008,7 +1088,10 @@ void bartersystem_Draw( void )
 		return;
 	}
 
-	_DrawUserInterface();
+	#if FANG_WINGC
+	if( CPlayer::m_nCurrent == _nBarterPlayer )
+	#endif
+		_DrawUserInterface();
 
 	CFVec3A vecPosition;
 	if( _pSlim->ShowFilter( &vecPosition ) ) 
@@ -1019,10 +1102,10 @@ void bartersystem_Draw( void )
 		CFVec3A vecBL;
 		CFVec3A	vecFilterPoint;
 
-		FViewport_t *pView	 = Player_aPlayer[0].m_pViewportPersp3D;
+		FViewport_t *pView	 = CPlayer::m_pCurrent->m_pViewportPersp3D;
 		CFCamera	*pCamera = gamecam_GetActiveCamera();
 		fviewport_ComputeUnitOrtho3DScreenPoint_WS(pView, &pCamera->GetFinalXfm()->m_MtxF, &vecPosition, &vecFilterPoint );
-		fviewport_SetActive( Player_aPlayer[0].m_pViewportOrtho3D );
+		fviewport_SetActive( CPlayer::m_pCurrent->m_pViewportOrtho3D );
 
 		frenderer_SetDefaultState();
 
@@ -1038,17 +1121,17 @@ void bartersystem_Draw( void )
 		vecBR.Sub( vecFilterPoint, _vecCensorBarDLU );
 		vecBL.Sub( vecFilterPoint, _vecCensorBarDRU );
 
-		vecTL.x *= Player_aPlayer[0].m_pViewportOrtho3D->HalfRes.x;
-		vecTL.y *= Player_aPlayer[0].m_pViewportOrtho3D->HalfRes.y;
+		vecTL.x *= CPlayer::m_pCurrent->m_pViewportOrtho3D->HalfRes.x;
+		vecTL.y *= CPlayer::m_pCurrent->m_pViewportOrtho3D->HalfRes.y;
 
-		vecTR.x *= Player_aPlayer[0].m_pViewportOrtho3D->HalfRes.x;
-		vecTR.y *= Player_aPlayer[0].m_pViewportOrtho3D->HalfRes.y;
+		vecTR.x *= CPlayer::m_pCurrent->m_pViewportOrtho3D->HalfRes.x;
+		vecTR.y *= CPlayer::m_pCurrent->m_pViewportOrtho3D->HalfRes.y;
 
-		vecBL.x *= Player_aPlayer[0].m_pViewportOrtho3D->HalfRes.x;
-		vecBL.y *= Player_aPlayer[0].m_pViewportOrtho3D->HalfRes.y;
+		vecBL.x *= CPlayer::m_pCurrent->m_pViewportOrtho3D->HalfRes.x;
+		vecBL.y *= CPlayer::m_pCurrent->m_pViewportOrtho3D->HalfRes.y;
 
-		vecBR.x *= Player_aPlayer[0].m_pViewportOrtho3D->HalfRes.x;
-		vecBR.y *= Player_aPlayer[0].m_pViewportOrtho3D->HalfRes.y;
+		vecBR.x *= CPlayer::m_pCurrent->m_pViewportOrtho3D->HalfRes.x;
+		vecBR.y *= CPlayer::m_pCurrent->m_pViewportOrtho3D->HalfRes.y;
 
 		vecTL.z = 100.0f;
 		vecTR.z = 100.0f;
@@ -1090,6 +1173,9 @@ void bartersystem_CheckpointSave( void ) {
 // pull the barters out of whatever state they were in,
 // reset all internal vars to BARTERSTATE_NOT_IN_WORLD state
 void bartersystem_CheckpointRestore( void ) {
+#if FANG_WINGC
+	for( s32 n=0; n<MAX_PLAYERS; ++n ) _abCoopEmptyOffer[n] = FALSE;
+#endif
 	BarterState_e nSavedState;
 	s16 nSavedBartPointIndex;
 
@@ -1117,7 +1203,17 @@ void bartersystem_CheckpointRestore( void ) {
 		return;
 	}
 
+	const s16 nPreviousPoint = _nBarterPtSelected;
+	const BOOL bPreviouslyPresent = bartersystem_AreInWorld();
 	bartersystem_RemoveFromWorld( FALSE );
+	bartersystem_Hide( nSavedState == BARTERSTATE_HIDDEN );
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() && nSavedState == BARTERSTATE_NOT_IN_WORLD &&
+		bPreviouslyPresent && nPreviousPoint >= 0 ) {
+		nSavedState = BARTERSTATE_IDLE;
+		nSavedBartPointIndex = nPreviousPoint;
+	}
+#endif
 
 	if( nSavedBartPointIndex<0 || nSavedState==BARTERSTATE_NOT_IN_WORLD || nSavedState==BARTERSTATE_HIDDEN ) {
 		return;
@@ -1351,21 +1447,27 @@ static void _MoveCamToBarterPos() {
 	Pos.Add( Temp );
 	_CamMtx.m_vPos = Pos;
 
-	gamecam_SwitchPlayerToManualCamera( GAME_CAM_PLAYER_1, &_CamInfo );
+	gamecam_SwitchPlayerToManualCamera( PLAYER_CAM( CPlayer::m_nCurrent ), &_CamInfo );
 }
 
 static void _MoveCamToNormalPos() {
-	gamecam_SwitchPlayerTo3rdPersonCamera( GAME_CAM_PLAYER_1, (CBot *)CPlayer::m_pCurrent->m_pEntityCurrent );
+	gamecam_SwitchPlayerTo3rdPersonCamera( PLAYER_CAM( CPlayer::m_nCurrent ), (CBot *)CPlayer::m_pCurrent->m_pEntityCurrent );
 }
 
 static BOOL _ActionBarter( CEntity *pActioningEntity, CEntity *pActionedEntity ) {
 
-	// Disable for multiplayer for now. In order to make bartering work in
-	// multiplayer, we need to track everything separately, which means either
-	// multiple non-static barter systems, or a barter system with lots of
-	// arrays to handle the different players concurrently.
-	if (CPlayer::m_nPlayerCount > 1)
-		return FALSE;
+#if FANG_WINGC
+	if( MultiplayerMgr.IsMultiplayer() || bartersystem_IsActive() ) return FALSE;
+	s32 nShopper = -1;
+	for( s32 n=0; n < CPlayer::m_nPlayerCount; ++n ) {
+		if( Player_aPlayer[n].m_pEntityCurrent == pActioningEntity ) { nShopper = n; break; }
+	}
+	if( nShopper < 0 ) return FALSE;
+	_abCoopEmptyOffer[nShopper] = FALSE;
+	CBarterPlayerScope playerScope( nShopper );
+#else
+	if( CPlayer::m_nPlayerCount > 1 ) return FALSE;
+#endif
 
 	u32 i;
 	CBot *pPlayer = (CBot *)CPlayer::m_pCurrent->m_pEntityCurrent;
@@ -1379,10 +1481,6 @@ static BOOL _ActionBarter( CEntity *pActioningEntity, CEntity *pActionedEntity )
 	}
 
 	if( !_IsPlayerInFrontAndLookingAtBarters( _nBarterPtSelected, pPlayer ) ) {
-		return FALSE;
-	}
-
-	if( !game_EnterBarterMode() ) {
 		return FALSE;
 	}
 
@@ -1412,8 +1510,28 @@ static BOOL _ActionBarter( CEntity *pActioningEntity, CEntity *pActionedEntity )
 	s32 nCurrentSlot = _BarterLevel.SetStartingSlotIndex();
 	if (nCurrentSlot > -1)
 		_nCurTableSlotIndex = nCurrentSlot;
-	else
+	else {
+		_BarterLevel.SetActiveTable( NULL );
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() ) {
+			_abCoopEmptyOffer[nShopper] = TRUE;
+			_anCoopEmptyOfferPoint[nShopper] = _nBarterPtSelected;
+			_anCoopEmptyOfferTicks[nShopper] = GetTickCount();
+			DEVPRINTF( "Co-op shop: player %d has no available offers at '%s' (inventory needs/stock).\n",
+				nShopper + 1, _apBarterPts[_nBarterPtSelected]->Name() );
+		}
+#endif
 		return FALSE; // empty table!
+	}
+	if( !game_EnterBarterMode() ) {
+		_BarterLevel.SetActiveTable( NULL );
+		return FALSE;
+	}
+#if FANG_WINGC
+	_nBarterPlayer = nShopper;
+	_InitUserInterface( FALSE );
+	DEVPRINTF( "Co-op shop: player %d entered.\n", nShopper + 1 );
+#endif
 
 	// ASSERT we're going into barter mode for sure at this point
 
@@ -1622,6 +1740,16 @@ static BOOL _Call_ReadyToBarter( void ) {
 // returns TRUE if there is no wait needed, FALSE if we are now in a wait state
 // NOTE: CALLS SHADY, WAITS FOR HIM TO FINISH, CALLS SLIM, WAITS FOR HIM TO FINISH
 // assumes that the table has been setup
+static void _RememberBarterIntroduction( void ) {
+	if( MultiplayerMgr.IsLocalCoop() ) {
+		for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+			if( Player_aPlayer[n].m_pPlayerProfile ) Player_aPlayer[n].m_pPlayerProfile->VisitedBarterDroids();
+		}
+	} else if( CPlayer::m_pCurrent->m_pPlayerProfile ) {
+		CPlayer::m_pCurrent->m_pPlayerProfile->VisitedBarterDroids();
+	}
+}
+
 static BOOL _Call_Welcome( void ) {
 	FASSERT( _nWaitState == WAIT_STATE_NONE );
 
@@ -1630,9 +1758,7 @@ static BOOL _Call_Welcome( void ) {
 	if( !_pShady->IsBusy() ) {
 		// shady is done processing, tell slim
 		_pSlim->Welcome( &_TableData, _bFirstBarterEncounter );
-		if( CPlayer::m_pCurrent->m_pPlayerProfile ) {
-			CPlayer::m_pCurrent->m_pPlayerProfile->VisitedBarterDroids();
-		}
+		_RememberBarterIntroduction();
 		_bFirstBarterEncounter = FALSE;
 
 		if( _pSlim->IsBusy() ) {
@@ -1894,9 +2020,7 @@ static BOOL _WaitStateWork( void ) {
 		if( !_pShady->IsBusy() ) {
 			// shady is done processing, welcome slim
 			_pSlim->Welcome( &_TableData, _bFirstBarterEncounter );
-			if( CPlayer::m_pCurrent->m_pPlayerProfile ) {
-				CPlayer::m_pCurrent->m_pPlayerProfile->VisitedBarterDroids();
-			}
+			_RememberBarterIntroduction();
 			_bFirstBarterEncounter = FALSE;
 
 			if( _pSlim->IsBusy() ) {
@@ -2203,5 +2327,18 @@ BOOL bartersystem_IsBarterBot(const CEntity* pEntity)
 	if (pActionFunct == _ActionBarter)
 		if (_IsPlayerInFrontAndLookingAtBarters( _nBarterPtSelected, (CBot *)CPlayer::m_pCurrent->m_pEntityCurrent ))
 			return TRUE;
+	return FALSE;
+}
+
+BOOL bartersystem_HasEmptyOfferNotice( const CEntity *pPlayer ) {
+#if FANG_WINGC
+	if( !MultiplayerMgr.IsLocalCoop() || !_bLevelOK || _nBarterPtSelected < 0 ) return FALSE;
+	for( s32 n=0; n<CPlayer::m_nPlayerCount; ++n ) {
+		if( Player_aPlayer[n].m_pEntityCurrent == pPlayer ) {
+			return _abCoopEmptyOffer[n] && _anCoopEmptyOfferPoint[n] == _nBarterPtSelected &&
+				(u32)(GetTickCount() - _anCoopEmptyOfferTicks[n]) < 2500;
+		}
+	}
+#endif
 	return FALSE;
 }

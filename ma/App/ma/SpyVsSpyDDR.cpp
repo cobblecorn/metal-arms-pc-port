@@ -30,6 +30,8 @@
 #include "CamSimple.h"
 #include "MeshEntity.h"
 #include "SpyVsSpyDDR.h"
+#include "multiplayerMgr.h"
+#include "botpart.h"
 
 #include "AI/AIApi.h"
 #include "AI/AIBrain.h"
@@ -306,6 +308,21 @@ BOOL CDDRStage::Load( LevelEvent_e eEvent ) {
 		m_pHoloMesh->SetUserTypeBits( 0 );
 		m_pHoloMesh->UpdateTracker();
 		m_pHoloMesh->SetCullDirection( FMESH_CULLDIR_NONE );
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() ) {
+			// Players are initialized after this resource load; player count is
+			// still zero here. Reserve all partner guides, show only active slots.
+			for( s32 n = 0; n < 3; ++n ) {
+				m_apCoopHolo[n] = fnew CFWorldMesh();
+				if( !m_apCoopHolo[n] ) goto _ExitWithError;
+				m_apCoopHolo[n]->Init( &MeshInit );
+				m_apCoopHolo[n]->RemoveFromWorld();
+				m_apCoopHolo[n]->SetCollisionFlag( FALSE );
+				m_apCoopHolo[n]->SetUserTypeBits( 0 );
+				m_apCoopHolo[n]->SetCullDirection( FMESH_CULLDIR_NONE );
+			}
+		}
+#endif
 
 		// Find the command grunt
 		m_pCommandGrunt = (CBotGrunt * ) CSpyVsSpy::FindEntity( _DDR_GRUNT_NAME, ENTITY_BIT_BOTGRUNT );
@@ -459,6 +476,11 @@ _ExitWithError:
 }
 
 void CDDRStage::Unload( void ) {
+#if FANG_WINGC
+	for( s32 n = 0; n < 3; ++n ) {
+		if( m_apCoopHolo[n] ) { m_apCoopHolo[n]->RemoveFromWorld(); fdelete(m_apCoopHolo[n]); m_apCoopHolo[n] = NULL; }
+	}
+#endif
 	if( m_pCrusherEmitter ) {
 		m_pCrusherEmitter->Destroy();
 		m_pCrusherEmitter = NULL;
@@ -477,13 +499,49 @@ void CDDRStage::Restore( void ) {
 }
 
 void CDDRStage::Work( void ) {
+#if FANG_WINGC
+	BOOL bCoopCheckedThisFrame = FALSE;
+	if( _CoopActive() && !IsFinished() ) {
+		for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+			CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+			if( pBot && pBot->IsDeadOrDying() ) m_bCoopRetryPending = TRUE;
+		}
+		if( m_bCoopRetryPending ) {
+			for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+				CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+				if( pBot && pBot->IsDeadOrDying() && !pBot->IsDead() ) return;
+			}
+			for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+				CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+				if( !pBot ) continue;
+				pBot->DetachFromParent(); pBot->MobilizeBot();
+				Player_aPlayer[n].Resurrect();
+				if( pBot->GetPartMgr() && pBot->GetPartMgr()->IsCreated() ) pBot->GetPartMgr()->ResetAllToIntact();
+				Player_aPlayer[n].CoopClearRespawnWait();
+				Player_aPlayer[n].ZeroControls();
+			}
+			SwitchTo();
+			m_eStageState = STATE_WAIT_WORK; // Retry the game without replaying Shhh's long briefing.
+			DEVPRINTF( "Co-op: factory instructor retries with the whole team.\n" );
+			return;
+		}
+	}
+#endif
 	if( IsFinished() ) {
 		return;
 	}
 
-	if( CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->IsDrawEnabled() ) {
+#if FANG_WINGC
+	if( _CoopActive() ) CSpyVsSpy::TurnOffHUD( TRUE ); else
+#endif
+	if( CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->IsDrawEnabled() )
 		CHud2::GetHudForPlayer( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex )->SetDrawEnabled( FALSE );
+#if FANG_WINGC
+	if( _CoopActive() ) for( s32 n = 1; n < CPlayer::m_nPlayerCount; ++n ) {
+		CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+		if( pBot ) pBot->m_vecCamPosAdj = CSpyVsSpy::GetGlitch()->m_vecCamPosAdj;
 	}
+#endif
 
 	if( !_IsInSpecialMode() ) {
 		if( !( m_uFlags & FLAG_STOP_CAM_ANIM ) ) {
@@ -529,6 +587,16 @@ void CDDRStage::Work( void ) {
 			_ExecuteCommand();
 		break;
 		case STATE_WAIT_FINISH_COMMAND:
+#if FANG_WINGC
+			// Consume this frame's input before judging the deadline, once only.
+			if( _CoopActive() ) {
+				_CoopCheckPlayers();
+				bCoopCheckedThisFrame = TRUE;
+				if( m_eStageState != STATE_WAIT_FINISH_COMMAND || m_bCoopRetryPending ) break;
+			}
+#endif
+			_CheckBotsDone();
+		break;
 		case STATE_WALK_GLITCH_BACK:
 			_CheckBotsDone();
 		break;
@@ -590,6 +658,9 @@ void CDDRStage::Work( void ) {
 		break;
 		default:
 			if( !_IsInSpecialMode() ) {
+#if FANG_WINGC
+				if( _CoopActive() ) { if( !bCoopCheckedThisFrame ) _CoopCheckPlayers(); } else
+#endif
 				_CheckAlignment( CSpyVsSpy::GetGlitch() );
 			} else {
 				_CheckAlignment( m_pKillMiner );
@@ -598,6 +669,9 @@ void CDDRStage::Work( void ) {
 	}
 
 	_MeshAlphaWork();
+#if FANG_WINGC
+	_CoopHologramsWork();
+#endif
 }
 
 void CDDRStage::SwitchTo( void ) {
@@ -711,6 +785,14 @@ void CDDRStage::SwitchTo( void ) {
 		m_pCrusherEmitter = NULL;
 	}
 
+#if FANG_WINGC
+	if( _CoopActive() ) {
+		m_bCoopRetryPending = FALSE;
+		_CoopPlacePlayers();
+		CSpyVsSpy::CoopSyncStage( "Empty Primary", "Empty Secondary", FALSE );
+		_CoopCommandState( FALSE );
+	}
+#endif
 	_SetFinished( FALSE );
 }
 
@@ -732,6 +814,11 @@ void CDDRStage::TossSparksFromBot( CBot *pBot ) {
 }
 
 void CDDRStage::_ClearDataMembers( void ) {
+#if FANG_WINGC
+	m_bCoopRetryPending = FALSE;
+	for( s32 n = 0; n < 4; ++n ) { m_aCoopDance[n].offset.Zero(); m_aCoopDance[n].flags = 0; m_aCoopDance[n].align = m_aCoopDance[n].position = m_aCoopDance[n].look = m_aCoopDance[n].move = 0; }
+	for( s32 n = 0; n < 3; ++n ) m_apCoopHolo[n] = NULL;
+#endif
 	m_uFlags = 0;
 
 	m_DanceTable.Reset();
@@ -867,6 +954,9 @@ void CDDRStage::_IssueCommand( void ) {
 			FMATH_SETBITMASK( m_uFlags, FLAG_FAKE_COMMAND );
 			FMATH_SETBITMASK( m_uFlags, FLAG_WAIT_EXECUTE );
 			_FakeMove( uType, TRUE );
+#if FANG_WINGC
+			_CoopCommandState( FALSE );
+#endif
 
 			return;
 //		}
@@ -909,6 +999,9 @@ void CDDRStage::_IssueCommand( void ) {
 
 	m_eStageState = STATE_IDLE_TIME;
 	CSpyVsSpy::PlayBotTalk( m_pCommandGrunt, uNdx, &m_fIdleTimer );
+#if FANG_WINGC
+	_CoopCommandState( FALSE );
+#endif
 }
 
 // We never get here with a fake command, if we do, bad
@@ -964,9 +1057,17 @@ void CDDRStage::_ExecuteCommand( void ) {
 
 	m_eStageState = STATE_WAIT_FINISH_COMMAND;
 	m_fIdleTimer = CSpyVsSpy::GetCommandTime( m_fTimeInterp );
+#if FANG_WINGC
+	// The response window must include the same extra movement grace used by
+	// the validator, followed by the retail settling interval.
+	if( _CoopActive() ) m_fIdleTimer += 0.6f;
+#endif
 	m_fAlignFailTimer = 0.0f;
 	m_fPositionFailTimer = 0.0f;
 	m_fLookFailTimer = 0.0f;
+#if FANG_WINGC
+	_CoopCommandState( TRUE );
+#endif
 }
 
 void CDDRStage::_TellAIToMove( u32 uType, CFMtx43A *pMtx/* = NULL*/ ) {
@@ -1186,6 +1287,9 @@ void CDDRStage::_CheckBotsDone( void ) {
 				// Put stuff back
 				if( m_eStageState != STATE_GLITCH_GETS_KILLED ) {
 					CSpyVsSpy::TakeControlFromPlayer( FALSE );
+#if FANG_WINGC
+					if( _CoopActive() ) { _CoopPlacePlayers(); _CoopCommandState( FALSE ); }
+#endif
 				}
 
 				uNumDone = 4;
@@ -1225,6 +1329,11 @@ void CDDRStage::_CheckBotsDone( void ) {
 			FMATH_CLAMPMIN( m_fIdleTimer, 0.0f );
 
 			if( m_fIdleTimer == 0.0f ) {
+#if FANG_WINGC
+				// Timed tolerances must not let the next command erase an unmet
+				// target. Judge each player's completed command before advancing.
+				if( _CoopActive() && !_CoopFinishCommand() ) return;
+#endif
 				m_eStageState = STATE_IDLE_TIME;
 			}
 
@@ -1263,9 +1372,26 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 	f32 fFrontDot = 0.0f;
 	f32 fHorzDot = 0.0f;
 	BOOL bDie = FALSE;
+ f32 maxMissDistanceSq=_DDR_MAX_MISS_DIST_SQXZ;
+ f32 minAlignmentDot=_DDR_MIN_HORZ_DOT, minLookDot=_DDR_LOOK_DOT_MIN;
+ f32 alignTime=CSpyVsSpy::m_pConfigValues->fDDRAlignFailTime;
+ f32 positionTime=CSpyVsSpy::m_pConfigValues->fDDRPositionFailTime;
+ f32 lookTime=CSpyVsSpy::m_pConfigValues->fDDRLookFailTime;
+ f32 moveGrace=0;
+#if FANG_WINGC
+ if(_CoopActive()) {
+  maxMissDistanceSq=12.25f; // 3.5 feet, independently around each player's marker.
+  minAlignmentDot=.80f; minLookDot=.60f;
+  alignTime+=.75f; positionTime+=.75f; lookTime+=.75f; moveGrace=.6f;
+ }
+#endif
 	CFVec3A Bot0ToGlitch;
 	CFVec3A GlitchDir;
-	CHumanControl *pControl = (CHumanControl *) CSpyVsSpy::GetGlitch()->Controls();
+	CHumanControl *pControl = (CHumanControl *) pBot->Controls();
+	CFVec3A TestPosition = pBot->MtxToWorld()->m_vPos;
+#if FANG_WINGC
+	if( _CoopActive() ) TestPosition.Sub( m_aCoopDance[pBot->m_nPossessionPlayerIndex].offset );
+#endif
 
 	//
 	// Testing for jumps
@@ -1312,7 +1438,7 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 					FMATH_CLEARBITMASK( m_uFlags, ( FLAG_JUMP1_IN_QUEUE | FLAG_JUMP2_IN_QUEUE ) );
 
 					// Don't want a double jump while we single jump
-					if( CSpyVsSpy::GetGlitch()->IsInAir() && !CSpyVsSpy::GetGlitch()->GetBotFlag_CanDoubleJump() ) {
+					if( pBot->IsInAir() && !pBot->GetBotFlag_CanDoubleJump() ) {
 						bDie = TRUE;
 						goto _QuickDie;
 					}
@@ -1320,7 +1446,7 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 
 				// Jump2 command
 				if( ( m_uFlags & FLAG_JUMP2 ) ) {
-					if( !CSpyVsSpy::GetGlitch()->GetBotFlag_CanDoubleJump() ) {
+					if( !pBot->GetBotFlag_CanDoubleJump() ) {
 						FMATH_SETBITMASK( m_uFlags, FLAG_JUMP_OK );
 						FMATH_CLEARBITMASK( m_uFlags, ( FLAG_JUMP1_IN_QUEUE | FLAG_JUMP2_IN_QUEUE ) );
 					}
@@ -1333,11 +1459,19 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 		}
 	}
 
+#if FANG_WINGC
+ // The spoken command announces a future target. Do not punish players for
+ // starting their turn/step during the voice line, against the previous target.
+ if(_CoopActive() && (m_uFlags & FLAG_WAIT_EXECUTE)) {
+  if(bDie) goto _QuickDie;
+  return;
+ }
+#endif
 	//
 	// Angle test
 	//
 //	Bot0ToGlitch.Sub( CSpyVsSpy::GetGlitch()->MtxToWorld()->m_vPos, m_DestPoints[ 0 ]/*m_paMiners[ 0 ]->MtxToWorld()->m_vPos*/ );
-	Bot0ToGlitch.Sub( pBot->MtxToWorld()->m_vPos, m_DestPoints[ 0 ] );
+	Bot0ToGlitch.Sub( TestPosition, m_DestPoints[ 0 ] );
 	Bot0ToGlitch.y = 0.0f;
 
 	if( Bot0ToGlitch.MagSq() > FMATH_POS_EPSILON ) {
@@ -1345,7 +1479,7 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 	
 		fHorzDot = m_StartMatrix.m_vRight.Dot( Bot0ToGlitch );
 
-		if( fHorzDot < _DDR_MIN_HORZ_DOT ) {
+		if( fHorzDot < minAlignmentDot ) {
 			m_fAlignFailTimer += FLoop_fPreviousLoopSecs;
 		} else {
 			m_fAlignFailTimer -= ( 4.0f * FLoop_fPreviousLoopSecs );
@@ -1354,8 +1488,8 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 		m_fAlignFailTimer += FLoop_fPreviousLoopSecs;
 	}
 
-	FMATH_CLAMP( m_fAlignFailTimer, 0.0f, CSpyVsSpy::m_pConfigValues->fDDRAlignFailTime );
-	if( m_fAlignFailTimer == CSpyVsSpy::m_pConfigValues->fDDRAlignFailTime ) {
+	FMATH_CLAMP( m_fAlignFailTimer, 0.0f, alignTime );
+	if( m_fAlignFailTimer == alignTime ) {
 		bDie = TRUE;
 	}
 
@@ -1363,15 +1497,15 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 	// If we have passed the max time for moving, check the distance
 	//
 	m_fGlitchMoveTimer += FLoop_fPreviousLoopSecs;
-	fMoveTime = CSpyVsSpy::GetMoveTime( m_fTimeInterp );
+	fMoveTime = CSpyVsSpy::GetMoveTime( m_fTimeInterp ) + moveGrace;
 	FMATH_CLAMPMAX( m_fGlitchMoveTimer, fMoveTime );
 
 	// Time is up, we need to be in our dest position
 	if( m_fGlitchMoveTimer == fMoveTime ) {
 		//f32 fDistSqXZ = m_GlitchDestPoint.DistSqXZ( CSpyVsSpy::GetGlitch()->MtxToWorld()->m_vPos );
-		f32 fDistSqXZ = m_GlitchDestPoint.DistSqXZ( pBot->MtxToWorld()->m_vPos );
+		f32 fDistSqXZ = m_GlitchDestPoint.DistSqXZ( TestPosition );
 
-		if( fDistSqXZ > _DDR_MAX_MISS_DIST_SQXZ ) {
+		if( fDistSqXZ > maxMissDistanceSq ) {
 			m_fPositionFailTimer += FLoop_fPreviousLoopSecs;;
 		} else {
 			m_fPositionFailTimer -= ( 4.0f * FLoop_fPreviousLoopSecs );
@@ -1382,8 +1516,8 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 				bDie = FALSE;
 			}
 		}
-		FMATH_CLAMP( m_fPositionFailTimer, 0.0f, CSpyVsSpy::m_pConfigValues->fDDRPositionFailTime );
-		if( m_fPositionFailTimer == CSpyVsSpy::m_pConfigValues->fDDRPositionFailTime ) {
+		FMATH_CLAMP( m_fPositionFailTimer, 0.0f, positionTime );
+		if( m_fPositionFailTimer == positionTime ) {
 			bDie = TRUE;
 		}
 
@@ -1395,6 +1529,10 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 			}
 		}
 
+#if FANG_WINGC
+		// Keep each player's requirement until the command completion check.
+		if( !_CoopActive() )
+#endif
 		FMATH_CLEARBITMASK( m_uFlags, ( FLAG_HAVE_JUMP | FLAG_JUMP1 | FLAG_JUMP2 ) );
 	}
 
@@ -1408,7 +1546,7 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 
 	fFrontDot = m_paMiners[ 0 ]->MtxToWorld()->m_vFront.Dot( GlitchDir );
 	
-	if( fFrontDot < _DDR_LOOK_DOT_MIN ) {
+	if( fFrontDot < minLookDot ) {
 		m_fLookFailTimer += FLoop_fPreviousLoopSecs;
 	} else {
 		m_fLookFailTimer -= ( 4.0f * FLoop_fPreviousLoopSecs );
@@ -1416,17 +1554,25 @@ void CDDRStage::_CheckAlignment( CBot *pBot ) {
 
 	// If they try to rotate the wrong way don't let them get away with it
 	if( fFrontDot < 0.0f ) {
+#if FANG_WINGC
+  if(!_CoopActive())
+#endif
 		bDie = TRUE;
 	}
 
 
-	FMATH_CLAMP( m_fLookFailTimer, 0.0f, CSpyVsSpy::m_pConfigValues->fDDRLookFailTime );
-	if( m_fLookFailTimer == CSpyVsSpy::m_pConfigValues->fDDRLookFailTime ) {
+	FMATH_CLAMP( m_fLookFailTimer, 0.0f, lookTime );
+	if( m_fLookFailTimer == lookTime ) {
 		bDie = TRUE;
 	}
 
 _QuickDie:
 	if( bDie ) {
+#if FANG_WINGC
+  if(_CoopActive()) DEVPRINTF("Co-op: instructor rejects P%d state=%d flags=%u move=%.2f align=%.2f position=%.2f look=%.2f targetDist=%.2f.\n",
+   pBot->m_nPossessionPlayerIndex+1,m_eStageState,m_uFlags,m_fGlitchMoveTimer,m_fAlignFailTimer,m_fPositionFailTimer,m_fLookFailTimer,
+   m_GlitchDestPoint.DistSqXZ(TestPosition));
+#endif
 		pControl->m_nPadFlagsJump &= ~GAMEPAD_BUTTON_1ST_PRESS_MASK;
 
 		if( m_uBadMoveCount < _DDR_MAX_MESSUPS && !_IsInSpecialMode() ) {
@@ -1482,6 +1628,9 @@ void CDDRStage::_MeshPlaceIntoWorld( CFMtx43A *pMtx /*= NULL*/, BOOL bJump/* = F
 	}
 
 	m_pHoloMesh->m_Xfm.BuildFromMtx( Temp, 1.0f );
+#if FANG_WINGC
+	if( _CoopActive() && bDelay ) m_pHoloMesh->RemoveFromWorld();
+#endif
 
 	if( !bDelay ) {
 		m_pHoloMesh->AddToWorld();
@@ -1621,6 +1770,9 @@ void CDDRStage::_GlitchMessedUp( void ) {
 }
 
 void CDDRStage::_SetGlitchGetsKilled( void ) {
+#if FANG_WINGC
+	if( _CoopActive() ) { m_bCoopRetryPending = TRUE; return; }
+#endif
 	CFVec3A GruntDest;
 
 	if( m_eStageState == STATE_GLITCH_GETS_KILLED ) {
@@ -1664,8 +1816,8 @@ void CDDRStage::_SetStateGrabGlitch( void ) {
 	if( !_IsInSpecialMode() ) {
 		CFCamera* pCam = fcamera_GetCameraByIndex( CSpyVsSpy::GetGlitch()->m_nPossessionPlayerIndex );
 
-		m_Camera.m_Pos_WS = pCam->GetXfmWithoutShake()->m_MtxR.m_vPos;
-		m_Camera.m_Quat_WS.BuildQuat( pCam->GetXfmWithoutShake()->m_MtxR );
+		m_Camera.m_Pos_WS = pCam->GetOwnXfmWithoutShake()->m_MtxR.m_vPos;
+		m_Camera.m_Quat_WS.BuildQuat( pCam->GetOwnXfmWithoutShake()->m_MtxR );
 		m_StartQuat = m_Camera.m_Quat_WS;
 		m_fUnitCamInterp = 0.0f;
 
@@ -1861,6 +2013,9 @@ void CDDRStage::_RunToDoorsWork( void ) {
 			EndColorRGBA.OpaqueWhite();
 
 			pPlayer->StartViewFade( &StartColorRGBA, &EndColorRGBA, 3.0f );
+#if FANG_WINGC
+				if( _CoopActive() ) for( s32 n = 1; n < CPlayer::m_nPlayerCount; ++n ) Player_aPlayer[n].StartViewFade( &StartColorRGBA, &EndColorRGBA, 3.0f );
+#endif
 		} else {
 			if( pPlayer->GetViewFadeUnitProgress() >= 1.0f ) {
 				CFColorRGBA StartColorRGBA, EndColorRGBA;
@@ -1869,6 +2024,9 @@ void CDDRStage::_RunToDoorsWork( void ) {
 				EndColorRGBA.TransparentBlack();
 
 				pPlayer->StartViewFade( &StartColorRGBA, &EndColorRGBA, 3.0f );
+#if FANG_WINGC
+				if( _CoopActive() ) for( s32 n = 1; n < CPlayer::m_nPlayerCount; ++n ) Player_aPlayer[n].StartViewFade( &StartColorRGBA, &EndColorRGBA, 3.0f );
+#endif
 
 				// Restore control back to the player
 				CSpyVsSpy::TakeControlFromPlayer( FALSE );
@@ -2086,4 +2244,214 @@ void CDDRStage::_DrawDebugGrid( void ) {
 	}*/
 }
 
+#endif
+#if FANG_WINGC
+BOOL CDDRStage::_CoopActive() { return MultiplayerMgr.IsLocalCoop() && !_IsInSpecialMode(); }
+
+void CDDRStage::_CoopPlacePlayers() {
+	if( !_CoopActive() ) return;
+	const CFVec3A cameraAdjust = CSpyVsSpy::GetGlitch()->m_vecCamPosAdj;
+	static const f32 offsets[4][2] = { {0,0}, {0,-4}, {0,-8}, {0,-12} };
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+		if( !pBot || pBot->IsDeadOrDying() ) continue;
+		CFVec3A side, back;
+		side.Mul( m_StartMatrix.m_vRight, offsets[n][0] );
+		back.Mul( m_StartMatrix.m_vFront, offsets[n][1] );
+		m_aCoopDance[n].offset = side; m_aCoopDance[n].offset.Add(back);
+		CFMtx43A matrix = m_StartMatrix;
+		matrix.m_vPos = m_GlitchStartPoint; matrix.m_vPos.Add(m_aCoopDance[n].offset);
+		pBot->DetachFromParent(); pBot->MobilizeBot(); pBot->DrawEnable(TRUE,TRUE);
+		pBot->Relocate_RotXlatFromUnitMtx_WS(&matrix);
+		pBot->ZeroVelocity();
+		pBot->IgnoreBotVBotCollision();
+		pBot->m_vecCamPosAdj = cameraAdjust; pBot->m_vecCamLookAdj.Zero();
+		gamecam_SwitchPlayerTo3rdPersonCamera(PLAYER_CAM(n),pBot);
+		GameCamType_e type;
+		CCamBot *pCam = (CCamBot *)gamecam_GetCameraManByIndex(PLAYER_CAM(n),&type);
+		if(type==GAME_CAM_TYPE_ROBOT_3RD) pCam->SetAlwaysOverride(TRUE);
+		Player_aPlayer[n].ZeroControls();
+		Player_aPlayer[n].m_HumanControl.Zero();
+		if(n) { Player_aPlayer[n].EnableEntityControl(); aibrainman_ConfigurePlayerBotBrain(pBot->AIBrain(),n); }
+	}
+}
+
+void CDDRStage::_CoopCommandState( BOOL bExecute ) {
+	if( !_CoopActive() ) return;
+	const u32 jumps = FLAG_HAVE_JUMP | FLAG_JUMP1 | FLAG_JUMP2 | FLAG_JUMP_OK | FLAG_JUMP1_IN_QUEUE | FLAG_JUMP2_IN_QUEUE;
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		CoopDanceState &state = m_aCoopDance[n];
+		const u32 earlyJump = bExecute ? (state.flags & FLAG_JUMP_OK) : 0;
+		state.flags = (m_uFlags & jumps & ~FLAG_JUMP_OK) | earlyJump;
+		state.align = state.position = state.look = 0;
+		state.move = m_fGlitchMoveTimer;
+	}
+}
+
+void CDDRStage::_CoopCheckPlayers() {
+	if( m_eStageState == STATE_WAIT_DIALOG || m_eStageState == STATE_WAIT_WORK || m_bCoopRetryPending ) return;
+	const u32 jumps = FLAG_HAVE_JUMP | FLAG_JUMP1 | FLAG_JUMP2 | FLAG_JUMP_OK | FLAG_JUMP1_IN_QUEUE | FLAG_JUMP2_IN_QUEUE;
+	const u32 sharedFlags = m_uFlags;
+	const StageState_e previous = m_eStageState;
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+		if(!pBot || pBot->IsDeadOrDying() || !Player_aPlayer[n].HasEntityControl()) continue;
+		CoopDanceState &state = m_aCoopDance[n];
+		m_uFlags = (sharedFlags & ~jumps) | state.flags;
+		m_fGlitchMoveTimer=state.move; m_fAlignFailTimer=state.align; m_fPositionFailTimer=state.position; m_fLookFailTimer=state.look;
+		_CheckAlignment(pBot);
+		state.flags=m_uFlags & jumps; state.move=m_fGlitchMoveTimer;
+		state.align=m_fAlignFailTimer; state.position=m_fPositionFailTimer; state.look=m_fLookFailTimer;
+		if(m_eStageState!=previous || m_bCoopRetryPending) {
+   m_uFlags=(m_uFlags & ~jumps) | m_aCoopDance[0].flags;
+   m_fGlitchMoveTimer=m_aCoopDance[0].move;
+   return;
+  }
+	}
+	m_uFlags=(sharedFlags & ~jumps) | m_aCoopDance[0].flags; m_fGlitchMoveTimer=m_aCoopDance[0].move;
+}
+
+BOOL CDDRStage::_CoopFinishCommand() {
+	// Endpoint checks are independent of the accumulating failure timers. Those
+	// timers forgive brief mistakes; they cannot approve a skipped instruction.
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+		if( !pBot || pBot->IsDeadOrDying() || !Player_aPlayer[n].HasEntityControl() ) {
+			m_bCoopRetryPending = TRUE;
+			return FALSE;
+		}
+		CFVec3A position = pBot->MtxToWorld()->m_vPos;
+		position.Sub( m_aCoopDance[n].offset );
+		const f32 distanceSq = position.DistSqXZ( m_GlitchDestPoint );
+		const f32 facing = m_DirMatrix.m_vFront.Dot( pBot->m_MountUnitFrontXZ_WS );
+		const u32 jumpFlags = m_aCoopDance[n].flags;
+		const BOOL jumpMissed = (jumpFlags & FLAG_HAVE_JUMP) && !(jumpFlags & FLAG_JUMP_OK);
+		// Bound tolerance below a whole authored step, even with another config.
+		const f32 radius = FMATH_MIN( 3.5f, CSpyVsSpy::m_pConfigValues->fDDRMoveDistance * 0.65f );
+		if( distanceSq > radius * radius || facing < 0.60f || jumpMissed ) {
+			DEVPRINTF( "Co-op: instructor incomplete P%d distanceSq=%.2f facing=%.2f jumpMissed=%d.\n",
+				n+1, distanceSq, facing, jumpMissed );
+			if( m_uBadMoveCount < _DDR_MAX_MESSUPS ) _CheckOnGlitch();
+			else _SetGlitchGetsKilled();
+			return FALSE;
+		}
+	}
+	// A completed jump must not authorize an unrelated jump during the next
+	// announcement. Keep requirements through this deadline, then retire them.
+	const u32 jumps = FLAG_HAVE_JUMP | FLAG_JUMP1 | FLAG_JUMP2 | FLAG_JUMP_OK | FLAG_JUMP1_IN_QUEUE | FLAG_JUMP2_IN_QUEUE;
+	FMATH_CLEARBITMASK( m_uFlags, jumps );
+	for( s32 n=0; n<CPlayer::m_nPlayerCount; ++n ) m_aCoopDance[n].flags = 0;
+	return TRUE;
+}
+
+void CDDRStage::_CoopHologramsWork() {
+	for(s32 n=0;n<3;++n) {
+		CFWorldMesh *pMesh=m_apCoopHolo[n]; if(!pMesh) continue;
+		if(!_CoopActive() || n+1>=CPlayer::m_nPlayerCount || !m_pHoloMesh->IsAddedToWorld()) {pMesh->RemoveFromWorld();continue;}
+		// World meshes use the forward model-to-world transform.
+		CFMtx43A matrix=m_pHoloMesh->m_Xfm.m_MtxF;
+		matrix.m_vPos.Add(m_aCoopDance[n+1].offset);
+		pMesh->m_Xfm.BuildFromMtx(matrix,1.0f);
+		pMesh->SetMeshAlpha(m_fHoloMeshAlpha);
+		static const f32 colors[3][3]={{0,1,1},{1,.6f,0},{1,0,1}};
+		pMesh->SetMeshTint(colors[n][0],colors[n][1],colors[n][2]);
+		pMesh->AddToWorld(); pMesh->UpdateTracker();
+	}
+}
+
+BOOL CDDRStage::PortTestParty( u32 nTest ) {
+	char mode[32]; GetEnvironmentVariableA("MA_PORT_TEST_COOP_POLISH",mode,sizeof(mode));
+	if(fclib_stricmp(mode,"spy-party") || !_CoopActive()) return FALSE;
+	if(nTest==11 || nTest==14 || nTest==15) {
+		PortTestParty(2);
+		m_DestPoints[1]=m_StartPoints[1]; m_uBadMoveCount=0;
+		m_DanceMoveWalker.m_uMoveGroup=0; m_DanceMoveWalker.m_uCurrentMove=0;
+		m_fTimeInterp=1.0f;
+		_ExecuteCommand(); // Actual first retail command: six-foot step left.
+		for(s32 n=0;n<CPlayer::m_nPlayerCount;++n) {
+			Player_aPlayer[n].ZeroControls();
+			Player_aPlayer[n].m_HumanControl.m_nPadFlagsJump=0;
+			if(nTest==15 || (nTest==14 && n==0)) {
+				CFMtx43A matrix=m_DirMatrix; matrix.m_vPos=m_GlitchDestPoint;
+				matrix.m_vPos.Add(m_aCoopDance[n].offset);
+				if(nTest==15) {CFVec3A miss;miss.Mul(m_StartMatrix.m_vRight,2.8f);matrix.m_vPos.Add(miss);}
+				((CBot *)Player_aPlayer[n].m_pEntityOrig)->Relocate_RotXlatFromUnitMtx_WS(&matrix);
+			}
+		}
+		DEVPRINTF("COOP-TEST command fixture: case=%u window=%.2f targetStepSq=%.2f.\n",nTest,m_fIdleTimer,m_GlitchDestPoint.DistSqXZ(m_GlitchStartPoint));
+		return m_GlitchDestPoint.DistSqXZ(m_GlitchStartPoint)>30 && m_fIdleTimer>1.8f;
+	}
+	if(nTest==12) {
+		if(!m_pHoloMesh->IsAddedToWorld() || m_fHoloMeshAlpha<=0.0f) {DEVPRINTF("COOP-TEST holo main: added=%d alpha=%.2f state=%d.\n",m_pHoloMesh->IsAddedToWorld(),m_fHoloMeshAlpha,m_eStageState);return FALSE;}
+		for(s32 n=1;n<CPlayer::m_nPlayerCount;++n) {
+			CFWorldMesh *mesh=m_apCoopHolo[n-1];
+			if(!mesh || !mesh->IsAddedToWorld()) {DEVPRINTF("COOP-TEST holo partner %d: allocated=%d added=%d.\n",n+1,mesh!=NULL,mesh ? mesh->IsAddedToWorld() : FALSE);return FALSE;}
+			CFVec3A expected=m_pHoloMesh->m_Xfm.m_MtxF.m_vPos;expected.Add(m_aCoopDance[n].offset);
+			if(mesh->m_Xfm.m_MtxF.m_vPos.DistSq(expected)>.01f || mesh->m_Xfm.m_MtxF.m_vPos.DistSq(m_pHoloMesh->m_Xfm.m_MtxF.m_vPos)<1) {DEVPRINTF("COOP-TEST holo partner %d: errorSq=%.2f separationSq=%.2f offsetSq=%.2f.\n",n+1,mesh->m_Xfm.m_MtxF.m_vPos.DistSq(expected),mesh->m_Xfm.m_MtxF.m_vPos.DistSq(m_pHoloMesh->m_Xfm.m_MtxF.m_vPos),m_aCoopDance[n].offset.MagSq());return FALSE;}
+		}
+		return TRUE;
+	}
+	if(nTest==17) {
+		if(m_pHoloMesh->IsAddedToWorld()) return FALSE;
+		for(s32 n=1;n<CPlayer::m_nPlayerCount;++n)
+			if(m_apCoopHolo[n-1] && m_apCoopHolo[n-1]->IsAddedToWorld()) return FALSE;
+		return m_eStageState==STATE_WAIT_FINISH_COMMAND && m_fIdleTimer>0;
+	}
+	if(nTest==13) return m_eStageState==STATE_CHECK_GLITCH;
+	if(nTest==16) return m_eStageState==STATE_IDLE_TIME && !(m_uFlags & FLAG_WAIT_EXECUTE);
+	if(nTest==0) { _SetGlitchGetsKilled(); return m_bCoopRetryPending; }
+	if(nTest==1) return m_eStageState==STATE_WALK_GLITCH_BACK || m_eStageState==STATE_IDLE_TIME;
+	if(nTest==3) {
+		CBot *pBot=(CBot *)Player_aPlayer[1].m_pEntityOrig;
+		CFMtx43A matrix=*pBot->MtxToWorld(); CFVec3A position=matrix.m_vPos; matrix.RotateY(FMATH_PI); matrix.m_vPos=position;
+		pBot->Relocate_RotXlatFromUnitMtx_WS(&matrix);
+  const f32 oldFrame=FLoop_fPreviousLoopSecs;
+  FLoop_fPreviousLoopSecs=.1f;
+  for(int n=0;n<60 && m_eStageState!=STATE_CHECK_GLITCH;++n) _CoopCheckPlayers();
+  FLoop_fPreviousLoopSecs=oldFrame;
+		return m_eStageState==STATE_CHECK_GLITCH;
+	}
+	if(nTest==4 || nTest==5) {
+		if(nTest==4) {
+			m_uFlags=FLAG_HAVE_JUMP|FLAG_JUMP1; _CoopCommandState(FALSE);
+			m_eStageState=STATE_WAIT_FINISH_COMMAND;
+			Player_aPlayer[0].m_HumanControl.m_nPadFlagsJump=GAMEPAD_BUTTON_1ST_PRESS_MASK;
+			Player_aPlayer[1].m_HumanControl.m_nPadFlagsJump=0;
+		} else {
+			Player_aPlayer[0].m_HumanControl.m_nPadFlagsJump=0;
+			Player_aPlayer[1].m_HumanControl.m_nPadFlagsJump=GAMEPAD_BUTTON_1ST_PRESS_MASK;
+		}
+		_CoopCheckPlayers();
+		const BOOL good=(m_aCoopDance[0].flags & FLAG_JUMP_OK) &&
+			((m_aCoopDance[1].flags & FLAG_JUMP_OK)!=0)==(nTest==5);
+		Player_aPlayer[0].ZeroControls(); Player_aPlayer[1].ZeroControls();
+		return good;
+	}
+ if(nTest==8 || nTest==9 || nTest==10) {
+  m_uFlags=0; _CoopCommandState(FALSE);
+  m_eStageState=STATE_WAIT_FINISH_COMMAND;
+  CBot *bot=(CBot *)Player_aPlayer[1].m_pEntityOrig;
+  CFVec3A position=bot->MtxToWorld()->m_vPos,side;
+  side.Mul(m_StartMatrix.m_vRight,nTest==10?8.0f:2.8f); position.Add(side);
+  bot->Relocate_Xlat_WS(&position);
+  if(nTest==9) {m_uFlags|=FLAG_WAIT_EXECUTE;CFMtx43A facing=*bot->MtxToWorld();CFVec3A position=facing.m_vPos;facing.RotateY(FMATH_PI);facing.m_vPos=position;bot->Relocate_RotXlatFromUnitMtx_WS(&facing);}
+  const f32 oldFrame=FLoop_fPreviousLoopSecs;FLoop_fPreviousLoopSecs=.1f;
+  for(int n=0;n<60 && m_eStageState==STATE_WAIT_FINISH_COMMAND;++n) _CoopCheckPlayers();
+  FLoop_fPreviousLoopSecs=oldFrame;
+  return nTest==10 ? m_eStageState==STATE_CHECK_GLITCH : (m_eStageState==STATE_WAIT_FINISH_COMMAND && !m_bCoopRetryPending);
+ }
+	if(nTest==6) { _RunToDoors(); return m_eStageState==STATE_RUN_TO_DOORS; }
+	if(nTest==7) return IsFinished();
+	if(nTest==2) {
+		// Run the production validator independently in each lane with correct position/facing.
+		m_eStageState=STATE_WAIT_FINISH_COMMAND; m_fIdleTimer=2;
+		m_uFlags=0; m_DirMatrix=m_StartMatrix; m_GlitchDestPoint=m_GlitchStartPoint;
+		m_DestPoints[0]=m_StartPoints[0]; m_fGlitchMoveTimer=0;
+		for(s32 n=0;n<CPlayer::m_nPlayerCount;++n) {m_aCoopDance[n].flags=0;m_aCoopDance[n].align=m_aCoopDance[n].position=m_aCoopDance[n].look=m_aCoopDance[n].move=0;}
+		CSpyVsSpy::TakeControlFromPlayer(FALSE); _CoopPlacePlayers();
+		_CoopCheckPlayers();
+		return m_eStageState==STATE_WAIT_FINISH_COMMAND && !m_bCoopRetryPending;
+	}
+	return FALSE;
+}
 #endif

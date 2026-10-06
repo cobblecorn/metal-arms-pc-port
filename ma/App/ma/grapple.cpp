@@ -745,16 +745,17 @@ BOOL CGrapple::_CheckForHookCollision( void ) {
 
 
 //-----------------------------------------------------------------------------
-// fcoll now expects a collision callback result bitfield rather than a BOOL.
-u32 CGrapple::_IntersectingTrackerCallback( CFWorldTracker *pTracker ) {
+// callback for fcoll collision.  Returns TRUE if collision should be performed
+// on pTracker, FALSE if not.
+BOOL CGrapple::_IntersectingTrackerCallback( CFWorldTracker *pTracker ) {
 	for( u32 i=0; i < FWorld_nTrackerSkipListCount; i++ )
 	{
 		if( FWorld_apTrackerSkipList[i] == pTracker )
 		{
-			return FCOLL_CHECK_CB_DO_NOT_CHECK_TRACKER;
+			return FALSE;
 		}
 	}
-	return FCOLL_CHECK_CB_ALL_IMPACTS;
+	return TRUE;
 }
 
 

@@ -203,6 +203,13 @@ extern FStorage_Error_e fstorage_WriteProfile( FStorage_DeviceID_e oeID,
 											  void *puBuff,
 											  u32 uBuffSize );
 
+#if FANG_WINGC
+// PC local co-op campaigns: one whole file per name (player 1's profile name) in the Co-op folder
+// beside the profiles. Read returns FALSE when there is no such save or it is larger than uBuffSize.
+extern BOOL fstorage_PcCoopRead( cwchar *pwszName, void *puBuff, u32 uBuffSize, u32 *puBytesRead );
+extern BOOL fstorage_PcCoopWrite( cwchar *pwszName, const void *puBuff, u32 uBuffSize );
+#endif
+
 // Determines if it's possible to save a new profile on a memory device...
 // If FSTORAGE_ERROR is returned, then there was an error trying to determine if the card can be used
 //    and puRetStatus is meaningless.

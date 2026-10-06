@@ -33,6 +33,7 @@
 #define _FLASHING_SHOULDER_ICON_SPEED (5.0f)
 
 typedef enum {
+	_MSGBOX_DATA_NONE,
 	_MSGBOX_DATA_EXIT,
 	_MSGBOX_DATA_RESTART,
 	_MSGBOX_DATA_RESPAWN,
@@ -174,7 +175,7 @@ const static f32 CPauseScreen_fItemSpacingY = 0.046f;
 const static CFVec3 CPauseScreen_vecOptionsUL = CFVec3(-0.42f, 0.32f, 0.0f);
 const static CFVec3 CPauseScreen_vecOptionsRect = CFVec3(0.835f, 0.07f/*0.08f*/, 0.0f);
 const static f32 CPauseScreen_fOptionsSpacingY = 0.04f;
-static cwchar *CPauseScreen_apwszOptions[6];
+static cwchar *CPauseScreen_apwszOptions[CPauseScreen_uOptionCount];
 
 const static CFVec3 CPauseScreen_avecYesNoUL[2] = { CFVec3(-0.45f, -0.07f, 0.0f), CFVec3(-0.05f, -0.07f, 0.0f) };
 const static CFVec3 CPauseScreen_avecYesNoRect[2] = { CFVec3(0.5f, 0.08f, 0.0f), CFVec3(0.5f, 0.08f, 0.0f) };
@@ -222,7 +223,7 @@ u32 CPauseScreen::m_uButtons, CPauseScreen::m_uButtonsLatched;
 CMenuItem CPauseScreen::m_aMIWeaponPrimary[12 + 1 + 1];
 CMenuItem CPauseScreen::m_aMIWeaponSecondary[12 + 1 + 1];
 CMenuItem CPauseScreen::m_aMIItem[6];
-CMenuItem CPauseScreen::m_aMIOptions[6];
+CMenuItem CPauseScreen::m_aMIOptions[CPauseScreen_uOptionCount];
 CMenuScreen CPauseScreen::m_aMS[4];
 CMenuMgr CPauseScreen::m_MenuMgr;
 FViewport_t *CPauseScreen::m_pviewOrtho3d;
@@ -250,6 +251,7 @@ BOOL8 CPauseScreen::m_bIsEnabled = FALSE;
 BOOL8 CPauseScreen::m_bWSEnabled = FALSE;
 BOOL8 CPauseScreen::m_bHUDEnabled = FALSE;
 BOOL8 CPauseScreen::m_bMsgBoxActive	= FALSE;
+u32 CPauseScreen::m_uMsgBoxContext = _MSGBOX_DATA_NONE;
 BOOL CPauseScreen::m_bShowMonitors;
 BOOL CPauseScreen::m_bIgnoreControlsNextFrame = FALSE;
 BOOL CPauseScreen::m_bQuitNextFrame = FALSE;
@@ -258,6 +260,10 @@ u32 CPauseScreen::m_nPlayer = 0;
 BOOL CPauseScreen::m_bPauseAudio=TRUE;
 #if defined(MA_PC_INPUT)
 CFTexInst CPauseScreen::m_MousePointerTex;
+CMenuScreen CPauseScreen::m_MSCheats;
+CMenuItem CPauseScreen::m_aMICheats[PC_CHEAT_ACTION_COUNT + 1];
+FTextAreaHandle_t CPauseScreen::m_hCheatStatus;
+cwchar *CPauseScreen::m_pwszCheatStatus = L"Choose a cheat for this player.";
 #endif
 
 // =============================================================================================================
@@ -286,6 +292,10 @@ BOOL CPauseScreen::InitSystem()
 	CPauseScreen_apwszOptions[3] = Game_apwszPhrases[ GAMEPHRASE_RESPAWN ];
 	CPauseScreen_apwszOptions[4] = Game_apwszPhrases[ GAMEPHRASE_RESTART_LEVEL ];
 	CPauseScreen_apwszOptions[5] = Game_apwszPhrases[ GAMEPHRASE_QUIT_GAME ];
+#if defined(MA_PC_INPUT)
+	CPauseScreen_apwszOptions[5] = L"Cheats";
+	CPauseScreen_apwszOptions[6] = L"Quit to Main Menu";
+#endif
 		
 	//{ "Primary Equipment", "Secondary Equipment", "Information", "Options" };
 	CPauseScreen_apwszScreenTitle[0] = Game_apwszPhrases[ GAMEPHRASE_PRIMARY_EQUIPMENT ];
@@ -470,10 +480,10 @@ BOOL CPauseScreen::InitSystem()
 	oTextArea.ohFont = '1';
 	oTextArea.oHorzAlign = FTEXT_HORZ_ALIGN_CENTER;
 
-	for(uCurMIIdx = 0; uCurMIIdx < 6; ++uCurMIIdx)
+	for(uCurMIIdx = 0; uCurMIIdx < CPauseScreen_uOptionCount; ++uCurMIIdx)
 	{
 		m_aMIOptions[uCurMIIdx].m_apNext[MIDIR_UP] = (uCurMIIdx == 0) ? NULL : &(m_aMIOptions[uCurMIIdx - 1]);
-		m_aMIOptions[uCurMIIdx].m_apNext[MIDIR_DOWN] = (uCurMIIdx == 5) ? NULL : &(m_aMIOptions[uCurMIIdx + 1]);
+		m_aMIOptions[uCurMIIdx].m_apNext[MIDIR_DOWN] = (uCurMIIdx + 1 == CPauseScreen_uOptionCount) ? NULL : &(m_aMIOptions[uCurMIIdx + 1]);
 		m_aMIOptions[uCurMIIdx].m_apNext[MIDIR_LEFT] = NULL;
 		m_aMIOptions[uCurMIIdx].m_apNext[MIDIR_RIGHT] = NULL;
 
@@ -494,6 +504,24 @@ BOOL CPauseScreen::InitSystem()
 		m_aMIOptions[uCurMIIdx].m_pfcnCallback = OptionScreenCallback;//CancelOnlyCallback;
 
 	}
+#if defined(MA_PC_INPUT)
+	m_MSCheats.Reset();
+	m_MSCheats.SetTitleText( L"Cheats" );
+	for( uCurMIIdx=0; uCurMIIdx <= PC_CHEAT_ACTION_COUNT; ++uCurMIIdx ) {
+		CMenuItem &item = m_aMICheats[uCurMIIdx];
+		item.m_apNext[MIDIR_UP] = uCurMIIdx ? &m_aMICheats[uCurMIIdx - 1] : NULL;
+		item.m_apNext[MIDIR_DOWN] = uCurMIIdx < PC_CHEAT_ACTION_COUNT ? &m_aMICheats[uCurMIIdx + 1] : NULL;
+		item.m_vecBorderUL.Set( -0.62f, 0.36f - 0.095f * uCurMIIdx, 0.0f );
+		item.m_vecBorderRect.Set( 1.24f, 0.065f, 0.0f );
+		item.m_avecTextOfs[0].Set( 0.0f, 0.0f );
+		item.m_avecTextRect[0].Set( 1.24f, 0.065f );
+		item.m_ahText[0] = ftext_Create( &oTextArea );
+		item.Init();
+		item.m_pfcnCallback = CheatsScreenCallback;
+		m_MSCheats.AddMI( &item );
+	}
+	RefreshCheats();
+#endif
 	//
 	////
 
@@ -545,7 +573,7 @@ BOOL CPauseScreen::InitSystem()
 	m_aMS[2].SetTitleText(CPauseScreen_apwszScreenTitle[2]);
 
 	m_aMS[3].Reset();
-	for(uCurMIIdx = 0; uCurMIIdx < 6; ++uCurMIIdx)
+	for(uCurMIIdx = 0; uCurMIIdx < CPauseScreen_uOptionCount; ++uCurMIIdx)
 		m_aMS[3].AddMI(&(m_aMIOptions[uCurMIIdx]));
 	m_aMS[3].m_apNext[0] = &(m_aMS[2]);
 	m_aMS[3].m_apNext[1] = &(m_aMS[0]);
@@ -557,7 +585,7 @@ BOOL CPauseScreen::InitSystem()
 
 	// options
 	m_aMS[0].Reset();
-	for( uCurMIIdx = 0; uCurMIIdx < 6; ++uCurMIIdx ) {
+	for( uCurMIIdx = 0; uCurMIIdx < CPauseScreen_uOptionCount; ++uCurMIIdx ) {
 		m_aMS[0].AddMI( &m_aMIOptions[uCurMIIdx] );
 	}
 	m_aMS[0].m_apNext[0] = &m_aMS[1];// left
@@ -684,6 +712,18 @@ BOOL CPauseScreen::InitSystem()
 	oTextArea.fNumberOfLines = 1.0f;
 	oTextArea.ohFont = '3';
 	m_hScreenTitle = ftext_Create(&oTextArea);
+#if defined(MA_PC_INPUT)
+	ftext_SetToDefaults( &oTextArea );
+	oTextArea.bVisible = FALSE;
+	oTextArea.oHorzAlign = FTEXT_HORZ_ALIGN_CENTER;
+	oTextArea.fUpperLeftX = 0.1f;
+	oTextArea.fLowerRightX = 0.9f;
+	oTextArea.fUpperLeftY = 0.78f * 0.75f;
+	oTextArea.fLowerRightY = 0.82f * 0.75f;
+	oTextArea.fNumberOfLines = 1.0f;
+	oTextArea.ohFont = '1';
+	m_hCheatStatus = ftext_Create( &oTextArea );
+#endif
 	//
 	////
 
@@ -891,8 +931,11 @@ void CPauseScreen::UninitSystem()
 		m_aMIWeaponSecondary[uMIIdx].Uninit();
 	for(uMIIdx = 0; uMIIdx < 6; ++uMIIdx)
 		m_aMIItem[uMIIdx].Uninit();
-	for(uMIIdx = 0; uMIIdx < 6; ++uMIIdx)
+	for(uMIIdx = 0; uMIIdx < CPauseScreen_uOptionCount; ++uMIIdx)
 		m_aMIOptions[uMIIdx].Uninit();
+#if defined(MA_PC_INPUT)
+	for( uMIIdx=0; uMIIdx <= PC_CHEAT_ACTION_COUNT; ++uMIIdx ) m_aMICheats[uMIIdx].Uninit();
+#endif
 #if 0
 	for(uMIIdx = 0; uMIIdx < 4; ++uMIIdx)
 		m_aMIYesNo[uMIIdx].Uninit();
@@ -907,7 +950,10 @@ void CPauseScreen::UninitSystem()
 
 BOOL CPauseScreen::LevelInit()
 {
+	m_bMsgBoxActive = FALSE;
+	m_uMsgBoxContext = _MSGBOX_DATA_NONE;
 	m_bIsEnabled = TRUE;
+	m_bQuitNextFrame = FALSE;
 	SetWSEnable(TRUE);
 
 //	m_fEUKHighlightTimer = 0.0f;
@@ -927,6 +973,8 @@ BOOL CPauseScreen::LevelInit()
 
 void CPauseScreen::LevelUninit()
 {
+	m_bMsgBoxActive = FALSE;
+	m_uMsgBoxContext = _MSGBOX_DATA_NONE;
 	floop_PauseGame(FALSE);
 }
 
@@ -977,6 +1025,15 @@ BOOL CPauseScreen::Start(CInventory *pInventory )
 	// The player who paused (game.cpp sets the current player before calling): in local co-op the
 	// menu shows that player's HUD mode, prompts and settings.
 	m_nPlayer = (u32)CPlayer::m_nCurrent;
+	m_bMsgBoxActive = FALSE;
+	m_uMsgBoxContext = _MSGBOX_DATA_NONE;
+#if FANG_WINGC
+	DEVPRINTF( "Port: pause opened by player %d.\n", m_nPlayer+1 );
+#endif
+#if defined(MA_PC_INPUT)
+	if( m_MenuMgr.m_pCurMS == &m_MSCheats ) BackFromCheats();
+	RefreshCheats();
+#endif
 
 #if _4_SCREEN_SETUP
 	if( (CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode == HUDMODE_MIL) ||
@@ -1141,7 +1198,16 @@ BOOL CPauseScreen::Start(CInventory *pInventory )
 // call this function to exit pause screen
 BOOL CPauseScreen::ExitPause( void ) {
 	s32 i;
+	m_bMsgBoxActive = FALSE;
+	m_uMsgBoxContext = _MSGBOX_DATA_NONE;
+#if FANG_WINGC
+	DEVPRINTF( "Port: pause closed by player %d.\n", m_nPlayer+1 );
+#endif
 
+#if defined(MA_PC_INPUT)
+	FTextArea_t *pCheatStatus = ftext_GetAttributes( m_hCheatStatus );
+	if( pCheatStatus ) pCheatStatus->bVisible = FALSE;
+#endif
 	m_eState = PSSTATE_INACTIVE;
 	
 	if( m_bHUDEnabled ) {
@@ -1180,11 +1246,16 @@ void CPauseScreen::Work(CInventory *pInventory)
 {
 	s32 i;
 
+#if defined(MA_PC_INPUT)
+	FTextArea_t *pCheatStatus = ftext_GetAttributes( m_hCheatStatus );
+	if( pCheatStatus ) pCheatStatus->bVisible = FALSE;
+#endif
 	if( m_bQuitNextFrame ) {
-		launcher_EnterMenus( LAUNCHER_FROM_GAME );
+		m_bQuitNextFrame = FALSE;
 		// restore draw state of script system text monitors before exiting level
 		CFScriptSystem::SetMonitorsOn( m_bShowMonitors );
-		m_bQuitNextFrame = FALSE;
+		launcher_EnterMenus( LAUNCHER_FROM_GAME );
+		return;
 	}
 
 	if( m_eState == PSSTATE_INACTIVE ) {
@@ -1206,8 +1277,9 @@ void CPauseScreen::Work(CInventory *pInventory)
 
 	// check whether we're waiting for the messagebox to finish
 	if( m_bMsgBoxActive ) {
-		if( CMsgBox::CheckForButtonPress() == CMsgBox::BUTTON_ACCEPT ) {
-			switch( CMsgBox::GetContextData() ) {
+		u32 uContext = _MSGBOX_DATA_NONE;
+		if( TakeConfirmation( uContext ) ) {
+			switch( uContext ) {
 			case _MSGBOX_DATA_EXIT:
 				for( i=0; i < CPlayer::m_nPlayerCount; ++i ) {
 					Player_aPlayer[i].UpdateProfileUserSettings();
@@ -1223,15 +1295,15 @@ void CPauseScreen::Work(CInventory *pInventory)
 				//Stop any sounds that might have currently been playing
 				CFAudioEmitter::StopAll();
 
-				if( (CMsgBox::GetContextData() == _MSGBOX_DATA_RESTART) || !checkpoint_Saved( 1 ) ) {
+				if( (uContext == _MSGBOX_DATA_RESTART) || !checkpoint_Saved( 1 ) ) {
 					// Restart level...
-					checkpoint_Restore( 0, FALSE );
+					checkpoint_Restore( 0, FALSE, "pause:restart-or-initial-respawn" );
 					checkpoint_SetUnsaved( 1 );
 				} else {
 					// Respawn to last checkpoint...
 
 					FASSERT( checkpoint_Saved( 1 ) );
-					checkpoint_Restore( 1, FALSE );
+					checkpoint_Restore( 1, FALSE, "pause:respawn" );
 				}
 
 				// Leave the menu system.
@@ -1247,10 +1319,12 @@ void CPauseScreen::Work(CInventory *pInventory)
 			};
 		}
 
-		m_bMsgBoxActive = FALSE;
-		CMsgBox::ClearButtonPress();
+		// A dialog still owns input, or its action closed the pause screen.
+		// Never send that same accept/jump input through the menu again.
+		if( m_bMsgBoxActive || m_eState == PSSTATE_INACTIVE || m_bQuitNextFrame ) return;
 		GetControls();
 		m_MenuMgr.GetControls();
+		return;
 	}
 
 	if( _nActiveWrapperScreen != WPR_DATATYPES_SCREENS_NONE ) {
@@ -1291,12 +1365,16 @@ void CPauseScreen::Work(CInventory *pInventory)
 
 	if( (_nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE) && (m_MenuMgr.GetState() != MMSTATE_SCROLLING) ) {
 		if( (m_uButtonsLatched & PSINPUT_START) == PSINPUT_START ) {
+#if defined(MA_PC_INPUT)
+			if( m_MenuMgr.m_pCurMS == &m_MSCheats ) BackFromCheats(); else
+#endif
 			ExitPause();
 			return;
 		}
 	}
 
 	m_MenuMgr.Work();
+	if( m_eState == PSSTATE_INACTIVE || m_bMsgBoxActive || CMsgBox::IsActive() ) return;
 
 	CMenuScreen *pCurMS = m_MenuMgr.m_pCurMS;
 	FASSERT(pCurMS != NULL);
@@ -1315,7 +1393,7 @@ void CPauseScreen::Work(CInventory *pInventory)
 
 		if( bRightClick ) {
 			if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
-				ExitPause();
+				if( m_MenuMgr.m_pCurMS == &m_MSCheats ) BackFromCheats(); else ExitPause();
 				return;
 			}
 		}
@@ -1334,7 +1412,7 @@ void CPauseScreen::Work(CInventory *pInventory)
 				}
 				// Bottom Prompt 1: Resume Game / Cancel
 				else if( fClickY >= 0.84f && fClickY <= 0.98f && fClickX >= 0.34f && fClickX <= 0.72f ) {
-					ExitPause();
+					if( m_MenuMgr.m_pCurMS == &m_MSCheats ) BackFromCheats(); else ExitPause();
 					return;
 				}
 				// Bottom Prompt 0: Select / Accept
@@ -1348,6 +1426,8 @@ void CPauseScreen::Work(CInventory *pInventory)
 			}
 
 			// Item hit testing on current screen
+			pCurMS = m_MenuMgr.m_pCurMS;
+			pCurMI = pCurMS->m_pCurMI;
 			if( m_MenuMgr.GetState() == MMSTATE_STATIC ) {
 				for( u32 idx = 0; idx < pCurMS->m_uNumMI; ++idx ) {
 					CMenuItem *pMI = pCurMS->m_apMI[idx];
@@ -1396,9 +1476,17 @@ void CPauseScreen::Work(CInventory *pInventory)
 	}
 
 	m_pInventory = NULL;
+	pCurMS = m_MenuMgr.m_pCurMS;
+	pCurMI = pCurMS->m_pCurMI;
 
 	if( m_MenuMgr.GetState() != MMSTATE_SCROLLING ) {
 		if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
+#if defined(MA_PC_INPUT)
+			if( pCurMS == &m_MSCheats ) {
+				CPauseScreen_apwszButtonText[0] = Game_apwszPhrases[ GAMEPHRASE_ACCEPT ];
+				CPauseScreen_apwszButtonText[1] = Game_apwszPhrases[ GAMEPHRASE_BACK ];
+			} else
+#endif
 			if( pCurMS == &m_aMS[0] ) {
 				// Main menu...
 
@@ -1505,6 +1593,13 @@ void CPauseScreen::Draw(CInventory *pInventory)
 					}
 
 					DrawMissionText();
+#if defined(MA_PC_INPUT)
+					if( pCurMS == &m_MSCheats ) {
+						FTextArea_t *pStatus = ftext_GetAttributes( m_hCheatStatus );
+						if( pStatus ) pStatus->bVisible = TRUE;
+						ftext_PrintString( m_hCheatStatus, m_pwszCheatStatus );
+					}
+#endif
 				}
 			}
 			//
@@ -1793,6 +1888,9 @@ void CPauseScreen::DrawFrame()
 						// Main menu or info screen. Use "Start" button...
 
 						nButtonIndex = 4;
+#if defined(MA_PC_INPUT)
+						if( m_MenuMgr.m_pCurMS == &m_MSCheats ) nButtonIndex = 1;
+#endif
 					} else {
 						// In-game wrappers. Use "B" button...
 
@@ -1835,7 +1933,11 @@ void CPauseScreen::DrawFrame()
 		fdraw_Color_SetFunc( FDRAW_COLORFUNC_DIFFUSETEX_AIAT );
 #endif
 
-		if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE ) {
+		if( _nActiveWrapperScreen == WPR_DATATYPES_SCREENS_NONE
+#if defined(MA_PC_INPUT)
+			&& m_MenuMgr.m_pCurMS != &m_MSCheats
+#endif
+		) {
 #if defined(MA_PC_INPUT)
 			if( CHud2::GetHudForPlayer(m_nPlayer)->m_eCurHudMode != HUDMODE_MIL && pcinput_UseKeyboardPromptsForPort( Player_aPlayer[m_nPlayer].m_nControllerIndex ) ) {
 				// Both the letter shortcuts and the Tab alternatives are read by the pause menu.
@@ -2080,8 +2182,49 @@ void CPauseScreen::CancelOnlyCallback(MenuItemCallbackReason_e eReason, CMenuIte
 
 // =============================================================================================================
 
+void CPauseScreen::ShowConfirmation( u32 uContext )
+{
+	if( m_eState != PSSTATE_NORMAL || m_bMsgBoxActive || CMsgBox::IsActive() ||
+		m_MenuMgr.m_pCurMS != &m_aMS[0] ||
+		(uContext != _MSGBOX_DATA_RESTART && uContext != _MSGBOX_DATA_RESPAWN && uContext != _MSGBOX_DATA_EXIT) ) return;
+	m_uMsgBoxContext = uContext;
+	m_bMsgBoxActive = TRUE;
+#if FANG_WINGC
+	DEVPRINTF( "Port: pause confirmation opened: player=%d action=%u.\n", m_nPlayer+1, uContext );
+#endif
+	CMsgBox::Display( _LOSEDATA_MSGBOX, Game_apwszPhrases[GAMEPHRASE_WARNING], Game_apwszPhrases[GAMEPHRASE_GAME_WONT_BE_SAVED],
+		Game_apwszPhrases[GAMEPHRASE_ACCEPT], Game_apwszPhrases[GAMEPHRASE_CANCEL], NULL, uContext );
+}
+
+BOOL CPauseScreen::TakeConfirmation( u32 &uContext )
+{
+	if( !m_bMsgBoxActive ) return FALSE;
+	if( m_eState != PSSTATE_NORMAL ) {
+		m_bMsgBoxActive = FALSE;
+		m_uMsgBoxContext = _MSGBOX_DATA_NONE;
+		return FALSE;
+	}
+	if( CMsgBox::IsActive() ) return FALSE;
+	const CMsgBox::Button_e eButton = CMsgBox::CheckForButtonPress();
+	if( eButton == CMsgBox::BUTTON_NONE ) return FALSE;
+	uContext = m_uMsgBoxContext;
+	const BOOL bAccept = eButton == CMsgBox::BUTTON_ACCEPT && CMsgBox::GetContextData() == uContext &&
+		(uContext == _MSGBOX_DATA_RESTART || uContext == _MSGBOX_DATA_RESPAWN || uContext == _MSGBOX_DATA_EXIT);
+	// Consume ownership before performing an action; unrelated dialog results cannot be replayed.
+	m_bMsgBoxActive = FALSE;
+	m_uMsgBoxContext = _MSGBOX_DATA_NONE;
+	CMsgBox::ClearButtonPress();
+#if FANG_WINGC
+	DEVPRINTF( "Port: pause confirmation finished: player=%d action=%u button=%d accepted=%d.\n",
+		m_nPlayer+1, uContext, eButton, bAccept );
+#endif
+	return bAccept;
+}
+
 void CPauseScreen::OptionScreenCallback(MenuItemCallbackReason_e eReason, CMenuItem *pMI, u32 uData)
 {
+	if( eReason == MIREASON_BUTTONPRESSED &&
+		(m_eState != PSSTATE_NORMAL || m_bMsgBoxActive || CMsgBox::IsActive() || m_MenuMgr.m_pCurMS != &m_aMS[0]) ) return;
 	switch(eReason)
 	{
 		case MIREASON_BUTTONPRESSED:
@@ -2098,22 +2241,27 @@ void CPauseScreen::OptionScreenCallback(MenuItemCallbackReason_e eReason, CMenuI
 				{
 					if( pMI == &m_aMIOptions[4] ) {
 						// restart...
-						CMsgBox::Display( _LOSEDATA_MSGBOX, Game_apwszPhrases[GAMEPHRASE_WARNING], Game_apwszPhrases[GAMEPHRASE_GAME_WONT_BE_SAVED], Game_apwszPhrases[GAMEPHRASE_ACCEPT], Game_apwszPhrases[GAMEPHRASE_CANCEL], NULL, _MSGBOX_DATA_RESTART );
-						m_bMsgBoxActive = TRUE;
+						ShowConfirmation( _MSGBOX_DATA_RESTART );
 						fsndfx_Play2D( CMenuMgr::m_hSelectSnd );
 					
 					} else if( pMI == &m_aMIOptions[3] ) {
 						// respawn to last checkpoint...
-						CMsgBox::Display( _LOSEDATA_MSGBOX, Game_apwszPhrases[GAMEPHRASE_WARNING], Game_apwszPhrases[GAMEPHRASE_GAME_WONT_BE_SAVED], Game_apwszPhrases[GAMEPHRASE_ACCEPT], Game_apwszPhrases[GAMEPHRASE_CANCEL], NULL, _MSGBOX_DATA_RESPAWN );
-						m_bMsgBoxActive = TRUE;
+						ShowConfirmation( _MSGBOX_DATA_RESPAWN );
 						fsndfx_Play2D( CMenuMgr::m_hSelectSnd );
 
-					} else if( pMI == &m_aMIOptions[5] ) {
+					} else if( pMI == &m_aMIOptions[CPauseScreen_uOptionCount - 1] ) {
 						// quit...
-						CMsgBox::Display( _LOSEDATA_MSGBOX, Game_apwszPhrases[GAMEPHRASE_WARNING], Game_apwszPhrases[GAMEPHRASE_GAME_WONT_BE_SAVED], Game_apwszPhrases[GAMEPHRASE_ACCEPT], Game_apwszPhrases[GAMEPHRASE_CANCEL], NULL, _MSGBOX_DATA_EXIT );
-						m_bMsgBoxActive = TRUE;
+						ShowConfirmation( _MSGBOX_DATA_EXIT );
 						fsndfx_Play2D( CMenuMgr::m_hSelectSnd );
-					
+
+#if defined(MA_PC_INPUT)
+					} else if( pMI == &m_aMIOptions[5] ) {
+						RefreshCheats();
+						m_pwszCheatStatus = L"Choose a cheat for this player.";
+						m_MSCheats.ForceCurrentItem( 0 );
+						m_MenuMgr.SetCurrent( &m_MSCheats );
+						m_MenuMgr.UpdateCursorToCurrent();
+#endif
 					} else if( pMI == &m_aMIOptions[1] ) {
 						// Sound options...
 						if( wpr_system_AreWrappersReadyToUse() ) {
@@ -2159,6 +2307,47 @@ void CPauseScreen::OptionScreenCallback(MenuItemCallbackReason_e eReason, CMenuI
 }
 
 // =============================================================================================================
+
+#if defined(MA_PC_INPUT)
+void CPauseScreen::RefreshCheats() {
+	static cwchar *apwszTitles[MAX_PLAYERS] = { L"Cheats - Player 1", L"Cheats - Player 2", L"Cheats - Player 3", L"Cheats - Player 4" };
+	m_MSCheats.SetTitleText( apwszTitles[m_nPlayer < MAX_PLAYERS ? m_nPlayer : 0] );
+	m_aMICheats[PC_CHEAT_INFINITE_AMMO].SetText( 0, pccheats_Enabled( m_nPlayer, PC_CHEAT_INFINITE_AMMO ) ? L"Infinite Ammo: On" : L"Infinite Ammo: Off" );
+	m_aMICheats[PC_CHEAT_INVULNERABLE].SetText( 0, pccheats_Enabled( m_nPlayer, PC_CHEAT_INVULNERABLE ) ? L"Invulnerability: On" : L"Invulnerability: Off" );
+	m_aMICheats[PC_CHEAT_REFILL_AMMO].SetText( 0, L"Refill Ammo" );
+	m_aMICheats[PC_CHEAT_WASHERS].SetText( 0, L"Give 1,000 Washers" );
+	m_aMICheats[PC_CHEAT_WEAPONS].SetText( 0, L"Give Available Weapons" );
+	m_aMICheats[PC_CHEAT_UPGRADES].SetText( 0, L"Max Weapon Upgrades" );
+	m_aMICheats[PC_CHEAT_HEAL].SetText( 0, L"Heal Player" );
+	m_aMICheats[PC_CHEAT_ACTION_COUNT].SetText( 0, L"Back" );
+}
+
+void CPauseScreen::BackFromCheats() {
+#if _4_SCREEN_SETUP
+	m_MenuMgr.SetCurrent( &m_aMS[3] );
+#else
+	m_MenuMgr.SetCurrent( &m_aMS[0] );
+#endif
+	m_MenuMgr.UpdateCursorToCurrent();
+	m_bIgnoreControlsNextFrame = TRUE;
+}
+
+void CPauseScreen::CheatsScreenCallback( MenuItemCallbackReason_e eReason, CMenuItem *pMI, u32 uData ) {
+	if( eReason != MIREASON_BUTTONPRESSED ) return;
+	if( uData == MMINPUT_RIGHTBUTTON ) {
+		BackFromCheats();
+	} else if( uData == MMINPUT_BOTTOMBUTTON ) {
+		const u32 nAction = (u32)(pMI - m_aMICheats);
+		if( nAction == PC_CHEAT_ACTION_COUNT ) {
+			BackFromCheats();
+		} else if( nAction < PC_CHEAT_ACTION_COUNT ) {
+			m_pwszCheatStatus = pccheats_Apply( m_nPlayer, (PcCheatAction_e)nAction );
+			RefreshCheats();
+			if( m_pInventory && Player_aPlayer[m_nPlayer].m_pEntityCurrent == Player_aPlayer[m_nPlayer].m_pEntityOrig ) RefreshSelected( m_pInventory );
+		}
+	}
+}
+#endif
 
 void CPauseScreen::DrawInfoBoxMesh(CMenuItem *pMI)
 {

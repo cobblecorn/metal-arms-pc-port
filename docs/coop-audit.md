@@ -1,5 +1,198 @@
 # Co-op audit: single-player assumptions
 
+## Cinematic views and join panels (2026-10-03)
+
+Partners now borrow the active cinematic view inside their existing split rectangles, retaining
+their own camera controllers for the return to play. Co-op join panels use screen fractions and
+thin pixel borders instead of width-scaled retail meshes. See [the report](coop-cinema-ui-20261003.md)
+for 851 offline camera/layout checks and remaining visual confirmation.
+
+## Campaign playthrough (2026-10-03)
+
+See [the playthrough report](coop-playthrough-20261003.md) for the communications-centre player
+damage fallback, shared transmissions/vendor history, vendor checkpoint recovery, initial-spawn
+validation, RAT self-hit filtering, authored ending movies and liquid/rendering fixes. The report
+separates offline checks from pending user gameplay verification and unresolved hum/music/wires.
+
+## Current verification (2026-10-02)
+
+Nuts of Steel does not suppress the observed Clean Up checkpoint request: compiled `townzone.sma`
+calls Checkpoint_Save before the logged Next Zone 3 message. Safe-placement tracker filtering
+admitted Glitch's mesh because Fang accepts any matching type bit, including subclass bits left
+in `~ENTITY_BIT_BOT`. An explicit callback now excludes bots and their owned weapons, plus the
+vehicle-only props/detpacks ignored by ordinary movement. Floor/hazard/void/wall checks remain.
+The new fixture reproduces the old safe-ground failure and verifies pending save completion and
+wipe priority; one-shot save/defer/completion logging distinguishes blocked saves from no request.
+
+PvP/co-op join handoff now explicitly initializes independent AUTO input routing for either
+local mode. Leaving co-op restored SHARED routing, but PvP had not overridden it, merging the
+first controller into keyboard P1. PvP entry now clears campaign flags and deals controllers to
+separate join slots; forward keeps mapping, Back resets it. 145 offline production menu/input
+checks pass, including switch cycles and hotplug; gameplay confirmation remains pending.
+
+Hold Your Ground (WEWChold_01) now has an experimental PC co-op path: one AA gun per player,
+created before checkpoint 0, P1's retail walk/jump intro, and automatic seating for P2-P4 after
+letterbox ends. Each gun has separate controls/reticle/camera with original aim limits and mortar
+support. Waves wait for every seat and camera, breach disables every gun, and the shared restart
+reseats the team. Extra guns use provisional offsets +16/-16/+32 along the original gun's right
+axis; real platform fit, terrain support, sightlines and mission completion remain playtest checks.
+No extra foundations or difficulty scaling were added. The production-helper fixture passes 189
+checks; Debug/Release builds and previous co-op fixtures pass. No game launched.
+
+The friendly scripted racing RAT gunner is reserved for a co-op human. Its NPC object is retained
+for references but removed from world/auto-work. P2 normally starts in the existing turret beside
+P1 after scene/body readiness, with separate gun controls/camera. Initial boarding uses existing
+checkpointed RAT flags, manual first entry consumes the automatic offer, and exit stays voluntary.
+Second human boarding preserves vehicle health and human driver ownership. Shared scripted timers
+now appear on all co-op HUDs through show/hide/restore and vehicle mode changes. The new offline
+checkpoint/RAT/timer fixture passes 178 checks; gate (400), scene (434), Debug and Release pass.
+Normal Release was updated after confirming the game closed, with hashes verified. No game launched.
+RAT gameplay/restart and Clean Up revival remain user playthrough checks. There
+are still only two RAT seats: P3/P4 vehicles and other single-seat vehicle missions remain open
+participation issues. Hold Your Ground has the experimental separate-gun path above.
+
+The latest Seal the Mines cave screenshot confirms the fall still shifts toward P2's camera at
+close range despite the earlier liquid-mesh fixes. The active world is `WEDMmines03`; its init
+tables have splash/top particle emitters and liquid volumes but no LiquidMesh entities. Windows
+emulated point sprites left the graphics view at identity after drawing view-space quads; nearby
+emitters can select this path, and sorted transparent world meshes then project with the wrong
+camera. The Windows path now restores the active/mirrored view, matching its Xbox counterpart.
+World-space setup also refreshes the view before computing shader matrices and clears the fixed
+world transform. `tools/test_particle_camera.py` reproduced the original failure and now passes
+2,592 offline checks across P1-P4, near/far selection, projected world anchors, mirrored views,
+wrapped sprite buffers, skipped and empty draws. Debug/Release builds and existing waterfall/scene
+fixtures pass. Normal Release and pending-update are synchronized after confirming the game closed.
+No game launched; the user subsequently confirmed the nearby waterfall issue was fixed.
+
+PC weapon/grenade selection now uses separate per-player tap/hold gestures: single taps retain the
+retail callbacks, double taps within 0.3 seconds cycle the requested hand, and only a fresh 0.3-second
+hold opens its selector. HUD closing states cannot reopen or hand off from raw held buttons; released
+movement cannot keep queuing scrolls. Pause/barter/scenes, focus loss, body/controller changes, death
+and restore/load clear pending gestures. Quick cycling skips empty/unavailable items and uses normal
+inventory equip callbacks. `tools/test_weapon_select_menu.py` passes 6,147 offline checks across
+P1-P4 and 40 wrapper-frame atlas lifetimes. The latest log shows pause Quit successfully returning
+to the main menu, then crashing on the static label texture's freed resource pointer. Wrapper reset
+now clears that pointer and the attempted-load flag before releasing resources. Debug/Release builds
+and adapter/scene checks pass. Normal Release and pending-update are synchronized, including the
+waterfall changes below. No game was launched; actual gameplay/menu verification remains pending.
+
+The newest waterfall report (brief camera-center graphic / disappearing head-on) exposed invalid
+fractional-power curvature calculations and a 44-byte four-UV declaration for 36-byte three-UV
+waterfall vertices. The curve now uses positive unit distance; reflective and molten waterfall
+layouts match the actual vertices. Draws explicitly depth-test with LESSEQUAL and disable inherited
+alpha tests. Shared waterfall animation/scroll advances once per frame, preserving the same shape
+across P1-P4. `tools/test_waterfall_render.py` passes 6,901 offline checks with 544 complete draw passes;
+Debug/staged Release builds passed. Visual confirmation remains pending. That active normal Release
+session/executable was left untouched; the later selection/menu build above includes these changes.
+
+The latest user screenshots confirm the large moving square persisted after the previous liquid
+patch. Liquid planes/waterfalls now reset the fixed-function world transform as well as shader
+constants; FVF material passes previously retained the preceding droid's transform. No collision
+code was changed. The square's visual recurrence and reported physical effect remain manual checks.
+
+Door/lift checkpoint saves now include the mesh base state (animation clocks, speed, pause flags
+and selected mesh). Restore rebuilds line, translated-bone and animated poses, including moving
+snapshots and unchanged endpoint states, preserving pickup/open timers and resuming the appropriate
+movement loop. Checkpoint request and lift restore details are logged. The reported failed elevator
+return is not proven resolved: the remembered mission/restart method is uncertain and the available
+Seal the Mines log only shows the trigger releasing, without lift state diagnostics.
+
+Cutscene spectators now fall under neutral controls until actual grounded contact before holding
+stationary. Floor correction in Y and sticky-platform/parent movement are retained. Waiting text
+has a per-player 0.35-second delay, cleared on leaving/release/cutscene/load/restore; actual event
+gating is unchanged. Startup and unfocused window cursors explicitly select the Windows arrow.
+`tools/test_coop_scene_restore.py` passes 434 offline production-method checks for scene grounding,
+platform displacement, lift snapshot state/pose/timers/direction and liquid transform setup. Both
+build configurations pass; normal Release and its pending copy are updated. No game was launched.
+
+The PC pause Cheats submenu targets the pausing player, with per-player ammo/protection masks,
+individual washer grants and weapon grants/upgrades through that player's inventory. Possession
+keeps the washer grant in the permanent wallet; heal addresses the current live body and refuses
+unsafe resurrection. Toggles reset at the main menu and are not serialized, while granted items
+use existing saves. Available-weapon grants reject absent prepared pickup assets before indexing
+the retail pool and restore the global pickup recipient context afterward. The production-method
+fixture `tools/test_pc_cheats.py` passes 413 offline checks across P1-P4; runtime UI/assets remain
+unverified because the user requested no game launches.
+
+Checkpoint enters in the audited retail naming families now run for the first living original
+player, without a team wait. The normal script still owns saving, objective requirements and safe
+revival. Other gates retain sticky team arrivals, with per-frame movement rechecks for missed
+enters; PC box triggers now detect complete crossings between frames. An assignment in tripwire
+occupant removal also removed the wrong actor; it now preserves the remaining players. The offline
+production-method fixture (`tools/test_coop_gate_recovery.py`) passes 400 checks across 2-4 players.
+Custom checkpoint names remain a playthrough check. The true Mines 2 wait at `bradys_attack` /
+`trigger_btr01` needs manual verification; the earlier HUD-only fix did not release logical gates.
+
+The user authorized updating normal Release after closing their run; the earlier patches and these
+recovery changes are applied there. No game was launched. Liquid mesh drawing also now sets its
+own world matrix and molten vertex layout rather than inheriting a preceding bot's draw state.
+This is a candidate fix for the large square moving among droids in Mines 2; its visual and reported
+physical behavior have not been reproduced or verified after the change.
+
+The user confirmed the Mines 1 zipline waiting gate works in play. A separate P2 HUD report came
+from an unreleased `goagain2` side-route arrival even after both players passed `goagain` and later
+checkpoints. Waiting text now describes a live unresolved gate containing the player, with the
+parked-terminal exception. Arrival history remains sticky for thin gates; this HUD change has not
+been verified in gameplay. Odd ally movement around successive bot pairs remains an unconfirmed
+AI report.
+
+The latest user session exposed two progression issues. Mines 1's terminal arrival record survived
+a checkpoint rollback; restores now clear all held arrivals, and common terminal exits park early
+arrivals before they can move into floorless geometry. Mines 2's `xedm_end` attempted to face/move
+dead P1 while P2 finished, so the world ran but the script waited indefinitely. Story player lookup
+now prefers living P1, otherwise a living partner, and retains that actor through the entire scene.
+AI movement, fall actions and spectator cameras agree on that player. Scripted actors cross scene
+triggers without waiting for disabled spectators. Living spectators animate under neutral controls
+after landing while retaining platform displacement; downed viewers see the scene rather than their distant corpse.
+The user has now confirmed a cutscene advanced with P1 dead and P2 temporarily acting as Glitch.
+That reported fallback scenario is verified in gameplay; other campaign scenes remain playthrough checks.
+
+The fresh-profile Reset warning was a difficulty-screen asset mapping mismatch, not a save deletion.
+The retail front-end screen mapping is corrected; source-order and pause tables are unaffected.
+Current profiles passed CRC validation and were backed up. The old `Profile1&&&` test file could
+not be found, and the user accepts possible accidental deletion. Debug/Release builds, eight offline
+actor-selection checks and all 35 front-end/35 pause asset mappings pass. Further progression and
+screen verification is pending. Do not launch the game until the user authorizes it.
+Scripts retaining a player handle from level initialization and custom terminal trigger names
+remain playthrough checks; the confirmed Mines 2 script refreshes its handle immediately before
+starting the scene.
+
+The user initially confirmed co-op saving/reloading, ordinary deaths and checkpoint revives with the vanilla
+animation, and partner cameras following player 1 during player 1's cutscenes without letterbox
+bars. Alt-tab and using other applications caused no observed issues; play is smooth, with no
+specific audio issues reported. Controller hot-swapping and a full campaign progression playthrough
+remain to be tested. See `HANDOFF.md` for the current implementation and remaining liquid checks.
+
+A later Mines 1 playthrough exposed an airborne-checkpoint softlock: `save03` fired during P1's
+jump, and P2 revived at their below-route death location because no grounded partner was available.
+The revival code now waits for checked ground/body clearance before resurrecting; the checkpoint
+save stays pending until placement succeeds. Dead/dying bodies no longer enter timed fall recovery,
+and a team restore overrides the pending save. Release and Debug compile; gameplay verification
+of this fix is pending. The new `revive` fixture is compiled but unrun. The user explicitly asked
+for no further game launches while they are running other things; wait for their instruction to resume.
+
+The user also confirmed water in Seal the Deal and both players completing the Seal the Mines
+borrowed-bot objective. Possessed actors and named entity filters bypass the shared progression
+gathering gate so scripts receive the correct bot. The normal regression uses the console and waits
+for the cutscene/body transition and possession handoff before entering the objective.
+
+Shops now track their activating player for input, camera, UI, purchases and spending, with one
+shopper at a time. Washer balances were already per inventory; pickup and checkpoint tests confirm
+their separation. World weapons retain a per-player claim mask, hide only in the collector's
+viewport, and persist for partners. Checkpoints restore partial claims; scripted and paid grants
+remain exclusive to their recipient. Unsupported legacy retail upgrade kits remain unavailable.
+Discord campaign activity includes `CO-OP` alongside mission details. The intermittent blue circle,
+controller hot-swapping and full mission progression remain manual checks.
+
+Run `python tools/test_coop_polish.py` after building, or add `--config Debug`. Four-player weapon
+ownership checks use `--players 4 --cases pickups weapons`. Fixtures are opt-in and use isolated
+saves. Reports are written under `build/logs`; no test fixture runs during ordinary gameplay.
+
+The sections below retain the original 2026-09-27 source audit and its historical status; the save,
+death, menu and cutscene limitations described there are superseded by the current handoff.
+
+## Original source audit (2026-09-27)
+
 Status (2026-09-27): `-mission WORLD -coop 2..4` (PC) starts a campaign level with 2-4 local players
 (`launcher.cpp` builds the `GameInitInfo_t`: `bSinglePlayer=TRUE`, `nNumPlayers=N`, no profiles; the
 input layout uses normal configuration: `shared` by default, pads 1-4 for players
@@ -93,6 +286,9 @@ are dead. `PauseScreen.cpp` ~1190 ("restart from checkpoint") stays level-wide.
 (~173-182, ~649) shows player 0's stats and uses player 0's profile and controller.
 **Suggest:** save progress to player 0's profile (the campaign owner); decide whether other players
 get a profile (the front end supports per-player profiles for multiplayer) or a virtual one.
+**Done (2026-09-30):** a co-op save per player 1's profile in the save root's `Co-op` folder, with a
+record per partner found by profile name; every player's progress is recorded (see HANDOFF.md,
+"Co-op saves").
 
 ### 4. Start points (`game.cpp` `_CreatePlayerBot`, ~1530)
 

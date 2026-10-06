@@ -206,6 +206,10 @@ private:
 	f32			m_fIdlingAcceleration;
 
 	BOOL m_bPossessed;
+#if defined(FANG_WINGC)
+	BOOL m_bCoopDriverCollisionSuppressed;
+	BOOL m_bOldDriverCollision;
+#endif
 	s32 m_nAttachBotPtBoneIdx;
 	s32 m_nShellEjectPtBoneIdx;
 	const CFVec3A *m_apTagPoint_WS[TAG_POINT_COUNT];	// Tag points in world space

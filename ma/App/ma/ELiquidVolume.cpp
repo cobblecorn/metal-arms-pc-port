@@ -58,6 +58,8 @@ void CELiquidVolumeBuilder::SetDefaults( u64 nEntityTypeBits, u64 nEntityLeafTyp
 	m_fDimZ = 1.0f;
 	
 	m_fOpacity = 1.0f;
+	m_bEnableRender = TRUE;
+	m_fDamageIntensity = 1.0f;
 	m_fTile = 4.0f;
 	m_fBumpTile = 1.0f;
 	m_fGlowScale = 1.0f;
@@ -80,7 +82,14 @@ void CELiquidVolumeBuilder::SetDefaults( u64 nEntityTypeBits, u64 nEntityLeafTyp
 
 BOOL CELiquidVolumeBuilder::InterpretTable( void ) {
 	f32 foo255 = (1.0f/255.0f);
-	if( !fclib_stricmp( CEntityParser::m_pszTableName, "LiqType" ) ) {
+	if( !fclib_stricmp( CEntityParser::m_pszTableName, "EnableRender" ) ) {
+		f32 fEnable = 1.0f;
+		BOOL bOK = CEntityParser::Interpret_F32( &fEnable );
+		m_bEnableRender = fEnable != 0.0f;
+		return bOK;
+	} else if( !fclib_stricmp( CEntityParser::m_pszTableName, "DamageIntensity" ) ) {
+		return CEntityParser::Interpret_F32( &m_fDamageIntensity, 0.0f, 1000.0f, TRUE );
+	} else if( !fclib_stricmp( CEntityParser::m_pszTableName, "LiqType" ) ) {
 		CEntityParser::Interpret_String( &m_pszType );
 
 		return TRUE;
@@ -153,7 +162,7 @@ BOOL CELiquidVolumeBuilder::InterpretTable( void ) {
 		
 		return TRUE;
 	}
-	else if( !fclib_stricmp( CEntityParser::m_pszTableName, "Texture1" ) ) {
+	else if( !fclib_stricmp( CEntityParser::m_pszTableName, "Texture1" ) || !fclib_stricmp( CEntityParser::m_pszTableName, "Texture" ) ) {
 		CEntityParser::Interpret_String( &m_pszTexLayer0 );
 
 		return TRUE;
@@ -305,7 +314,7 @@ BOOL _CollisionCallback(CFWorldMesh *pMesh, void *pUserData)
 {
 	CELiquidVolume *pSelf = (CELiquidVolume *)pUserData;
 
-	if (pSelf && pUserData)
+	if (pSelf && pMesh && pSelf->GetDamageIntensity() > 0.0f)
 	{
 		// See if the world mesh that we found is an entity...
 		if ( pMesh->m_nUser == MESHTYPES_ENTITY )
@@ -315,6 +324,7 @@ BOOL _CollisionCallback(CFWorldMesh *pMesh, void *pUserData)
 			
 			if (_nNumPendingDamageForms < MAX_PENDING_DAMAGE)
 			{
+				_PendingDamageForms[_nNumPendingDamageForms].m_fNormIntensity = pSelf->GetDamageIntensity();
 				_PendingDamageForms[_nNumPendingDamageForms].m_nDamageLocale = CDamageForm::DAMAGE_LOCALE_AMBIENT;
 				_PendingDamageForms[_nNumPendingDamageForms].m_nDamageDelivery = CDamageForm::DAMAGE_DELIVERY_ONE_SPECIFIC_ENTITY;
 				_PendingDamageForms[_nNumPendingDamageForms].m_pDamageProfile = pSelf->GetDamageProfile();
@@ -356,6 +366,7 @@ BOOL CELiquidVolume::ClassHierarchyBuild( void ) {
 
 	// Set any defaults in our class...
 	_ClearMemberData();
+	m_fDamageIntensity = pBuilder->m_fDamageIntensity;
 
 	// Initialize our entity from our builder object...
 	if( !pBuilder->m_bEmpty ) {
@@ -429,6 +440,7 @@ BOOL CELiquidVolume::ClassHierarchyBuild( void ) {
 				SetDamageProfile(m_pDamageProfile[1]);
 			}
 			
+			m_pLiquid->m_bRenderEnabled = pBuilder->m_bEnableRender;
 			m_pLiquid->SetLiquidType(nType);
 			m_pLiquid->SetLiquidFog(pBuilder->m_Color, pBuilder->m_fFog);
 			m_pLiquid->SetupVolume(m_vExt, m_vMtx);
@@ -534,6 +546,11 @@ void CELiquidVolume::ClassHierarchyRelocated( void *pIdentifier ) {
 	m_afShapeValues[0] = m_afRawValues[0] * m_fScaleToWorld;
 	m_afShapeValues[1] = m_afRawValues[1] * m_fScaleToWorld;
 	m_afShapeValues[2] = m_afRawValues[2] * m_fScaleToWorld;
+	if( m_pLiquid ) {
+		m_vMtx = m_MtxToWorld;
+		m_vMtx.m_vPos.y += m_fHeightOffset;
+		m_pLiquid->SetupVolume( m_vExt, m_vMtx );
+	}
 }
 
 
@@ -602,7 +619,7 @@ void CELiquidVolume::ClassHierarchyWork( void ) {
 	// Perform work for ourselves...
 	if (m_fTime > 0.0f)
 	{
-		f32 fDelta = FLoop_fPreviousLoopSecs * m_fDeltaHeightPerSec;
+		f32 fDelta = FMATH_MIN( FLoop_fPreviousLoopSecs, m_fTime ) * m_fDeltaHeightPerSec;
 		
 		m_fTime -= FLoop_fPreviousLoopSecs;
 		if (m_fTime < 0) m_fTime = 0.0f;
@@ -620,6 +637,7 @@ void CELiquidVolume::ClassHierarchyWork( void ) {
 			if( pDamageForm )
 			{
 				// Fill out the form...
+				pDamageForm->m_fNormIntensity = _PendingDamageForms[i].m_fNormIntensity;
 				pDamageForm->m_nDamageLocale = _PendingDamageForms[i].m_nDamageLocale;
 				pDamageForm->m_nDamageDelivery = _PendingDamageForms[i].m_nDamageDelivery;
 				pDamageForm->m_pDamageProfile = _PendingDamageForms[i].m_pDamageProfile;
@@ -644,7 +662,8 @@ void CELiquidVolume::_ClearMemberData( void ) {
 	m_afRawValues[0] = m_afRawValues[1] = m_afRawValues[2] = 0.0f;
 	m_afShapeValues[0] = m_afShapeValues[1] = m_afShapeValues[2] = 0.0f;
 	
-	m_fDeltaHeightPerSec = m_fTime = 0.0f;
+	m_fDeltaHeightPerSec = m_fTime = m_fHeightOffset = 0.0f;
+	m_fDamageIntensity = 1.0f;
 	m_pLiquid = NULL;
 }
 
@@ -656,6 +675,7 @@ void CELiquidVolume::ChangeLiquidHeight(f32 fDelta)
 	m_vExt.y += fHDelta;
 		
 	m_vMtx.m_vPos.y += fHDelta;
+	m_fHeightOffset += fHDelta;
 	
 	m_pLiquid->SetupVolume(m_vExt, m_vMtx);
 }
@@ -665,4 +685,30 @@ void CELiquidVolume::ChangeLiquidHeight_Time(f32 fHeightChange, f32 fTime)
 	FASSERT(fTime > 0.0f);
 	m_fDeltaHeightPerSec = fHeightChange / fTime;
 	m_fTime = fTime;
+}
+
+void CELiquidVolume::CheckpointSaveSelect( s32 nCheckpoint ) {
+	CEntity::CheckpointSaveSelect( nCheckpoint );
+	CheckpointSaveList_AddTailAndMark( nCheckpoint );
+}
+
+BOOL CELiquidVolume::CheckpointSave( void ) {
+	CEntity::CheckpointSave();
+	CFCheckPoint::SaveData( m_vExt );
+	CFCheckPoint::SaveData( m_vMtx );
+	CFCheckPoint::SaveData( m_fDeltaHeightPerSec );
+	CFCheckPoint::SaveData( m_fTime );
+	CFCheckPoint::SaveData( m_fHeightOffset );
+	return TRUE;
+}
+
+void CELiquidVolume::CheckpointRestore( void ) {
+	CEntity::CheckpointRestore();
+	CFCheckPoint::LoadData( m_vExt );
+	CFCheckPoint::LoadData( m_vMtx );
+	CFCheckPoint::LoadData( m_fDeltaHeightPerSec );
+	CFCheckPoint::LoadData( m_fTime );
+	CFCheckPoint::LoadData( m_fHeightOffset );
+	_nNumPendingDamageForms = 0;
+	if( m_pLiquid ) m_pLiquid->SetupVolume( m_vExt, m_vMtx );
 }

@@ -267,6 +267,8 @@ private:
 		RAT_FLAG_FLIP							= 0x00000080,	// TRUE if rat should be flipped in air this frame
 		RAT_FLAG_ZOBBY_DRIVING					= 0x00000100,	// TRUE if Zobby mesh should appear in driver seat
 		RAT_FLAG_ZOBBY_GUNNING					= 0x00000200,	// TRUE if Zobby mesh should appear in gunner seat
+		RAT_FLAG_COOP_GUNNER_BOARDED			= 0x00000400,	// initial human gunner boarding has completed
+		RAT_FLAG_COOP_GUNNER_PENDING			= 0x00000800,	// scripted friendly gunner is reserved for a human
 
 		RAT_FLAG_NONE							= 0x00000000
 	};
@@ -389,6 +391,12 @@ private:
 	CCameraTrans m_GunnerCameraTrans;						// camera transition object for gunner
 	CVehicleCamera m_GunnerCamera;							// vehicle camera object for gunner
 
+#if FANG_WINGC
+	enum { PORT_COOP_CHASE_MAX_GUNS = 3 };
+	CBotSiteWeapon *m_apCoopChaseGuns[PORT_COOP_CHASE_MAX_GUNS];
+	CVehicleCamera m_aCoopChaseCameras[PORT_COOP_CHASE_MAX_GUNS];
+	CCameraTrans m_aCoopChaseTransitions[PORT_COOP_CHASE_MAX_GUNS];
+#endif
 	CFAnimManMtx *m_pManMtx;
 	CFAnimMeshRest *m_pRestMtx;
 
@@ -521,6 +529,10 @@ public:
 	// Protected Functions:
 	//----------------------------------------------------------------------------------------------------------------------------------
 protected:
+#if FANG_WINGC
+	void _PortCoopChaseWork( void );
+	void _PortDestroyCoopChaseGuns( void );
+#endif
 
 	virtual void ClassHierarchyDestroy( void );
 
@@ -578,6 +590,9 @@ private:
 	void _SquishBots( void );
 	void _UpdateRatState( void );
 	void _UpdateRatGunState( void );
+#if FANG_WINGC
+	void _PortCoopGunnerWork( void );
+#endif
 	void _UpdateRatGun( void );
 	void _UpdateDamageSmoke( void );
 	void _UpdateDustCloud( void );

@@ -147,7 +147,7 @@ void CZombieBossGame::_Work( void )
 		if (bTerminateCutscene)
 		{
 			// restart the level
-			checkpoint_Restore( 0, FALSE );
+			checkpoint_Restore( 0, FALSE, "zombie-boss:restart" );
 		}
 	}
 }

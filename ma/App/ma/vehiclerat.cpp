@@ -39,6 +39,7 @@
 #include "meshentity.h"
 #include "site_ratgun.h"
 #include "eboomer.h"
+#include "level.h"
 #if defined(MA_PC_INPUT)
 #include "pc_input.h"
 #endif
@@ -2150,7 +2151,11 @@ void CVehicleRat::_StartGunnerEnterWork( BOOL bImmediately )
 			// tell the bot what vehicle he is driving
 			m_pGunnerBot->m_pDrivingVehicle = this;
 
-			if( m_pGunnerBot->IsPlayerBot() && level_IsRacingLevel() )
+			if( m_pGunnerBot->IsPlayerBot() && level_IsRacingLevel()
+#if FANG_WINGC
+				&& !(MultiplayerMgr.IsLocalCoop() && m_pDriverBot && m_pDriverBot->IsPlayerBot())
+#endif
+			)
 			{
 				SetHealthContainerCount( m_pGunnerBot->HealthContainerCount() );
 				SetNormHealth( m_pGunnerBot->NormHealth() );
@@ -3034,7 +3039,11 @@ void CVehicleRat::DriverEnter( CBot *pDriverBot, cchar *pszAttachPointBoneName /
 #endif
 	}
 
-	if( pDriverBot->IsPlayerBot() && level_IsRacingLevel() )
+	if( pDriverBot->IsPlayerBot() && level_IsRacingLevel()
+#if FANG_WINGC
+		&& !(MultiplayerMgr.IsLocalCoop() && m_pGunnerBot && m_pGunnerBot->IsPlayerBot())
+#endif
+	)
 	{
 		SetHealthContainerCount( pDriverBot->HealthContainerCount() );
 		SetNormHealth( pDriverBot->NormHealth() );
@@ -3184,14 +3193,13 @@ void CVehicleRat::UpdateGunnerCamera( void )
 		m_GunnerCamera.SetAirTime( m_fTimeSinceLastContact );
 	}
 
-	u32 nControlIndex = Player_aPlayer[m_GunnerCameraTrans.GetPlayerIndex()].m_nControllerIndex;
 #if defined(MA_PC_INPUT)
-	// Mouse look pitches the gun, not the stick, so the camera follows the gun's pitch (as it does
-	// when the RAT is not driveable) and the reticle stays on the gun's aim.
-	if( IsDriveable() && !pcinput_IsMouseAiming( nControlIndex ) )
+	// Follow actual aim for both devices; a separate stick-height camera moves at
+	// a different speed and bypasses the gunner's inversion preference.
+	m_GunnerCamera.SetElevationAngle( m_RatGun.GetGunPitch() + _GUNNERCAM_ELEVATION_ANGLE );
 #else
+	u32 nControlIndex = Player_aPlayer[m_GunnerCameraTrans.GetPlayerIndex()].m_nControllerIndex;
 	if( IsDriveable() )
-#endif
 	{
 		m_GunnerCamera.SetHeightFromXZPlane( Gamepad_aapSample[nControlIndex][GAMEPAD_MAIN_LOOK_UP_DOWN]->fCurrentState );
 	}
@@ -3199,6 +3207,7 @@ void CVehicleRat::UpdateGunnerCamera( void )
 	{
 		m_GunnerCamera.SetElevationAngle( m_RatGun.GetGunPitch() + _GUNNERCAM_ELEVATION_ANGLE );
 	}
+#endif
 
 	FWorld_nTrackerSkipListCount = 0;
 	AppendTrackerSkipList();
@@ -3305,12 +3314,18 @@ CVehicleRat::CVehicleRat() : CVehicle()
 {
 	m_pInventory = NULL;
 	m_pWorldMesh = NULL;
+#if FANG_WINGC
+	for( s32 n=0; n<MAX_PLAYERS-1; ++n ) m_apCoopChaseGuns[n] = NULL;
+#endif
 }
 
 
 //-----------------------------------------------------------------------------
 CVehicleRat::~CVehicleRat()
 {
+#if FANG_WINGC
+	_PortDestroyCoopChaseGuns();
+#endif
 	if( IsSystemInitialized() && IsCreated() )
 	{
 		DetachFromParent();
@@ -3353,6 +3368,9 @@ BOOL CVehicleRat::Create( s32 nPlayerIndex, BOOL bInstallDataPort, cchar *pszEnt
 //-----------------------------------------------------------------------------
 void CVehicleRat::ClassHierarchyDestroy( void )
 {
+#if FANG_WINGC
+	_PortDestroyCoopChaseGuns();
+#endif
 	// Delete the items that we had instantiated for us...
 
 	m_Anim.Destroy();
@@ -3384,7 +3402,12 @@ void CVehicleRat::ClassHierarchyDrawEnable( BOOL bDrawingHasBeenEnabled )
 
 	if( m_pZobbyME )
 	{
-		m_pZobbyME->DrawEnable( bDrawingHasBeenEnabled );
+		BOOL bShowZobby = bDrawingHasBeenEnabled;
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() && (m_uRatFlags & RAT_FLAG_ZOBBY_GUNNING) &&
+			m_pGunnerBot && m_pGunnerBot->IsPlayerBot() ) bShowZobby = FALSE;
+#endif
+		m_pZobbyME->DrawEnable( bShowZobby );
 	}
 }
 
@@ -4511,6 +4534,24 @@ CVehicle::StationStatus_e CVehicleRat::EnterStation( CBot *pBot, Station_e eStat
 		return STATION_STATUS_NO_STATION;
 	}
 
+#if FANG_WINGC
+	// Keep the scripted friendly NPC alive for references/dialogue, but reserve its seat
+	// for a human. Checkpoint restoration and single-player retain their normal path.
+	CEntity *pCoopLeader = Player_aPlayer[0].m_pEntityOrig;
+	if( MultiplayerMgr.IsLocalCoop() && level_IsRacingLevel() &&
+		eStation == STATION_GUNNER && (m_uRatFlags & RAT_FLAG_ZOBBY_GUNNING) &&
+		!pBot->IsPlayerBot() && pCoopLeader && (pCoopLeader->TypeBits() & ENTITY_BIT_BOT) &&
+		pBot->IsSameTeam( (CBot *)pCoopLeader ) ) {
+		if( !(m_uRatFlags & RAT_FLAG_COOP_GUNNER_BOARDED) ) {
+			m_uRatFlags |= RAT_FLAG_COOP_GUNNER_PENDING;
+		}
+		pBot->RemoveFromWorld();
+		pBot->EnableAutoWork( FALSE );
+		if( m_pZobbyME ) m_pZobbyME->DrawEnable( FALSE, TRUE );
+		return STATION_STATUS_UNAVAILABLE;
+	}
+#endif
+
 	eResult = CanOccupyStation( pBot, eStation );
 	if( bProximityCheck )
 	{
@@ -4559,6 +4600,16 @@ CVehicle::StationStatus_e CVehicleRat::EnterStation( CBot *pBot, Station_e eStat
 	else if( eStation == STATION_GUNNER )
 	{
 		m_pGunnerBot = pBot;
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() && (m_uRatFlags & RAT_FLAG_ZOBBY_GUNNING) && pBot->IsPlayerBot() ) {
+			// Manual entry also completes the initial offer; leaving later must stay voluntary.
+			m_uRatFlags &= ~RAT_FLAG_COOP_GUNNER_PENDING;
+			m_uRatFlags |= RAT_FLAG_COOP_GUNNER_BOARDED;
+			// Checkpoint/draw reactivation can expose the decorative NPC mesh again.
+			if( m_pZobbyME ) m_pZobbyME->DrawEnable( FALSE, TRUE );
+			pBot->DrawEnable( TRUE, TRUE );
+		}
+#endif
 		if( bImmediately )
 		{
 			// put bot into gunner seat immediately
@@ -4909,6 +4960,16 @@ void CVehicleRat::ClassHierarchyAddToWorld( void )
 //-----------------------------------------------------------------------------
 void CVehicleRat::ClassHierarchyRemoveFromWorld( void )
 {
+#if FANG_WINGC
+	for( s32 n=0; n<MAX_PLAYERS-1; ++n ) {
+		CBotSiteWeapon *pGun = m_apCoopChaseGuns[n];
+		if( pGun && pGun->IsInWorld() ) {
+			pGun->SetSiteWeaponDriver(NULL,FALSE);
+			pGun->RemoveFromWorld();
+			m_aCoopChaseTransitions[n].InitTransitionToBotCamera();
+		}
+	}
+#endif
 	s32 nIndex;
 
 	FASSERT( IsCreated() );
@@ -4980,6 +5041,97 @@ CEntityBuilder *CVehicleRat::GetLeafClassBuilder( void )
 	return &_VehicleRatBuilder;
 }
 
+#if FANG_WINGC
+void CVehicleRat::_PortDestroyCoopChaseGuns( void ) {
+	for( s32 n=0; n<MAX_PLAYERS-1; ++n ) {
+		if( m_apCoopChaseGuns[n] ) {
+			fdelete(m_apCoopChaseGuns[n]);
+			m_apCoopChaseGuns[n] = NULL;
+		}
+	}
+}
+
+void CVehicleRat::_PortCoopChaseWork( void ) {
+	if( !MultiplayerMgr.IsLocalCoop() || Level_nLoadedIndex < 0 ||
+		fclib_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WEWHchase01") ||
+		!Name() || fclib_stricmp(Name(),"player_rat") || CBot::m_bCutscenePlaying ) return;
+	if( IsDeadOrDying() || !m_pGunnerBot || !m_pGunnerBot->IsPlayerBot() ) return;
+	for( s32 n=1; n<CPlayer::m_nPlayerCount; ++n ) {
+		CBot *pPlayer = (CBot *)Player_aPlayer[n].m_pEntityCurrent;
+		if( !pPlayer || pPlayer != Player_aPlayer[n].m_pEntityOrig || !pPlayer->IsInWorld() ||
+			pPlayer->IsDeadOrDying() || pPlayer == m_pGunnerBot ) continue;
+		CBotSiteWeapon *pGun = m_apCoopChaseGuns[n-1];
+		if( !pGun ) {
+			if( pPlayer->GetCurMech() || pPlayer->SwitchingWeapons() ) continue;
+			CFMtx43A at = *m_RatGun.MtxToWorld();
+			CFVec3A offset(m_MtxToWorld.m_vRight);
+			offset.Mul(n == 1 ? -4.5f : n == 2 ? 4.5f : 0.0f); at.m_vPos.Add(offset);
+			offset = m_MtxToWorld.m_vFront; offset.Mul(n == 3 ? -9.0f : -4.0f); at.m_vPos.Add(offset);
+			static cchar *apszNames[] = {"coop_chase_p2","coop_chase_p3","coop_chase_p4"};
+			pGun = fnew CBotSiteWeapon;
+			if( !pGun || !pGun->Create(BOTSUBCLASS_SITEWEAPON_RATGUN,-1,FALSE,apszNames[n-1],&at,"Default") ) {
+				fdelete(pGun); continue;
+			}
+			m_apCoopChaseGuns[n-1] = pGun;
+			pGun->InitialTeam(m_pGunnerBot->GetTeam());
+			pGun->EnableAutoWork(FALSE);
+			pGun->SetOpenOrClosed(TRUE,0.05f);
+			pGun->Attach_ToParent_WithGlue_WS(this);
+			pGun->AddToWorld();
+			m_aCoopChaseCameras[n-1].Init(pGun->GetCameraInfo(),&m_BotInfo_GunnerCamera);
+			m_aCoopChaseTransitions[n-1].Init(pGun->GetCameraInfo(),1.0f);
+		}
+		if( !pGun->IsInWorld() ) { pGun->Attach_ToParent_WithGlue_WS(this); pGun->AddToWorld(); }
+		if( !pGun->GetDriverBot() && !pPlayer->GetCurMech() && !pPlayer->SwitchingWeapons() ) {
+			if( pGun->SetSiteWeaponDriver(pPlayer) ) {
+				m_aCoopChaseTransitions[n-1].InitTransitionToVehicleCamera(n);
+				m_aCoopChaseTransitions[n-1].SetTransitionSnap();
+				m_aCoopChaseCameras[n-1].Snap();
+				DEVPRINTF("Co-op chase: player %d boards shared RAT turret '%s'.\n",n+1,pGun->Name());
+			}
+		}
+		pGun->Work();
+		if( pGun->GetDriverBot() == pPlayer ) {
+			// Checkpoint restore can retain the driver while resetting the camera transition.
+			if( m_aCoopChaseTransitions[n-1].IsCameraInactive() || m_aCoopChaseTransitions[n-1].GetPlayerIndex() != n ) {
+				m_aCoopChaseTransitions[n-1].InitTransitionToVehicleCamera(n);
+				m_aCoopChaseTransitions[n-1].SetTransitionSnap();
+				m_aCoopChaseCameras[n-1].Snap();
+			}
+			m_aCoopChaseCameras[n-1].SetElevationAngle(pGun->GetGunPitch()+_GUNNERCAM_ELEVATION_ANGLE);
+			FWorld_nTrackerSkipListCount = 0; AppendTrackerSkipList();
+			m_aCoopChaseCameras[n-1].Update(pGun->MtxToWorld(),*m_PhysObj.GetVelocity(),m_pWorldMesh,m_vGroundNormal);
+			m_aCoopChaseTransitions[n-1].UpdateTransition();
+		}
+	}
+}
+
+void CVehicleRat::_PortCoopGunnerWork( void ) {
+	if( !MultiplayerMgr.IsLocalCoop() || !(m_uRatFlags & RAT_FLAG_COOP_GUNNER_PENDING) ||
+		CBot::m_bCutscenePlaying || IsDeadOrDying() || !m_pDriverBot || !m_pDriverBot->IsPlayerBot() ||
+		m_pGunnerBot || m_eGunState != VEHICLERAT_GUN_STATE_UNOCCUPIED ) {
+		return;
+	}
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; ++i ) {
+		CEntity *pEntity = Player_aPlayer[i].m_pEntityCurrent;
+		if( !pEntity || pEntity != Player_aPlayer[i].m_pEntityOrig || !(pEntity->TypeBits() & ENTITY_BIT_BOTGLITCH) ) {
+			continue;
+		}
+		CBot *pBot = (CBot *)pEntity;
+		if( pBot == m_pDriverBot || pBot->IsDeadOrDying() || !pBot->IsInWorld() || pBot->m_pDrivingVehicle ||
+			pBot->SwitchingWeapons() || !pBot->IsSameTeam( m_pDriverBot ) ) {
+			continue;
+		}
+		if( EnterStation( pBot, STATION_GUNNER, FALSE, TRUE ) == STATION_STATUS_ENTERING ) {
+			m_uRatFlags &= ~RAT_FLAG_COOP_GUNNER_PENDING;
+			m_uRatFlags |= RAT_FLAG_COOP_GUNNER_BOARDED;
+			DEVPRINTF( "Co-op: player %d starts in RAT '%s' gunner seat.\n", i + 1, Name() );
+		}
+		return;
+	}
+}
+#endif
+
 //-----------------------------------------------------------------------------
 void CVehicleRat::ClassHierarchyWork()
 {
@@ -5001,6 +5153,9 @@ void CVehicleRat::ClassHierarchyWork()
 	{
 		return;
 	}
+#if FANG_WINGC
+	_PortCoopGunnerWork();
+#endif
 
 	// Save a copy of the previous frame's info...
 	m_MountPrevPos_WS	= m_MountPos_WS;
@@ -5046,6 +5201,9 @@ void CVehicleRat::ClassHierarchyWork()
 		}
 	}
 
+#if FANG_WINGC
+	_PortCoopChaseWork();
+#endif
 	_UpdateDustCloud();
 	_UpdateWaterEffects();
 
@@ -5547,6 +5705,12 @@ void CVehicleRat::AppendTrackerSkipList(u32& nTrackerSkipListCount, CFWorldTrack
 
 	// rat gun adds gunner bot...
 	m_RatGun.AppendTrackerSkipList(nTrackerSkipListCount,apTrackerSkipList);
+#if FANG_WINGC
+	for( s32 n=0; n<MAX_PLAYERS-1; ++n ) {
+		if( m_apCoopChaseGuns[n] && m_apCoopChaseGuns[n]->IsInWorld() )
+			m_apCoopChaseGuns[n]->AppendTrackerSkipList(nTrackerSkipListCount,apTrackerSkipList);
+	}
+#endif
 
 	FASSERT( (nTrackerSkipListCount + 1) <= FWORLD_MAX_SKIPLIST_ENTRIES );
 	apTrackerSkipList[nTrackerSkipListCount++] = m_RatGun.m_pWorldMesh;

@@ -62,10 +62,6 @@ BOOL CItemRepository::InitFromCSV( cchar *pszFileName ) {
 	u32 uLineNum = 0;
 	u32 uFieldNum, nNumTables;
 	FGameDataWalker_t hWalker;
-#if FANG_WINGC
-	ItemInit_s oPortNukeInit, oPortWaterInit;
-	BOOL bPortHaveNuke = FALSE, bPortHaveWater = FALSE;
-#endif
 
 	FASSERT( m_bIsInitialized );
 	FASSERT( !m_paItems );
@@ -92,19 +88,14 @@ BOOL CItemRepository::InitFromCSV( cchar *pszFileName ) {
 		goto _ExitWithError;
 	}
 	// allocate enough items for all of the tables
-#if FANG_WINGC
-	// Two extra items for the recovered cut throwables (appended, so retail item indices do not move).
-	m_paItems = fnew CItem[nNumTables + 2];
-#else
 	m_paItems = fnew CItem[nNumTables];
-#endif
 	if( !m_paItems ) {
 		DEVPRINTF("CItemRepository::InitFromCSV() : Could not allocate %d items.  Cannot continue.\n", nNumTables );
 		goto _ExitWithError;
 	}
 	// allocate some temp memory to record strings
 	char **papszUpgradeNames;
-	papszUpgradeNames = (char **)fmem_AllocAndZero( sizeof( char * ) * (nNumTables + 2), 4 );
+	papszUpgradeNames = (char **)fmem_AllocAndZero( sizeof( char * ) * nNumTables, 4 );
 	if( !papszUpgradeNames ) {
 		DEVPRINTF("CItemRepository::InitFromCSV() : Could not allocate temp memory.  Cannot continue.\n" );
 		goto _ExitWithError;
@@ -392,45 +383,10 @@ BOOL CItemRepository::InitFromCSV( cchar *pszFileName ) {
 
 		m_paItems[m_nItemCount].Init( &oItemInit );
 
-#if FANG_WINGC
-		if( !fclib_stricmp( oItemInit.pszTag, "coring charge" ) ) {
-			oPortNukeInit = oItemInit;
-			bPortHaveNuke = TRUE;
-		} else if( !fclib_stricmp( oItemInit.pszTag, "emp grenade" ) ) {
-			oPortWaterInit = oItemInit;
-			bPortHaveWater = TRUE;
-		}
-#endif
-
 		++m_nItemCount;
 				
 		hTableHandle = fgamedata_GetNextTable(hWalker);
 	}
-
-#if FANG_WINGC
-	// Cut content revived on PC: the Nuke and Water Grenades had pickup models (gp_snuke, gp_swater) but
-	// no items. They reuse the Coring Charge's and EMP Grenade's entries (icons, handling) under new names.
-	if( bPortHaveNuke ) {
-		oPortNukeInit.pszTag = "nuke grenade";
-		oPortNukeInit.pszCodeName = "Nuke Grenade";
-		oPortNukeInit.pwszDisplayName = L"Nuke Grenade";
-		oPortNukeInit.pwszLongDesc = L"A Mil prototype that never made it out of the lab. Throw it far: the blast levels everything around where it lands.";
-		oPortNukeInit.pszMeshFile = "gp_snuke";
-		oPortNukeInit.uInventoryPos_x = 2;
-		oPortNukeInit.uInventoryPos_y = 2;
-		m_paItems[m_nItemCount++].Init( &oPortNukeInit );
-	}
-	if( bPortHaveWater ) {
-		oPortWaterInit.pszTag = "water grenade";
-		oPortWaterInit.pszCodeName = "Water Grenade";
-		oPortWaterInit.pwszDisplayName = L"Water Grenade";
-		oPortWaterInit.pwszLongDesc = L"A canister of pressurized coolant. The burst soaks and shorts out nearby Mils for longer than an EMP.";
-		oPortWaterInit.pszMeshFile = "gp_swater";
-		oPortWaterInit.uInventoryPos_x = 0;
-		oPortWaterInit.uInventoryPos_y = 0;
-		m_paItems[m_nItemCount++].Init( &oPortWaterInit );
-	}
-#endif
 	//
 	////////////////////////////////////////////////////////////////////
 

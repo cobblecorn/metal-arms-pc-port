@@ -2373,7 +2373,13 @@ void CDoorEntity::CheckpointSaveSelect( s32 nCheckpoint ) {
 BOOL CDoorEntity::CheckpointSave( void )
 {
 	// save base class data
+#if FANG_WINGC
+	// Keep animation clocks, speed, pause flags and the selected mesh in the
+	// same snapshot as the lift position. The game clock rewinds on restore.
+	CMeshEntity::CheckpointSave();
+#else
 	CEntity::CheckpointSave();
+#endif
 
 	// save door class data.
 	// order must match load order below
@@ -2393,10 +2399,16 @@ BOOL CDoorEntity::CheckpointSave( void )
 // loads state for checkpoint
 void CDoorEntity::CheckpointRestore( void )
 {
+#if !FANG_WINGC
 	ActionState_e ePreState = m_eState;
+#endif
 
 	// load base class data
+#if FANG_WINGC
+	CMeshEntity::CheckpointRestore();
+#else
 	CEntity::CheckpointRestore();
+#endif
 
 	// load door class data.
 	// order must match save order above
@@ -2410,11 +2422,49 @@ void CDoorEntity::CheckpointRestore( void )
 	CFCheckPoint::LoadData( m_bLocked );
 	CFCheckPoint::LoadData( m_bStartOpen );
 
+#if FANG_WINGC
+	// Restore the saved pose even when the endpoint state did not change, or
+	// the checkpoint caught the lift moving. SnapToPos would discard its
+	// saved open/pickup timers and play arrival sounds during restoration.
+	const BOOL bMoving = m_eState == DOORSTATE_ZEROTOONE || m_eState == DOORSTATE_ONETOZERO;
+	StopDoorLoopSounds();
+	if( m_eDoorMoveType == DOORMOVETYPE_LINE ) {
+		_UpdateLineDoorPosition( NO_COLLISION_TEST );
+	}
+	if( m_eBoneMoveType == MOVETYPE_ANIMATION && UserAnim_GetCurrentInst() ) {
+		UserAnim_GetCurrentInst()->UpdateUnitTime( m_fUnitPos );
+		if( bMoving ) {
+			UserAnim_SetSpeedMult( m_eState == DOORSTATE_ZEROTOONE ? m_afAnimSpeedMult[0] : -m_afAnimSpeedMult[1] );
+		}
+		UserAnim_Pause( !bMoving );
+		ComputeMtxPalette( FALSE );
+	} else if( m_eBoneMoveType == MOVETYPE_BONETRANS ) {
+		DoBoneMovement();
+	}
+	if( m_bIsPortal && m_pPortal ) {
+		m_pPortal->SetOpenState( m_eState != DOORSTATE_ZERO );
+	}
+	if( bMoving && IsInWorld() ) {
+		const BOOL bCloseLoop = m_eUserType == USERTYPE_DOOR && m_eState == DOORSTATE_ONETOZERO;
+		FSndFx_FxHandle_t hLoop = bCloseLoop ? m_hSoundCloseLoop : m_hSoundOpenLoop;
+		if( hLoop ) {
+			CFAudioEmitter *pLoop = FSNDFX_ALLOCNPLAY3D( hLoop, &MtxToWorld()->m_vPos,
+				GetBoundingSphere_WS().m_fRadius * 5.f, 1.0f, 1.0f, FAudio_EmitterDefaultPriorityLevel, TRUE );
+			if( bCloseLoop ) m_pSoundCloseLoopEmitter = pLoop;
+			else m_pSoundOpenLoopEmitter = pLoop;
+		}
+	}
+	if( m_eUserType == USERTYPE_LIFT ) {
+		DEVPRINTF( "Port: checkpoint restored lift '%s': state=%u pos=%.3f mapped=%.3f locked=%d pickup=%.3f.\n",
+			Name(), (u32)m_eState, m_fUnitPos, m_fUnitPosMapped, m_bLocked, m_fPickupCntDn );
+	}
+#else
 	if( ( m_eState == DOORSTATE_ZERO && ePreState != DOORSTATE_ZERO ) ||
 		( m_eState == DOORSTATE_ONE && ePreState != DOORSTATE_ONE ) )
 	{
 		SnapToPos( m_eState );
 	}
+#endif
 }
 
 void CDoorEntity::StopDoorLoopSounds( void ) {

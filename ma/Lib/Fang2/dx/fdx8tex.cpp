@@ -4916,7 +4916,7 @@ BOOL fdx8tex_GetCubeMapParam(u8& nCubeView)
 //
 BOOL CFTexInst::BeginRender_FullScreen()
 {
-#if !FANG_PLATFORM_XB
+#if !FANG_PLATFORM_XB && !FANG_WINGC
 	if (GetFlags()&CFTexInst::FLAG_CUBEMAP)
 	{
 		return FALSE;
@@ -4977,6 +4977,7 @@ BOOL CFTexInst::BeginRender_FullScreen()
 		}
 		else 
 		{
+			pSurface->Release();
 			return FALSE;
 		}
 	}

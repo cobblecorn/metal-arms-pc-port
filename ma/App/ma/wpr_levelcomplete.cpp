@@ -408,6 +408,12 @@ static BOOL _SP_Work( void ) {
 	switch( _pScreenInfo->nState ) {
 	
 	case _STATE_SAVING:
+#if FANG_WINGC
+		if( coopsave_IsSessionActive() ) {
+			// campaign co-op: every player's progress goes to the co-op save
+			coopsave_SaveSession();
+		} else
+#endif
 		if( _pPlayerProfile && !_pPlayerProfile->IsVirtual() ) {
 			wpr_system_IG_SaveGame( _pPlayerProfile );
 		}

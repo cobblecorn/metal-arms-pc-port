@@ -80,11 +80,17 @@ public:
 	BOOL IsInited();
 	BOOL Reset( u32 nID );
 	
+#if FANG_WINGC
+	// Borrow a live cinematic view while retaining this camera's own controller and viewport area.
+	BOOL SetViewSource( CFCamera *pSource );
+#endif
 	const FViewport_t *GetViewport();	
 	// Returns the xfm that the camera man setup and also includes any camera shake motion too.
 	const CFXfm *GetFinalXfm();
 	// Returns the xfm that the camera man setup but doesn't include any camera shake.
 	const CFXfm *GetXfmWithoutShake() const;
+	// Script transitions must start from this controller, not a borrowed spectator view.
+	const CFXfm *GetOwnXfmWithoutShake() const { return &m_CameraData.m_Xfm; }
 	// Called once per frame, before and after the camera man's work function.
 	void PreWork();
 	void PostWork();
@@ -125,6 +131,10 @@ public:
 	void StopCamEffects( void );
 	
 private:
+#if FANG_WINGC
+	CFCamera *m_pViewSource;
+	FViewport_t *m_pViewViewport;
+#endif
 	FCameraData_t m_CameraData;	
 	
 	///////////////////////////////////////////////////////////////////////////////////

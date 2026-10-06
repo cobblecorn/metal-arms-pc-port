@@ -1,5 +1,10 @@
 # Metal Arms cut-content revival audit
 
+> **Update 2026-09-30:** no cut content is in the port any more. The Mil Sniper (2026-09-29) and the
+> Nuke/Water Grenades (2026-09-30) were removed at the user's request, with the `-cut-content` /
+> `-cut-enemies` switch; the Sniper and grapple sources are no longer built. This audit is kept as
+> research; see HANDOFF.md. Don't re-add cut content without the user asking.
+
 Status: source, local US GameCube data, entity/item/weapon registration, and static world placements have now been cross-checked against all 18 entries in The Models Resource's “Unused Content” category. This does not settle the intent of every model variant, rule out content in other platform/region builds, or exclude dynamic mission-script spawns. The game was not launched for this audit. **Sniper runtime status:** the source and port integration are present, but the opt-in spawn is not a valid enemy test yet; the latest run appeared floating and was flung away, while an earlier run asserted/froze and teardown reported active AI resources. See [`enemy-revival-map.md`](enemy-revival-map.md) for the source-backed roster and AI notes. Retail files remain local under `gamedata/` and are not copied into the repository.
 
 ## Findings at a glance

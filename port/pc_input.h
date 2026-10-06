@@ -19,16 +19,14 @@ struct PcInputState {
 void pcinput_MapSample(const PcInputState &state, bool primary,
 	FPadio_InputEmulationPlatform_e platform, FPadio_Sample_t *sample);
 
-// Which devices feed which game port (the game assigns ports to players). SHARED merges the
-// keyboard/mouse with XInput pad 1 on port 0 and puts pads 2-4 on ports 1-3, for one player
-// switching freely between devices. SEPARATE keeps the keyboard/mouse alone on port 0 and puts
-// pads 1-3 on ports 1-3, so a keyboard player and pad players are different players.
-// Set with -input-layout or MA_PORT_INPUT_LAYOUT (shared, separate).
-// AUTO (local co-op sessions only): the keyboard/mouse always feed player 1's port, and each XInput
-// pad keeps the port it was dealt until it disconnects. With a pad for every player they are dealt in
-// order (player 1 keeps the keyboard/mouse too); otherwise players 2-N get pads first and player 1
-// takes one only when the others have theirs. Pads connected later are dealt the same way, so player
-// 1 can pick up a new pad or go back to the keyboard/mouse at any time.
+// Keyboard/mouse always use game port 0. Normal SHARED solo/front-end input
+// also routes whichever connected controller is being used to that port. Explicit
+// SHARED sessions map pad N to port N; SEPARATE keeps keyboard-only port 0 and
+// maps pads 1-3 to ports 1-3. Set with -input-layout / MA_PORT_INPUT_LAYOUT.
+// AUTO uses explicit ownership for menu-created sessions: the device opening join is P1,
+// other controllers preview unused join slots and are bound when those players accept.
+// Once launched, unclaimed controllers may go to keyboard P1; joined partner devices
+// retain their identity across disconnect/reconnect. Keyboard/mouse always remain P1.
 enum PcInputLayout { PCINPUT_LAYOUT_SHARED, PCINPUT_LAYOUT_SEPARATE, PCINPUT_LAYOUT_AUTO };
 bool pcinput_ParseLayout(const char *text, PcInputLayout *layout);
 // The XInput pad index feeding a game port, or -1 for none.
@@ -37,12 +35,17 @@ int pcinput_PadForPort(PcInputLayout layout, u32 port);
 u32 pcinput_KeyboardPort();
 // The layout chosen at install.
 PcInputLayout pcinput_Layout();
-// Temporary co-op routing for a local co-op session of `players` players; does not change the
+// Temporary local multiplayer routing for a session of `players` players; does not change the
 // configured layout. Starting a session clears the AUTO pad assignment.
 void pcinput_SetLocalCoopSession(bool active, PcInputLayout layout = PCINPUT_LAYOUT_AUTO, u32 players = 2);
 // Changes an AUTO session's port count, keeping the pads already dealt to ports below it (the co-op
 // join screen deals for four; the game keeps those pads for the ports that joined).
 void pcinput_SetLocalCoopPlayers(u32 players);
+// Menu-only ownership. Player connection alone never commits a join.
+void pcinput_BeginLocalJoin(u32 ownerPort);
+void pcinput_ClaimLocalJoinPort(u32 port);
+void pcinput_KeepLocalJoinPlayers(u32 mask);
+void pcinput_FinishLocalJoin(u32 mask);
 // XInput pads connected now (probed at most every quarter second while absent), and one by XInput slot.
 u32 pcinput_ConnectedPadCount();
 bool pcinput_XInputPadConnected(u32 pad);

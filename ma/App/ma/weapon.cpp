@@ -38,6 +38,9 @@
 #include "iteminst.h"
 #include "protrack.h"
 #include "fsound.h"
+#if defined(MA_PC_INPUT)
+#include "pc_cheats.h"
+#endif
 
 
 #define _USER_PROP_FILENAME		"weapons.csv"
@@ -1032,6 +1035,13 @@ u16 CWeapon::AddToClip( u16 nRounds, BOOL bNotify ) {
 u16 CWeapon::RemoveFromClip( u16 nRounds, BOOL bNotify ) {
 	FASSERT( IsCreated() );
 
+#if defined(MA_PC_INPUT)
+	if( nRounds != INFINITE_AMMO && pccheats_InfiniteAmmo( this ) ) {
+		_AmmoMayHaveChanged( bNotify );
+		return nRounds;
+	}
+#endif
+
 	if( m_nClipAmmo == INFINITE_AMMO ) {
 		// Clip has infinite ammo...
 
@@ -1112,6 +1122,13 @@ u16 CWeapon::AddToReserve( u16 nRounds, BOOL bNotify ) {
 // Returns the number of rounds actually removed.
 u16 CWeapon::RemoveFromReserve( u16 nRounds, BOOL bNotify ) {
 	FASSERT( IsCreated() );
+
+#if defined(MA_PC_INPUT)
+	if( nRounds != INFINITE_AMMO && pccheats_InfiniteAmmo( this ) ) {
+		_AmmoMayHaveChanged( bNotify );
+		return nRounds;
+	}
+#endif
 
 	if( m_nReserveAmmo == INFINITE_AMMO ) {
 		// Reserve has infinite ammo...

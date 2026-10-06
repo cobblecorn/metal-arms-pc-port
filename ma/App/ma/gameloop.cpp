@@ -151,8 +151,6 @@ BOOL gcmesh_ExportTextureByName( cchar *pszName );	// port/gcmesh.cpp (asset too
 #include "mg_holdyourground.h"
 #include "msgbox.h"
 #include "botsnarq.h"
-#include "botsniper.h"
-#include "grapple.h"
 #include "edebris.h"
 #include "difficulty.h"
 
@@ -279,7 +277,6 @@ static const _SystemFunctions_t _aSystemFunctionArray[] = {
 	CEProjPool::InitSystem,				CEProjPool::UninitSystem,				_NAME_TO_STRING( EProjPool )
     pspool_InitSystem,					pspool_UninitSystem,					_NAME_TO_STRING( pspool )
 	tracer_InitSystem,					tracer_UninitSystem,					_NAME_TO_STRING( tracer )
-	CGrapple::InitSystem,				CGrapple::UninitSystem,					_NAME_TO_STRING( Grapple )
 //	potmark_InitSystem,					potmark_UninitSystem,					_NAME_TO_STRING( potmark )
 	CFScriptSystem::InitSystem,			CFScriptSystem::UninitSystem,			_NAME_TO_STRING( FScriptSystem )
 	CWorkable::InitSystem,				CWorkable::UninitSystem,				_NAME_TO_STRING( Workable )
@@ -367,7 +364,6 @@ static const _SystemFunctions_t _aLocalizedSystemFunctionArray[] = {
 	CItemRepository::InitSystem,		CItemRepository::UninitSystem,			_NAME_TO_STRING( ItemRepository )
 	CCollectable::InitSystem,			CCollectable::UninitSystem,				_NAME_TO_STRING( CCollectables ) // MRS, collectibles now rely on ItemRespository::InitSystem
 	CBot::InitSystem,					CBot::UninitSystem,						_NAME_TO_STRING( Bot ) 
-	CBotSniper::InitSystem,			CBotSniper::UninitSystem,				_NAME_TO_STRING( BotSniper )
 	CMenuMgr::InitSystem,				CMenuMgr::UninitSystem,					_NAME_TO_STRING( MenuMgr )
 	CPauseScreen::InitSystem,			CPauseScreen::UninitSystem,				_NAME_TO_STRING( PauseScreen )
 	CHud2::InitSystem,					CHud2::UninitSystem,					_NAME_TO_STRING( Hud2 )

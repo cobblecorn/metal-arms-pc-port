@@ -904,6 +904,10 @@ FCLASS_ALIGN_PREFIX class CFMeshInst
 		// no pretest in this function to determine this.
 		s32 IsPointInMesh( CFVec3A *pPoint, f32 fRadius = 0.f );
 
+		#if FANG_WINGC
+		// A visibility predicate is evaluated before either immediate drawing or deferred material submission.
+		FINLINE void SetDrawFilter( FMeshCFMeshInstDrawCallback_t *pCallback, void *pData ) { m_pDrawFilter = pCallback; m_pDrawFilterData = pData; }
+		#endif
 		FINLINE void SetPreDrawCallback( FMeshCFMeshInstDrawCallback_t *pFcnCallback, void *pUserData ) { m_pPreDrawCallback = pFcnCallback; m_pPreDrawData = pUserData; }
 		FINLINE void SetPostDrawCallback( FMeshCFMeshInstDrawCallback_t *pFcnCallback, void *pUserData ) { m_pPostDrawCallback = pFcnCallback; m_pPostDrawData = pUserData; }
 
@@ -979,6 +983,10 @@ FCLASS_ALIGN_PREFIX class CFMeshInst
 		u32 m_nFrameOfLastAnimateLayer;		// Snapshot of FVid_nFrameCounter of when AnimateLayers() was last called
 		u64 m_nLastAnimateLayerTicks;		// The tick count of when AnimateLayers() was last called
 
+		#if FANG_WINGC
+		FMeshCFMeshInstDrawCallback_t *m_pDrawFilter;
+		void *m_pDrawFilterData;
+		#endif
 		FMeshCFMeshInstDrawCallback_t *m_pPreDrawCallback;	// Callback that is called just prior to drawing the instance - could be called more than once per frame
 		FMeshCFMeshInstDrawCallback_t *m_pPostDrawCallback;	// Callback that is called just after drawing the instance - could be called more than once per frame
 		void *m_pPreDrawData;

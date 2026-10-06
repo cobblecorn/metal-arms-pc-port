@@ -143,7 +143,7 @@ private:
 
 	static FTexDef_t *m_apTexDef[EUK_COUNT_MORTAR];
 
-	static CFAnimCombinerConfig *m_pAnimCombinerConfig;
+	CFAnimCombinerConfig *m_pAnimCombinerConfig; // Owned by this weapon; partners have independent combiners.
 
 	_ResourceData_t m_aResourceData[EUK_COUNT_MORTAR];
 	_ResourceData_t *m_pResourceData;

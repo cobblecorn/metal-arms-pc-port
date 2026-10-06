@@ -66,13 +66,74 @@
 #include "econsole.h"
 #include "difficulty.h"
 #include "fxshockwave.h"
+#if FANG_WINGC
+#include "FScriptInst.h"
+#include "pc_script_goals.h"
+#endif
 
 #if FANG_WINGC
+struct _CoopScriptPlayerBinding {
+	CFScriptInst *pInst;
+	int nOffset;
+	cell nLastPlayer;
+};
+static _CoopScriptPlayerBinding _aCoopScriptPlayerBindings[256];
+static u32 _nCoopScriptPlayerBindings = 0;
+
+static void _CoopBindScriptPlayer( AMX *pAMX, CEntity *pPlayer ) {
+	if( !MultiplayerMgr.IsLocalCoop() ) return;
+	CFScriptInst *pInst = CFScriptSystem::m_pCurScriptInst;
+	if( !pInst || &pInst->m_oAMX != pAMX || !pInst->m_pScript ) return;
+	const int nOffset = PortScriptPlayerStoreOffset( pAMX, pInst->m_pScript->m_uDataAreaSize );
+	if( nOffset < 0 ) return;
+	for( u32 n=0; n<_nCoopScriptPlayerBindings; ++n ) {
+		if( _aCoopScriptPlayerBindings[n].pInst == pInst && _aCoopScriptPlayerBindings[n].nOffset == nOffset ) {
+			_aCoopScriptPlayerBindings[n].nLastPlayer = (cell)pPlayer;
+			return;
+		}
+	}
+	if( _nCoopScriptPlayerBindings >= 256 ) {
+		DEVPRINTF( "Co-op: script player binding limit reached.\n" );
+		return;
+	}
+	_CoopScriptPlayerBinding &Binding = _aCoopScriptPlayerBindings[_nCoopScriptPlayerBindings++];
+	Binding.pInst = pInst;
+	Binding.nOffset = nOffset;
+	Binding.nLastPlayer = (cell)pPlayer;
+}
+
+void CMAScriptTypes::RefreshCoopScriptPlayers() {
+	if( !MultiplayerMgr.IsLocalCoop() || !_nCoopScriptPlayerBindings ) return;
+	CEntity *pStory = Player_aPlayer[game_GetStoryPlayerIndex()].m_pEntityCurrent;
+	if( !pStory || !pStory->IsInWorld() || !(pStory->TypeBits() & ENTITY_BIT_BOT) ||
+		((CBot *)pStory)->IsDeadOrDying() ) return;
+	for( u32 n=0; n<_nCoopScriptPlayerBindings; ++n ) {
+		_CoopScriptPlayerBinding &Binding = _aCoopScriptPlayerBindings[n];
+		CFScriptInst *pInst = Binding.pInst;
+		if( !pInst->m_bIsInitialized || !pInst->m_pDataArea ) continue;
+		cell *pHandle = (cell *)((u8 *)pInst->m_pDataArea + Binding.nOffset);
+		BOOL bPlayerHandle = *pHandle == Binding.nLastPlayer;
+		// Checkpoint restoration may restore an earlier player handle.
+		for( s32 p=0; !bPlayerHandle && p<CPlayer::m_nPlayerCount; ++p ) {
+			bPlayerHandle = *pHandle == (cell)Player_aPlayer[p].m_pEntityOrig ||
+				*pHandle == (cell)Player_aPlayer[p].m_pEntityCurrent;
+		}
+		if( !bPlayerHandle || !*pHandle ) continue; // script repurposed the cell
+		if( *pHandle != (cell)pStory ) {
+			DEVPRINTF( "Co-op: script '%s' cached player refreshed at %d to '%s'.\n",
+				pInst->m_pScript->m_szScriptFileName, Binding.nOffset, pStory->Name() );
+			*pHandle = (cell)pStory;
+		}
+		Binding.nLastPlayer = (cell)pStory;
+	}
+}
+
 // Campaign co-op (PC): the level scripts' "the player" is the story's Glitch. CPlayer::m_pCurrent is
 // whichever player the game worked last (player 2 of 2 when scripts run), so with several players the
-// scripts use player 1. Single player is unchanged.
+// scripts prefer player 1, or a living partner when P1 is down. The actor stays
+// fixed through a cutscene even if a pending checkpoint revives P1 meanwhile.
 static CPlayer *_ScriptPlayer( void ) {
-	return ( MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 ) ? &Player_aPlayer[0] : CPlayer::m_pCurrent;
+	return MultiplayerMgr.IsLocalCoop() ? &Player_aPlayer[game_GetStoryPlayerIndex()] : CPlayer::m_pCurrent;
 }
 // Cutscenes take control from every player, not just one.
 static void _ScriptSetPlayersControl( BOOL bEnable ) {
@@ -488,6 +549,9 @@ void CMAScriptTypes::UninitSystem()
 
 BOOL CMAScriptTypes::InitLevel()
 {
+#if FANG_WINGC
+	_nCoopScriptPlayerBindings = 0;
+#endif
 	if(!CMAST_MeshEntityWrapper::InitLevel())
 	{
 		return(FALSE);
@@ -522,6 +586,9 @@ BOOL CMAScriptTypes::InitLevel()
 
 void CMAScriptTypes::UninitLevel()
 {
+#if FANG_WINGC
+	_nCoopScriptPlayerBindings = 0;
+#endif
 	CMAST_GoodieBag::UninitLevel();
 	CMAST_CamWrapper::UninitLevel();
 	CMAST_CamAnimWrapper::UninitLevel();
@@ -860,6 +927,16 @@ cell AMX_NATIVE_CALL CMAST_EntityWrapper::E_SnapToE(AMX *pAMX, cell *aParams)
 	}
 
 	pE1->Relocate_RotXlatFromUnitMtx_WS(pE2->MtxToWorld());
+#if FANG_WINGC
+	// This intro snaps the story actor from the entrance corridor into the closed arena.
+	// Place partners at the new start before the script seals its checkpoint.
+	if( MultiplayerMgr.IsLocalCoop() && Level_nLoadedIndex >= 0 &&
+		!fclib_stricmp( Level_aInfo[Level_nLoadedIndex].pszWorldResName, "WEWZzombi01" ) &&
+		pE1 == Player_aPlayer[game_GetStoryPlayerIndex()].m_pEntityCurrent &&
+		pE2->Name() && !fclib_stricmp( pE2->Name(), "glitchgoto" ) ) {
+		CPlayer::CoopPlaceStartingPartners( TRUE, game_GetStoryPlayerIndex() );
+	}
+#endif
 
 	return((cell)(0));
 }
@@ -1787,6 +1864,9 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_GetPlayer(AMX *pAMX, cell *aParams)
 	CEntity *pE = _ScriptPlayer()->m_pEntityCurrent;
 	FASSERT(pE->TypeBits() & ENTITY_BIT_BOT);
 	CBot *pBot = (CBot *)(pE);
+#if FANG_WINGC
+	_CoopBindScriptPlayer( pAMX, pE );
+#endif
 	return((cell)(pE));
 }
 
@@ -1938,6 +2018,39 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_GoalGotoPos(AMX *pAMX, cell *aParams)
 //					nWhenToStartLook,	6	//(0-100) percent of the way to goal that the bot will begin looking at hELookAt
 //					BOOL nReactions);	7	//(DISABLE_AI_REACTIONS,ENABLE_AI_REACTIONS,ENABLE_ATTACK_ON_THE_WAY)
 
+#if FANG_WINGC
+static BOOL _PortBoothEntranceGoal( CBot *pBot, CEntity *pDest, CFVec3A &rGoal )
+{
+	// rsboothdoor waits for all four guards to enter trigger_group. elite2's
+	// authored destination is only 1.57 feet inside its edge; normal waypoint
+	// radius/avoidance tolerances can finish the walk with its center outside.
+	if( !MultiplayerMgr.IsSinglePlayer() || !CBot::m_bCutscenePlaying ||
+		Level_nLoadedIndex < 0 ||
+		fclib_stricmp( Level_aInfo[Level_nLoadedIndex].pszWorldResName, "WEWRresrch2" ) ||
+		!pBot || !pDest || !pBot->IsInWorld() || pBot->IsDeadOrDying() ||
+		pBot->m_nPossessionPlayerIndex >= 0 || !pBot->Name() || !pDest->Name() ||
+		fclib_stricmp( pBot->Name(), "elite2" ) ||
+		fclib_stricmp( pDest->Name(), "elitegoto2" ) ) {
+		return FALSE;
+	}
+	CEntity *pArrival = CEntity::FindInWorld( "trigger_group" );
+	if( !pArrival || !pArrival->IsInWorld() || !pArrival->IsTripwire() || !pArrival->IsTripwireArmed() ) {
+		return FALSE;
+	}
+	// Keep the authored floor height: the trigger's center is above the floor.
+	CFVec3A Goal = rGoal;
+	Goal.x = pArrival->MtxToWorld()->m_vPos.x;
+	Goal.z = pArrival->MtxToWorld()->m_vPos.z;
+	if( !pArrival->TripwireContainsPoint( Goal ) ) {
+		return FALSE;
+	}
+	rGoal = Goal;
+	DEVPRINTF( "Port: booth guard '%s' arrival goal moved inside trigger: %.2f %.2f %.2f.\n",
+		pBot->Name(), Goal.x, Goal.y, Goal.z );
+	return TRUE;
+}
+#endif
+
 cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_GotoE(AMX *pAMX, cell *aParams)
 {
 	SCRIPT_CHECK_NUM_PARAMS( "Bot_GotoE", 7 );
@@ -1985,10 +2098,14 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_GotoE(AMX *pAMX, cell *aParams)
 
 	if (pBot->IsInWorld())
 	{
+		CFVec3A GotoLoc = pEDest->MtxToWorld()->m_vPos;
+#if FANG_WINGC
+		_PortBoothEntranceGoal( pBot, pEDest, GotoLoc );
+#endif
 		if(pELookAt)
 		{
 			ai_AssignGoal_GotoWithLookAt(pBot->AIBrain(),					//	CAIBrain* pBrain,
-										pEDest->MtxToWorld()->m_vPos,		//	const CFVec3A& GotoLoc,
+										GotoLoc,		//	const CFVec3A& GotoLoc,
 										CFVec3A::m_Null,					//	const CFVec3A& LookAtLoc
 										pELookAt->Guid(),					//	u32 uLookAtObjGUID,
 										(u8)(aParams[6]),					//	u8 uPctToLookat
@@ -1999,7 +2116,7 @@ cell AMX_NATIVE_CALL CMAST_BotWrapper::Bot_GotoE(AMX *pAMX, cell *aParams)
 		else
 		{
 			ai_AssignGoal_Goto(	pBot->AIBrain(),			   //	CAIBrain* pBrain,          
-								pEDest->MtxToWorld()->m_vPos,  //	const CFVec3A& GotoLoc,
+								GotoLoc,  //	const CFVec3A& GotoLoc,
 								2,							   //   u8 uFudgeDest
 								(u8)(aParams[4]),			   //	u8 uSpeedPct,
 								uGotoFlags);				   //   u16 uGotoFlags
@@ -3589,6 +3706,13 @@ cell AMX_NATIVE_CALL CMAST_CamWrapper::Cam_Init(AMX *pAMX, cell *aParams)
 	return((cell)(0));
 }
 
+#if FANG_WINGC
+// A script's manual camera (Cam_Activate .. Cam_Deactivate) drives player 1's view; local co-op
+// partners' cameras follow it (game.cpp). Vehicles, turrets and menus use manual cameras too, so the
+// camera type alone can't tell.
+BOOL MAScript_bPortScriptCameraActive = FALSE;
+#endif
+
 cell AMX_NATIVE_CALL CMAST_CamWrapper::Cam_Activate(AMX *pAMX, cell *aParams)
 {
 	SCRIPT_CHECK_NUM_PARAMS( "Cam_Activate", 0 );
@@ -3599,6 +3723,9 @@ cell AMX_NATIVE_CALL CMAST_CamWrapper::Cam_Activate(AMX *pAMX, cell *aParams)
 	}
 
 	gamecam_SwitchPlayerToManualCamera(GAME_CAM_PLAYER_1, m_pCamInfo);
+#if FANG_WINGC
+	MAScript_bPortScriptCameraActive = TRUE;
+#endif
 
 	return((cell)(0));
 }
@@ -3615,8 +3742,17 @@ cell AMX_NATIVE_CALL CMAST_CamWrapper::Cam_Deactivate(AMX *pAMX, cell *aParams)
 	CEntity *pE = _ScriptPlayer()->m_pEntityCurrent;
 	FASSERT(pE->TypeBits() & ENTITY_BIT_BOT);
 	CBot *pBot = (CBot *)(pE);
+#if FANG_WINGC
+	// The manual scene always occupies P1's camera slot, even when a living
+	// partner is its story actor. Restore the slot's owner, so a later P1
+	// revival cannot leave both cameras following that partner.
+	if( MultiplayerMgr.IsLocalCoop() ) pBot = (CBot *)Player_aPlayer[0].m_pEntityCurrent;
+#endif
 	gamecam_SwitchPlayerTo3rdPersonCamera(GAME_CAM_PLAYER_1, pBot);
-	
+#if FANG_WINGC
+	MAScript_bPortScriptCameraActive = FALSE;
+#endif
+
 	m_bCamInitted = FALSE;
 
 	return((cell)(0));
@@ -3765,6 +3901,8 @@ cell AMX_NATIVE_CALL CMAST_CamAnimWrapper::CamAnim_StartEx2(AMX *pAMX, cell *aPa
 
 
 void CMAST_CamAnimWrapper::CamAnim_Start( CFCamAnimInst* pCamAnimInst, BOOL bLetterBoxImmediate, BOOL bDisableAIAttackMode ) {
+	CPlayer *pStoryPlayer = _ScriptPlayer();
+	CEntity *pStoryEntity = pStoryPlayer->m_pEntityCurrent;
 
 	pCamAnimInst->Reset(); //set to the begining of the animiation...
 	m_pCamInfo->SetCamAnimInst( pCamAnimInst );
@@ -3773,10 +3911,10 @@ void CMAST_CamAnimWrapper::CamAnim_Start( CFCamAnimInst* pCamAnimInst, BOOL bLet
 
 	//go into letterbox mode... (same code as game begin cutscene)
 	_ScriptSetPlayersControl( FALSE );
-	CAIBrain* pBrain = Player_aPlayer[0].m_pEntityCurrent->AIBrain();
-	if (Player_aPlayer[0].m_pEntityCurrent ->TypeBits() & ENTITY_BIT_BOT)
+	CAIBrain* pBrain = pStoryEntity->AIBrain();
+	if (pStoryEntity->TypeBits() & ENTITY_BIT_BOT)
 	{
-		((CBot*)Player_aPlayer[0].m_pEntityCurrent)->HeadStopLook();
+		((CBot*)pStoryEntity)->HeadStopLook();
 	}
 	aibrainman_Activate(pBrain);
 	if( bDisableAIAttackMode ) { 
@@ -3812,16 +3950,23 @@ void CMAST_CamAnimWrapper::CamAnim_EndCutscene( void ) {
 		CEntity *pE = _ScriptPlayer()->m_pEntityCurrent;
 		FASSERT(pE->TypeBits() & ENTITY_BIT_BOT);
 		CBot *pBot = (CBot *)(pE);
+#if FANG_WINGC
+		// The retail camera occupies P1's slot even when a partner acts the
+		// scene. Return that slot to its owner's body when the scene ends.
+		CBot *pCameraBot = MultiplayerMgr.IsLocalCoop() ? (CBot *)Player_aPlayer[0].m_pEntityCurrent : pBot;
+		gamecam_SwitchPlayerTo3rdPersonCamera(GAME_CAM_PLAYER_1, pCameraBot);
+#else
 		gamecam_SwitchPlayerTo3rdPersonCamera(GAME_CAM_PLAYER_1, pBot);
+#endif
 
 		//disable the letterbox mode...
-		aibrainman_Deactivate(Player_aPlayer[0].m_pEntityCurrent->AIBrain());
+		aibrainman_Deactivate(pE->AIBrain());
 		_ScriptSetPlayersControl( TRUE );
-		aibrainman_ConfigurePlayerBotBrain(Player_aPlayer[0].m_pEntityCurrent->AIBrain(), 0);
+		aibrainman_ConfigurePlayerBotBrain(pE->AIBrain(), _ScriptPlayer()->m_nPlayerIndex);
 		ai_NotifyCutSceneEnd();
-		if (Player_aPlayer[0].m_pEntityCurrent ->TypeBits() & ENTITY_BIT_BOT)
+		if (pE->TypeBits() & ENTITY_BIT_BOT)
 		{
-			((CBot*)Player_aPlayer[0].m_pEntityCurrent)->HeadLook();
+			((CBot*)pE)->HeadLook();
 		}
 		CBot::EnableBotDamageGlobally();
 		CBot::SetCutscenePlaying( FALSE );
@@ -3866,6 +4011,24 @@ u32 CMAST_Timer::m_nTimerEvent = 0;
 CMAST_ETimer_t CMAST_Timer::m_ETimers[ NUM_MA_ETIMERS ];
 CMAST_ETimer_t *CMAST_Timer::m_pIconTimer;
 
+static void _ScriptTimerHud( f32 *pTimer, BOOL bSetTimer ) {
+#if FANG_WINGC
+	const BOOL bCoop = MultiplayerMgr.IsLocalCoop();
+	const s32 nCount = bCoop ? CPlayer::m_nPlayerCount : 1;
+#else
+	const BOOL bCoop = FALSE;
+	const s32 nCount = 1;
+#endif
+	for( s32 i=0; i < nCount; ++i ) {
+		CHud2 *pHud = bCoop ? &Player_aPlayer[i].m_Hud : &CPlayer::m_pCurrent->m_Hud;
+		if( bSetTimer ) {
+			pHud->SetIconTimerDraw( CHud2::ICON_TIMER_TYPE_RACE, pTimer != NULL, pTimer );
+		}
+		if( pTimer ) pHud->AddDrawFlags( CHud2::DRAW_ICON_TIMER );
+		else pHud->ClearDrawFlags( CHud2::DRAW_ICON_TIMER );
+	}
+}
+
 BOOL CMAST_Timer::InitLevel() {
 	//reset the timer variables and get the nTimerEvent
 	fang_MemSet(&m_ETimers, 0, sizeof( CMAST_ETimer_t ) * NUM_MA_ETIMERS );
@@ -3909,14 +4072,7 @@ void CMAST_Timer::Work()
 	}
 
 	// set draw flags every frame to avoid problems with draw flag save/restore on vehicle entry/exit.
-	if( m_pIconTimer )
-	{
-		CPlayer::m_pCurrent->m_Hud.AddDrawFlags( CHud2::DRAW_ICON_TIMER );
-	}
-	else
-	{
-		CPlayer::m_pCurrent->m_Hud.ClearDrawFlags( CHud2::DRAW_ICON_TIMER );
-	}
+	_ScriptTimerHud( m_pIconTimer ? &m_pIconTimer->fTimer : NULL, FALSE );
 }
 
 cell AMX_NATIVE_CALL CMAST_Timer::Timer_Set(AMX *pAMX, cell *aParams)
@@ -4006,7 +4162,7 @@ cell AMX_NATIVE_CALL CMAST_Timer::Timer_ShowIcon( AMX *pAMX, cell *aParams ) {
 			SCRIPT_ERROR("Timer_ShowIcon : ETimer has not been acquired");
 		} else {
 			m_pIconTimer = pETimer;
-			CPlayer::m_pCurrent->m_Hud.SetIconTimerDraw( CHud2::ICON_TIMER_TYPE_RACE, TRUE /*bDraw*/, &m_pIconTimer->fTimer );
+			_ScriptTimerHud( &m_pIconTimer->fTimer, TRUE );
 		}
 	} else {
 		SCRIPT_ERROR("Timer_ShowIcon : NULL ETimer handle");
@@ -4016,7 +4172,7 @@ cell AMX_NATIVE_CALL CMAST_Timer::Timer_ShowIcon( AMX *pAMX, cell *aParams ) {
 
 cell AMX_NATIVE_CALL CMAST_Timer::Timer_HideIcon( AMX *pAMX, cell *aParams ) {
 	m_pIconTimer = NULL;
-	CPlayer::m_pCurrent->m_Hud.SetIconTimerDraw( CHud2::ICON_TIMER_TYPE_RACE, FALSE );
+	_ScriptTimerHud( NULL, TRUE );
 	return((cell)(0));
 }
 
@@ -4048,11 +4204,7 @@ void CMAST_Timer::CheckPointRestore( void ) {
 	}
 
 	// restore the icon timer
-	if( m_pIconTimer ) {
-		CPlayer::m_pCurrent->m_Hud.SetIconTimerDraw( CHud2::ICON_TIMER_TYPE_RACE, TRUE /*bDraw*/, &m_pIconTimer->fTimer );
-	} else {
-		CPlayer::m_pCurrent->m_Hud.SetIconTimerDraw( CHud2::ICON_TIMER_TYPE_RACE, FALSE );
-	}
+	_ScriptTimerHud( m_pIconTimer ? &m_pIconTimer->fTimer : NULL, TRUE );
 }
 
 //
@@ -4220,7 +4372,7 @@ cell AMX_NATIVE_CALL CMAST_Hud::HUD_StartCAMsg(AMX *pAMX, cell *aParams)
 	SCRIPT_CHECK_NUM_PARAMS( "HUD_StartCAMsg", 1 );
 	FSndFx_FxHandle_t hWave = (FSndFx_FxHandle_t)(aParams[1]);
 
-	CHud2::GetCurrentHud()->TransmissionMsg_Start( CHud2::TRANSMISSION_AUTHOR_COLONEL_ALLOY, hWave, 1.0f, TRUE );
+	CHud2::TransmissionShared_Start( CHud2::TRANSMISSION_AUTHOR_COLONEL_ALLOY, hWave, 1.0f, TRUE );
 
 	return((cell)(0));
 }
@@ -4252,7 +4404,7 @@ cell AMX_NATIVE_CALL CMAST_Hud::HUD_RadioStartBank(AMX *pAMX, cell *aParams)
 
 	BOOL bAbortWithCutScene = (BOOL)aParams[4];
 
-	CHud2::GetCurrentHud()->TransmissionMsg_Start( nAuthorCode, hSound, fUnitVolume, bAbortWithCutScene );
+	CHud2::TransmissionShared_Start( nAuthorCode, hSound, fUnitVolume, bAbortWithCutScene );
 
 	return (cell)1;
 }
@@ -4285,7 +4437,7 @@ cell AMX_NATIVE_CALL CMAST_Hud::HUD_RadioStartStrm(AMX *pAMX, cell *aParams)
 
 	BOOL bAbortWithCutScene = (BOOL)aParams[4];
 
-	CHud2::GetCurrentHud()->TransmissionMsg_Start( nAuthorCode, szFileName, fUnitVolume, bAbortWithCutScene );
+	CHud2::TransmissionShared_Start( nAuthorCode, szFileName, fUnitVolume, bAbortWithCutScene );
 
 	return (cell)1;
 }
@@ -4298,7 +4450,7 @@ cell AMX_NATIVE_CALL CMAST_Hud::HUD_RadioStop(AMX *pAMX, cell *aParams)
 
 	BOOL bFadeOut = (BOOL)aParams[1];
 
-	CHud2::GetCurrentHud()->TransmissionMsg_Stop( bFadeOut );
+	CHud2::TransmissionShared_Stop( bFadeOut );
 
 	return (cell)0;
 }
@@ -4311,7 +4463,7 @@ cell AMX_NATIVE_CALL CMAST_Hud::HUD_RadioIsPlaying(AMX *pAMX, cell *aParams)
 {
 	SCRIPT_CHECK_NUM_PARAMS( "HUD_RadioIsPlaying", 0 );
 
-	return (cell)!CHud2::GetCurrentHud()->TransmissionMsg_IsDonePlaying();
+	return (cell)!(MultiplayerMgr.IsLocalCoop() ? Player_aPlayer[0].m_Hud.TransmissionMsg_IsDonePlaying() : CHud2::GetCurrentHud()->TransmissionMsg_IsDonePlaying());
 }
 
 

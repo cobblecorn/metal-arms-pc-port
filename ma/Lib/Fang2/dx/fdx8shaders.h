@@ -73,6 +73,8 @@
 #include "CompiledVShaderfdx8Directional1_Specular.h"
 #include "CompiledVShaderfdx8PerPixelSpot1_Spec_Bump.h"
 //---------Special FX Shaders-----------//
+#include "CompiledPShaderfdx8CubeReflect.h"
+#include "CompiledPShaderfdx8CubeReflect_VtxAlpha.h"
 #include "CompiledVShaderfdx8PlanarRefl.h"
 #include "CompiledVShaderfdx8PlanarReflMesh.h"
 //
@@ -672,6 +674,9 @@ typedef enum
 	VSHADER_ENV_POINT2_DIR1_EXTSTREAM,
 	VSHADER_ENV_POINT4_DIR1_EXTSTREAM,
 		
+#if FANG_PLATFORM_WIN
+	VSHADER_LIQUID_FALL_REFLECT,
+#endif
 	VSHADER_NUM
 } _VERTEX_SHADER_LIST_e;
 
@@ -685,6 +690,19 @@ u32 _aDecl_POS_TEX4[] =
 	D3DVSD_REG(4, D3DVSDT_FLOAT2),    //TC3(uv)
 	D3DVSD_END()
 };
+
+#if FANG_PLATFORM_WIN
+// LiquidFallVtx has three UV pairs (36 bytes); pool quads have four (44 bytes).
+u32 _aDecl_POS_TEX3[] =
+{
+	D3DVSD_STREAM(0),
+	D3DVSD_REG(0, D3DVSDT_FLOAT3),
+	D3DVSD_REG(1, D3DVSDT_FLOAT2),
+	D3DVSD_REG(2, D3DVSDT_FLOAT2),
+	D3DVSD_REG(3, D3DVSDT_FLOAT2),
+	D3DVSD_END()
+};
+#endif
 
 u32 _aDecl_POS_NRML_CLR_TEX1[] =
 {
@@ -997,6 +1015,9 @@ u32 *_apVShaderDecl[] =
 	_aDecl_POS_NRML_CLR_LMCLR,
 	_aDecl_POS_NRML_CLR_LMCLR,
 
+#if FANG_PLATFORM_WIN
+	_aDecl_POS_TEX3,
+#endif
 	NULL
 };
 
@@ -1083,6 +1104,7 @@ u32 *_apVShaderFunc[] =
 	(u32*)dwFdx8oBase_Add_rbENV_P1D1VertexShader,
 	(u32*)dwFdx8oBase_Add_rbENV_P2D1VertexShader,
 	(u32*)dwFdx8oBase_Add_rbENV_P4D1VertexShader,
+	(u32*)dwFdx8PlanarReflVertexShader,
 	NULL
 };
 #else
@@ -1238,7 +1260,8 @@ u32 *_apPShaderFunc[] =
 	(u32*)dwFdx8Molten1LayerEMBMPixelShader,
 	(u32*)dwFdx8Molten2LayerEMBMPixelShader,
 	(u32*)dwFdx8Molten2LayerEMBMGlowPixelShader,
-	(u32*)dwFdx8Molten2LayerEMBMGlowPixelShader,
+	(u32*)dwFdx8CubeReflectPixelShader,
+	(u32*)dwFdx8CubeReflect_VtxAlphaPixelShader,
 	NULL
 };
 #else

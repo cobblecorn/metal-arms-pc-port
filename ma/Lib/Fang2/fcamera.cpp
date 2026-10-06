@@ -668,9 +668,8 @@ void fcamera_UninitSystem( void ) {
 // gets the number of cameras that the system manages.
 u32 fcamera_GetCameraCount( void ) {
 	
-	FASSERT( _bSystemInited );
-	
-	return _nNumCameras;
+	// Cleanup can query before camera initialization has completed.
+	return _bSystemInited ? _nNumCameras : 0;
 }
 
 // gets the last camera index for use in render target callbacks.
@@ -889,6 +888,10 @@ void fcamera_Draw( void ) {
 // Start of CFCamera functions 
 
 CFCamera::CFCamera() {
+#if FANG_WINGC
+	m_pViewSource = NULL;
+	m_pViewViewport = NULL;
+#endif
 	m_CameraData.m_bInited = FALSE;
 	m_CameraData.m_nID = 0;
 	fang_MemZero( m_CameraData.m_szName, FCAMERA_MAX_NAME_LEN+1 );
@@ -927,6 +930,10 @@ BOOL CFCamera::Init( u32 nID ) {
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	m_pViewViewport = fviewport_Create();
+	if( !m_pViewViewport ) return FALSE;
+#endif
 	m_CameraData.m_bInited = TRUE;
 
 	Reset( nID );
@@ -942,6 +949,9 @@ BOOL CFCamera::IsInited() {
 }
 
 BOOL CFCamera::Reset( u32 nID ) {
+#if FANG_WINGC
+	m_pViewSource = NULL;
+#endif
 
 	FASSERT( m_CameraData.m_bInited );
 
@@ -965,10 +975,31 @@ BOOL CFCamera::Reset( u32 nID ) {
 	return TRUE;
 }
 
+#if FANG_WINGC
+BOOL CFCamera::SetViewSource( CFCamera *pSource ) {
+	// Reject self/cyclic links; a source change takes effect in the same render frame.
+	for( CFCamera *p = pSource; p; p = p->m_pViewSource ) if( p == this ) return FALSE;
+	if( pSource && (!m_CameraData.m_bInited || !pSource->m_CameraData.m_bInited || !m_pViewViewport) ) return FALSE;
+	m_pViewSource = pSource;
+	return TRUE;
+}
+#endif
+
 const FViewport_t *CFCamera::GetViewport() {
 
 	FASSERT( m_CameraData.m_bInited );
 
+#if FANG_WINGC
+	if( m_pViewSource ) {
+		const FViewport_t *pSource = m_pViewSource->GetViewport();
+		const FViewport_t *pOwn = m_CameraData.m_pViewport;
+		// Preserve cinematic vertical framing and adapt horizontal coverage to this split's aspect.
+		const f32 fHalfX = fmath_Atan( pSource->fTanHalfFOVY * (f32)pOwn->nWidth, (f32)pOwn->nHeight );
+		fviewport_InitPersp( m_pViewViewport, fHalfX, pSource->fHalfFOVY, pSource->fNearZ, pSource->fFarZ,
+			pOwn->nScreenLeftX, pOwn->nScreenTopY, pOwn->nWidth, pOwn->nHeight, pOwn->pTexDef );
+		return m_pViewViewport;
+	}
+#endif
 	return m_CameraData.m_pViewport;
 }
 
@@ -976,6 +1007,9 @@ const CFXfm *CFCamera::GetFinalXfm() {
 
 	FASSERT( m_CameraData.m_bInited );
 
+#if FANG_WINGC
+	if( m_pViewSource ) return m_pViewSource->GetFinalXfm();
+#endif
 	return &m_FinalXfm;
 }
 
@@ -983,6 +1017,9 @@ const CFXfm *CFCamera::GetXfmWithoutShake() const {
 
 	FASSERT( m_CameraData.m_bInited );
 
+#if FANG_WINGC
+	if( m_pViewSource ) return m_pViewSource->GetXfmWithoutShake();
+#endif
 	return &m_CameraData.m_Xfm;
 }
 
@@ -1046,9 +1083,9 @@ void CFCamera::SetupCameraAndViewport() {
 	FASSERT( m_CameraData.m_bInited );
 	_nLastCamSetup = _nLastCamIdx;
 
-	fviewport_SetActive( m_CameraData.m_pViewport );	
+	fviewport_SetActive( (FViewport_t *)GetViewport() );
 
-	m_FinalXfm.InitStackWithView();	
+	GetFinalXfm()->InitStackWithView();
 }
 
 // Move the camera viewport to the new location
@@ -1092,6 +1129,9 @@ const CFVec3 *CFCamera::GetPos() {
 
 	FASSERT( m_CameraData.m_bInited );
 
+#if FANG_WINGC
+	if( m_pViewSource ) return m_pViewSource->GetPos();
+#endif
 	return &m_CameraData.m_Xfm.m_MtxR.m_vPos.v3;
 }
 

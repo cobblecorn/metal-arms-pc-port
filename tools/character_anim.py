@@ -167,7 +167,7 @@ def parse_animation(resource: Union[bytes, bytearray, memoryview],
     orient_alignment = 2 if flags & COMP_ORIENTATION else 4
 
     tracks: List[Dict[str, Any]] = []
-    array_ranges: List[Tuple[int, int, str]] = []
+    array_ranges: List[Tuple[int, int, str, int]] = []
 
     for bone_index in range(bone_count):
         bone_pos = bone_start + bone_index * BONE_SIZE
@@ -194,8 +194,8 @@ def parse_animation(resource: Union[bytes, bytearray, memoryview],
             data_range = _range(data, data_offsets[kind], count, data_strides[kind],
                                 f"{label} data", min_offset=bone_end, min_count=2,
                                 alignment=data_alignments[kind])
-            array_ranges.append((*time_range, f"{label} times"))
-            array_ranges.append((*data_range, f"{label} data"))
+            array_ranges.append((*time_range, f"{label} times", time_stride))
+            array_ranges.append((*data_range, f"{label} data", data_alignments[kind]))
 
         s_times = _decode_time_values(data, s_time_offset, s_count, flags, duration,
                                       f"bone {bone_name} scale times")
@@ -218,15 +218,15 @@ def parse_animation(resource: Union[bytes, bytearray, memoryview],
             "rotation": [{"time": time, "value_xyzw": value} for time, value in zip(o_times, o_values)],
         })
 
-    # Match the game's loader's conservative structural checks: key arrays are
-    # independent and may not overlap one another or the fixed bone table.
-    array_ranges.sort(key=lambda item: (item[0], item[1]))
-    for previous, current in zip(array_ranges, array_ranges[1:]):
-        if previous[1] > current[0]:
-            raise AnimationFormatError(
-                f"overlapping arrays: {previous[2]} [{previous[0]}, {previous[1]}) and "
-                f"{current[2]} [{current[0]}, {current[1]})"
-            )
+    # Retail arrays can share complete or partial ranges. Only incompatible
+    # scalar widths are unsafe to convert; the runtime swaps shared bytes once.
+    for i, previous in enumerate(array_ranges):
+        for current in array_ranges[i + 1:]:
+            if (previous[0] < current[1] and current[0] < previous[1]
+                    and previous[3] != current[3]):
+                raise AnimationFormatError(
+                    f"incompatible overlapping arrays: {previous[2]} and {current[2]}"
+                )
 
     if header_name:
         animation_name = header_name

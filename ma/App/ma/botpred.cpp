@@ -1508,6 +1508,13 @@ void CBotPred::_ExhaustWork( void ) {
 
 void CBotPred::_SoundWork( void ) {
 	FASSERT( !IsDeadOrDying() );
+	if( !m_pHoverAudioEmitter ) {
+		m_pHoverAudioEmitter = AllocAndPlaySound( m_BotInfo_Pred.pSoundGroupHover );
+#if FANG_WINGC
+		if( m_pHoverAudioEmitter ) DEVPRINTF( "Port: jet '%s' hover loop allocated: 3d=%d player=%d.\n",
+			Name() ? Name() : "unnamed", m_pHoverAudioEmitter->Is3D(), m_nPossessionPlayerIndex );
+#endif
+	}
 
 	if( m_pHoverAudioEmitter ) {
 		f32 fUnitPowerLevel = m_XlatStickUnitVecXZ_MS.Mag();
@@ -1522,8 +1529,13 @@ void CBotPred::_SoundWork( void ) {
 			m_pHoverAudioEmitter->SetPosition( &m_MountPos_WS );
 		}
 		
-	} else {
-		m_pHoverAudioEmitter = AllocAndPlaySound( m_BotInfo_Pred.pSoundGroupHover );
+	}
+	if( !m_pWindAudioEmitter ) {
+		m_pWindAudioEmitter = AllocAndPlaySound( m_BotInfo_Pred.pSoundGroupWind );
+#if FANG_WINGC
+		if( m_pWindAudioEmitter ) DEVPRINTF( "Port: jet '%s' wind loop allocated: 3d=%d player=%d.\n",
+			Name() ? Name() : "unnamed", m_pWindAudioEmitter->Is3D(), m_nPossessionPlayerIndex );
+#endif
 	}
 
 	if( m_pWindAudioEmitter ) {
@@ -1544,8 +1556,6 @@ void CBotPred::_SoundWork( void ) {
 		if( m_pWindAudioEmitter->Is3D() ) {
 			m_pWindAudioEmitter->SetPosition( &m_MountPos_WS );
 		}
-	} else {
-		m_pWindAudioEmitter = AllocAndPlaySound( m_BotInfo_Pred.pSoundGroupWind );
 	}
 }
 

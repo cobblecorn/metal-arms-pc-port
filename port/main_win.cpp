@@ -27,7 +27,6 @@
 //   -mission <name> load a registered single-player world with its mission data
 //   -coop <2-4>     experimental local campaign co-op player slots; requires -mission; shared or separate inputs
 //   -level <name>    launch a world directly as a generic debug level
-//   -spawn-sniper-test spawn one hostile Mil Sniper near the player start in the loaded mission
 //   -world-only <name> load a world resource, then exit before game/audio setup
 //   -export-character-meshes <file> load one MESH resource name per line and write rigged model data
 //   -log <file>     write the engine's debug output here (default: ma_port.log)
@@ -41,14 +40,13 @@
 //                   unattended tests with -shots; they work without the window having focus. "g8:0x1B"
 //                   counts from the first gameplay frame instead (pauses a mission 8 s into play)
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
-//   -save-dir <dir> where player profiles are saved (default: %APPDATA%\Metal Arms PC Port\Saves)
+//   -save-dir <dir> the save root: Profiles and Co-op folders and settings.ini (default: %APPDATA%\MAGITS)
 //   -start-at X,Y,Z[,YAW] test/play aid: move player 1 to this world position (yaw in degrees) once play begins
 //   -sfx-db <dB>    trim for sound effects other than dialogue; default -11, 0 = retail mix
 //   -aniso <n>      anisotropic texture filtering level (default 16, capped by the GPU; 1 = off)
 //   -test-win-level <s> test aid: complete the loaded level s seconds in (reaches the results screen)
-//   -test-give <item>   test aid: give player 1 a weapon/throwable (e.g. "nuke grenade") and select it
-//   -cut-enemies on|off recovered cut enemies in levels (default on: the Mil Sniper in its retail sniper roles)
-//   -snipers-every <n> also turn about 1 in n world Grunts into Mil Snipers (default 8; 0 = only retail roles)
+//   -test-give <item>   test aid: give player 1 a weapon/throwable (e.g. "coring charge") and select it
+//   -coop-hold on|off  co-op tripwire events wait for every player (default on; off = test aid)
 //   -player-sfx-db <dB> further trim for the player's own 2D sounds (weapons, footsteps); default -6, 0 = retail mix
 //   -instance-label <name> add a short label to the window title (useful for parallel test windows)
 
@@ -97,8 +95,6 @@ static bool _bStartAt = false;
 static float _afStartAt[4];				// -start-at X,Y,Z[,YAW degrees]
 static float _fTestWinLevelSecs = 0.0f;	// -test-win-level S
 static char _szTestGive[64];				// -test-give ITEM: give player 1 this weapon/throwable and select it
-static int _nCutEnemies = 1;				// -cut-enemies on|off: recovered cut enemies (the Mil Sniper) in levels
-static int _nSnipersEvery = 8;				// -snipers-every N: also turn about 1 in N world Grunts into Snipers (0 = only retail roles)
 static int _nReqWidth = 1280, _nReqHeight = 960;
 static bool _bFullscreen = false;
 static bool _bNoAudio = false;
@@ -441,17 +437,6 @@ extern "C" int port_GetStartAt( float *pafXYZYaw )
 	return 1;
 }
 
-// -cut-enemies / -snipers-every: entity.cpp asks which world Grunts become recovered Mil Snipers.
-extern "C" int port_GetCutEnemies( void )
-{
-	return _nCutEnemies;
-}
-
-extern "C" int port_GetSnipersEvery( void )
-{
-	return _nCutEnemies ? _nSnipersEvery : 0;
-}
-
 // -test-give: player.cpp gives player 1 this item once play begins (NULL = none).
 extern "C" const char *port_GetTestGive( void )
 {
@@ -632,7 +617,7 @@ static void _GameloopMinimize( void )
 
 static void _Usage( void )
 {
-	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id> [-discord-large-image <asset-key-or-url>] [-discord-large-text <tooltip>]] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> [-coop 2-4] | -world-only <world-resource> | -export-character-meshes <list-file>] [-spawn-sniper-test] [-log <file>] [-asset-log <file>] [-instance-label <name>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-save-dir <dir>] [-start-at X,Y,Z[,YAW]] [-sfx-db <dB>] [-player-sfx-db <dB>]\n" );
+	_Log( "Usage: ma_port [-data <dir>] [-mst <file>] [-res WxH] [-fullscreen] [-no-audio] [-console] [-port-diag] [-discord-app-id <id> [-discord-large-image <asset-key-or-url>] [-discord-large-text <tooltip>]] [-debug-info] [-dev-menu] [-level <world-resource> | -mission <world-resource> [-coop 2-4] | -world-only <world-resource> | -export-character-meshes <list-file>] [-log <file>] [-asset-log <file>] [-instance-label <name>] [-shots <dir> [-shot-every <frames>]] [-mouse-sensitivity <n>] [-aim-assist auto|on|off] [-input-layout shared|separate] [-button-prompts auto|keyboard|xbox|playstation] [-save-dir <dir>] [-start-at X,Y,Z[,YAW]] [-sfx-db <dB>] [-player-sfx-db <dB>]\n" );
 }
 
 static bool _DataDirHasMaster( const char *pszDataDir )
@@ -736,7 +721,6 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-discord-large-image" ) && bHasValue ) strncpy( _szDiscordLargeImage, argv[++i], sizeof(_szDiscordLargeImage) - 1 );
 		else if( !_stricmp( pszArg, "-discord-large-text" ) && bHasValue ) strncpy( _szDiscordLargeText, argv[++i], sizeof(_szDiscordLargeText) - 1 );
 		else if( !_stricmp( pszArg, "-dev-menu" ) )					_bDevMenu = true;
-		else if( !_stricmp( pszArg, "-spawn-sniper-test" ) )		SetEnvironmentVariableA( "MA_PORT_SPAWN_SNIPER_TEST", "1" );
 		else if( !_stricmp( pszArg, "-mouse-sensitivity" ) && bHasValue ) {
 			char *pEnd;
 			const char *pszValue = argv[++i];
@@ -780,8 +764,7 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-aniso" ) && bHasValue )			SetEnvironmentVariableA( "MA_PORT_ANISO", argv[++i] );		// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-test-win-level" ) && bHasValue )	_fTestWinLevelSecs = (float)atof( argv[++i] );				// read by gamepad.cpp
 		else if( !_stricmp( pszArg, "-test-give" ) && bHasValue )		strncpy( _szTestGive, argv[++i], sizeof(_szTestGive) - 1 );	// read by player.cpp
-		else if( !_stricmp( pszArg, "-cut-enemies" ) && bHasValue )		_nCutEnemies = _stricmp( argv[++i], "off" ) != 0;			// read by entity.cpp
-		else if( !_stricmp( pszArg, "-snipers-every" ) && bHasValue )	_nSnipersEvery = atoi( argv[++i] );							// read by entity.cpp
+		else if( !_stricmp( pszArg, "-coop-hold" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_COOP_HOLD", _stricmp( argv[++i], "off" ) ? "1" : "0" );	// read by entity.cpp
 		else if( !_stricmp( pszArg, "-start-at" ) && bHasValue )
 		{
 			_afStartAt[3] = 0.0f;

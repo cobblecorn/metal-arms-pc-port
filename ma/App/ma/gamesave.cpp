@@ -62,6 +62,7 @@
 #include "ZombieBossGame.h"
 #include "esphere.h"
 #include "MultiplayerMgr.h"
+#include "PauseScreen.h"
 
 #define _CHECKPOINT_TEXT_TIME		( 3.0f )	// time in seconds to display checpoint saved/restored text
 
@@ -79,6 +80,9 @@ static BOOL _bSaveCheckpoint;
 static BOOL _bRestoreCheckpoint;
 static s32 _nCheckpoint;
 static BOOL _bPrintText;
+#if FANG_WINGC
+static BOOL _bCheckpointReviveDeferred;
+#endif
 static CFMtx43A _mtxCheckpointXform;
 static f32 _fCheckpointRadius;
 
@@ -570,6 +574,15 @@ static BOOL _checkpoint_Restore( s32 nCheckpoint, BOOL bPrintText )
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	// Arrivals belong to the current attempt. Keeping them across a team restore
+	// could release a level exit before both players traversed the restored route.
+	CEntity::CoopTripwireReset();
+#endif
+#if defined(MA_PC_INPUT)
+	game_PcResetWeaponSelect();
+#endif
+
 	// set player back to the original bot before calling restore.
 	FASSERT( CPlayer::m_nPlayerCount <= MAX_PLAYERS );
 	for( nIndex = 0; nIndex < CPlayer::m_nPlayerCount; nIndex++ )
@@ -763,6 +776,9 @@ BOOL checkpoint_LevelInit( void )
 
 	_bSaveCheckpoint = FALSE;
 	_bRestoreCheckpoint = FALSE;
+#if FANG_WINGC
+	_bCheckpointReviveDeferred = FALSE;
+#endif
 	_fCheckpointRadius = -1.0f;
 	return TRUE;
 }
@@ -792,21 +808,34 @@ void checkpoint_SetUnsaved( s32 nCheckpoint )
 // requested by checkpoint_Save() and checkpoint_Restore() functions
 void checkpoint_Work( void )
 {
-	if( _bSaveCheckpoint )
+	if( _bSaveCheckpoint && !_bRestoreCheckpoint )
 	{
-		_bSaveCheckpoint = FALSE;
 #if FANG_WINGC
-		// Local co-op: downed players come back at a mid-level checkpoint, before it is saved so
-		// the saved state has them standing.
-		if( _nCheckpoint > 0 ) {
-			CPlayer::CoopReviveForCheckpoint();
+		// A trigger may fire while the surviving player is airborne. Do not save a corpse position;
+		// keep this request pending until every downed partner can revive on the playable route.
+		if( _nCheckpoint > 0 && !CPlayer::CoopReviveForCheckpoint() ) {
+			if( !_bCheckpointReviveDeferred ) {
+				DEVPRINTF( "Co-op: checkpoint slot=%d pending safe partner revival.\n", _nCheckpoint );
+				_bCheckpointReviveDeferred = TRUE;
+			}
+			return;
 		}
+		if( _bCheckpointReviveDeferred ) {
+			DEVPRINTF( "Co-op: checkpoint slot=%d revival ready; saving.\n", _nCheckpoint );
+		}
+		_bCheckpointReviveDeferred = FALSE;
 #endif
+		_bSaveCheckpoint = FALSE;
 		_checkpoint_Save( _nCheckpoint, _bPrintText );
 	}
 	else if( _bRestoreCheckpoint )
 	{
+		// A team wipe/restart takes precedence over a checkpoint still waiting for safe placement.
+		_bSaveCheckpoint = FALSE;
 		_bRestoreCheckpoint = FALSE;
+#if FANG_WINGC
+		_bCheckpointReviveDeferred = FALSE;
+#endif
 		_checkpoint_Restore( _nCheckpoint, _bPrintText );
 
 		////////////// If a radius has been specified, we need to reorient the user and 
@@ -825,6 +854,9 @@ void checkpoint_Work( void )
 // Save will actually occur at end of current frame.
 BOOL checkpoint_Save( s32 nCheckpoint, BOOL bPrintText, CESphere* pESphere )
 {
+#if FANG_WINGC
+	DEVPRINTF( "Port: checkpoint save requested: slot=%d notify=%d sphere=%d.\n", nCheckpoint, bPrintText, pESphere != NULL );
+#endif
 	_bSaveCheckpoint = TRUE;
 	_nCheckpoint = nCheckpoint;
 	_bPrintText = bPrintText;
@@ -847,8 +879,22 @@ BOOL checkpoint_Save( s32 nCheckpoint, BOOL bPrintText, CESphere* pESphere )
 //------------------------------------------------------------------------------
 // Global function to initiate a checkpoint restore.
 // Restore will actually occur at end of current frame.
-BOOL checkpoint_Restore( s32 nCheckpoint, BOOL bPrintText )
+BOOL checkpoint_Restore( s32 nCheckpoint, BOOL bPrintText, cchar *pszReason )
 {
+#if FANG_WINGC
+	DEVPRINTF( "Port: checkpoint restore requested: slot=%d saved=%d notify=%d reason='%s' pause=%d current=%d.\n",
+		nCheckpoint, checkpoint_Saved( nCheckpoint ), bPrintText, pszReason ? pszReason : "unspecified",
+		CPauseScreen::IsActive(), CPlayer::m_nCurrent );
+	for( s32 i=0; i<CPlayer::m_nPlayerCount; ++i ) {
+		CEntity *pEntity = Player_aPlayer[i].m_pEntityCurrent;
+		CBot *pBot = pEntity && (pEntity->TypeBits() & ENTITY_BIT_BOT) ? (CBot *)pEntity : NULL;
+		const CFVec3 *pPos = pBot && pBot->m_pWorldMesh ? &pBot->MtxToWorld()->m_vPos.v3 : NULL;
+		DEVPRINTF( "Port: checkpoint restore player=%d entity='%s' world=%d dead=%d air=%d pos=(%.1f,%.1f,%.1f).\n",
+			i+1, pEntity && pEntity->Name() ? pEntity->Name() : "none", pEntity ? pEntity->IsInWorld() : FALSE,
+			pBot ? pBot->IsDeadOrDying() : FALSE, pBot ? pBot->IsInAir() : FALSE,
+			pPos ? pPos->x : 0.f, pPos ? pPos->y : 0.f, pPos ? pPos->z : 0.f );
+	}
+#endif
 	_bRestoreCheckpoint = TRUE;
 	_nCheckpoint = nCheckpoint;
 	_bPrintText = bPrintText;
@@ -1226,8 +1272,13 @@ BOOL CPlayerProfile::HasVisitedBarterDroidsBefore() {
 
 // mark this player as having seen the barter droids before
 void CPlayerProfile::VisitedBarterDroids() {
-	
+
+#if FANG_WINGC
+	// co-op session profiles are virtual but saved by coopsave_SaveSession()
+	if( !IsVirtual() || coopsave_IsSessionActive() ) {
+#else
 	if( !IsVirtual() ) {
+#endif
 		// update the flag
 		m_Data.nFlags |= GAMESAVE_PROFILE_FLAGS_VISITED_BARTER_DRIODS;
 	}
@@ -1291,6 +1342,306 @@ CPlayerProfile *playerprofile_Get( s32 nPlayer ) {
 
 	return _apPlayerProfile[nPlayer];
 }
+
+#if FANG_WINGC
+//------------------------------------------------------------------------------
+// PC local co-op campaign saves (see gamesave.h)
+
+#define _COOPSAVE_SIGNATURE		( 0x434F4F50 )	// 'COOP'
+#define _COOPSAVE_VERSION		( 1 )
+#define _COOPSAVE_MAX_RECORDS	( 8 )			// player 1 and up to 7 partners
+
+// one player of the campaign
+typedef struct {
+	wchar wszName[FSTORAGE_MAX_NAME_LEN];	// profile name, empty when the record is unused
+	u32 nLastSave;							// the campaign's nSaveCount when this player last saved
+	GameSave_ProfileData_t Data;			// level progress and per-level inventory
+} _CoopRecord_t;
+
+// the whole file
+typedef struct {
+	u32 nSignature;
+	u32 nVersion;
+	u32 nRecordBytes;		// sizeof( _CoopRecord_t ): a different profile layout is not read
+	u32 nCRC;				// of everything after this field
+	u32 nSaveCount;
+	u32 nNumRecords;		// records in use, record 0 is player 1's
+	_CoopRecord_t aRecords[_COOPSAVE_MAX_RECORDS];
+} _CoopFile_t;
+
+#define _COOPSAVE_CRC_OFFSET	( 4 * sizeof( u32 ) )
+
+static _CoopFile_t _CoopFile;
+static _CoopRecord_t _aCoopScratch[MAX_PLAYERS];		// players without a saved profile, not kept
+static CPlayerProfile _CoopScratchProfile;				// for ResetToBeginning()
+static wchar _wszCoopOwner[FSTORAGE_MAX_NAME_LEN];
+static BOOL _bCoopCanSave = FALSE;
+static BOOL _bCoopSession = FALSE;
+static BOOL _bCoopSensitivityDirty = FALSE;
+static u32 _nCoopSessionPlayers = 0;
+static _CoopRecord_t *_apCoopSessionRecord[MAX_PLAYERS];
+static CPlayerProfile *_apCoopSessionProfile[MAX_PLAYERS];
+
+static u32 _CoopFileCRC( void ) {
+	return fmath_Crc32( 0, (u8 *)&_CoopFile + _COOPSAVE_CRC_OFFSET, sizeof( _CoopFile_t ) - _COOPSAVE_CRC_OFFSET );
+}
+
+// A new profile's progress, keeping pData's settings.
+static void _CoopResetProgress( GameSave_ProfileData_t *pData ) {
+	_CoopScratchProfile.m_Data = *pData;
+	_CoopScratchProfile.ResetToBeginning();
+	*pData = _CoopScratchProfile.m_Data;
+}
+
+static void _CoopClearStats( GameSave_ProfileData_t *pData ) {
+	for( u32 i=0; i < LEVEL_SINGLE_PLAYER_COUNT; i++ ) {
+		pData->aLevelProgress[i].fTimeToComplete = 0.0f;
+		pData->aLevelProgress[i].nSecretChipsCollected = 0;
+		pData->aLevelProgress[i].nBonusSecretChipEarned = 0;
+		pData->aLevelProgress[i].nWashersCollected = 0;
+		pData->aLevelProgress[i].nEnemiesKilled = 0;
+	}
+}
+
+BOOL coopsave_Load( cwchar *pwszOwner ) {
+	coopsave_EndSession();
+
+	_bCoopCanSave = ( pwszOwner && pwszOwner[0] );
+	_wszCoopOwner[0] = 0;
+	if( _bCoopCanSave ) {
+		fclib_wcsncpy( _wszCoopOwner, pwszOwner, FSTORAGE_MAX_NAME_LEN - 1 );
+		_wszCoopOwner[FSTORAGE_MAX_NAME_LEN - 1] = 0;
+
+		u32 nBytes = 0;
+		if( fstorage_PcCoopRead( _wszCoopOwner, &_CoopFile, sizeof( _CoopFile_t ), &nBytes ) ) {
+			if( nBytes == sizeof( _CoopFile_t ) &&
+				_CoopFile.nSignature == _COOPSAVE_SIGNATURE &&
+				_CoopFile.nVersion == _COOPSAVE_VERSION &&
+				_CoopFile.nRecordBytes == sizeof( _CoopRecord_t ) &&
+				_CoopFile.nNumRecords >= 1 && _CoopFile.nNumRecords <= _COOPSAVE_MAX_RECORDS &&
+				_CoopFile.nCRC == _CoopFileCRC() ) {
+				DEVPRINTF( "Co-op save: loaded '%ls' (level %u, %u players on record).\n",
+					_wszCoopOwner, (u32)_CoopFile.aRecords[0].Data.nCurrentLevel, _CoopFile.nNumRecords );
+				return TRUE;
+			}
+			DEVPRINTF( "Co-op save: '%ls' is from another build or damaged; starting a new campaign.\n", _wszCoopOwner );
+		}
+	}
+
+	// a new campaign: player 1's record only
+	fang_MemZero( &_CoopFile, sizeof( _CoopFile_t ) );
+	_CoopFile.nSignature = _COOPSAVE_SIGNATURE;
+	_CoopFile.nVersion = _COOPSAVE_VERSION;
+	_CoopFile.nRecordBytes = sizeof( _CoopRecord_t );
+	_CoopFile.nNumRecords = 1;
+	fclib_wcsncpy( _CoopFile.aRecords[0].wszName, _wszCoopOwner, FSTORAGE_MAX_NAME_LEN - 1 );
+	_CoopScratchProfile.InitNewProfile( FALSE );
+	_CoopFile.aRecords[0].Data = _CoopScratchProfile.m_Data;
+	if( _bCoopCanSave ) {
+		DEVPRINTF( "Co-op save: no campaign saved for '%ls' yet.\n", _wszCoopOwner );
+	} else {
+		DEVPRINTF( "Co-op save: player 1 has no saved profile; progress is not saved.\n" );
+	}
+	return FALSE;
+}
+
+BOOL coopsave_CanSave( void ) {
+	return _bCoopCanSave;
+}
+
+GameSave_ProfileData_t *coopsave_GetOwnerData( void ) {
+	return &_CoopFile.aRecords[0].Data;
+}
+
+void coopsave_BeginSession( const CPlayerProfile *const *papPersonal, CPlayerProfile *const *papSession, u32 nPlayers, BOOL bNewGame ) {
+	u32 i, p;
+	BOOL abClaimed[_COOPSAVE_MAX_RECORDS];
+
+	FASSERT( nPlayers >= 1 && nPlayers <= MAX_PLAYERS );
+
+	_CoopRecord_t *pOwner = &_CoopFile.aRecords[0];
+	pOwner->Data.nFlags &= ~GAMESAVE_PROFILE_FLAGS_VIRTUAL_PROFILE;
+	if( bNewGame ) {
+		// a new game for the whole team
+		for( i=1; i < _CoopFile.nNumRecords; i++ ) {
+			_CoopResetProgress( &_CoopFile.aRecords[i].Data );
+		}
+	}
+	for( i=0; i < _COOPSAVE_MAX_RECORDS; i++ ) {
+		abClaimed[i] = FALSE;
+	}
+
+	for( p=0; p < nPlayers; p++ ) {
+		const CPlayerProfile *pPersonal = papPersonal[p];
+		cwchar *pwszName = pPersonal->m_SaveInfo.wszProfileName;
+		const BOOL bSavedProfile = !pPersonal->IsVirtual() && pPersonal->m_SaveInfo.nStorageDeviceID != FSTORAGE_DEVICE_ID_NONE && pwszName[0];
+		_CoopRecord_t *pRecord = NULL;
+		BOOL bNewRecord = FALSE;
+
+		if( p == 0 ) {
+			pRecord = pOwner;
+			abClaimed[0] = TRUE;
+		} else if( bSavedProfile && _bCoopCanSave ) {
+			// this player's record, by profile name
+			for( i=1; i < _CoopFile.nNumRecords; i++ ) {
+				if( !abClaimed[i] && !fclib_wcscmp( _CoopFile.aRecords[i].wszName, pwszName ) ) {
+					pRecord = &_CoopFile.aRecords[i];
+					abClaimed[i] = TRUE;
+					break;
+				}
+			}
+			if( !pRecord ) {
+				// a new partner: a free record, else the one saved longest ago
+				u32 nPick = _CoopFile.nNumRecords;
+				if( nPick < _COOPSAVE_MAX_RECORDS ) {
+					_CoopFile.nNumRecords++;
+				} else {
+					nPick = 0;
+					for( i=1; i < _COOPSAVE_MAX_RECORDS; i++ ) {
+						if( !abClaimed[i] && (!nPick || _CoopFile.aRecords[i].nLastSave < _CoopFile.aRecords[nPick].nLastSave) ) {
+							nPick = i;
+						}
+					}
+				}
+				if( nPick ) {
+					pRecord = &_CoopFile.aRecords[nPick];
+					abClaimed[nPick] = TRUE;
+					fang_MemZero( pRecord, sizeof( _CoopRecord_t ) );
+					fclib_wcsncpy( pRecord->wszName, pwszName, FSTORAGE_MAX_NAME_LEN - 1 );
+					bNewRecord = TRUE;
+				}
+			}
+		}
+		if( !pRecord ) {
+			// no saved profile: played from player 1's progress, not kept
+			pRecord = &_aCoopScratch[p];
+			fang_MemZero( pRecord, sizeof( _CoopRecord_t ) );
+			bNewRecord = TRUE;
+		}
+
+		GameSave_ProfileData_t *pData = &pRecord->Data;
+		if( bNewRecord ) {
+			*pData = pOwner->Data;
+			_CoopClearStats( pData );
+			DEVPRINTF( "Co-op save: player %u (%ls) starts from player 1's progress%s.\n", p + 1, pwszName,
+				pRecord == &_aCoopScratch[p] ? " (no saved profile, not kept)" : "" );
+		} else if( p > 0 ) {
+			if( pData->nCurrentLevel < pOwner->Data.nCurrentLevel ) {
+				// missed levels: player 1's inventory for them
+				for( i = (u32)pData->nCurrentLevel + 1; i <= pOwner->Data.nCurrentLevel && i < LEVEL_SINGLE_PLAYER_COUNT; i++ ) {
+					pData->aLevelProgress[i].Inventory = pOwner->Data.aLevelProgress[i].Inventory;
+				}
+				DEVPRINTF( "Co-op save: player %u (%ls) catches up from level %u to %u.\n", p + 1, pwszName,
+					(u32)pData->nCurrentLevel, (u32)pOwner->Data.nCurrentLevel );
+			} else {
+				DEVPRINTF( "Co-op save: player %u (%ls) continues with their own inventory.\n", p + 1, pwszName );
+			}
+		}
+		if( p > 0 ) {
+			const u32 nCampaignFlags = GAMESAVE_PROFILE_FLAGS_FINISHED_SINGLE_PLAYER | GAMESAVE_PROFILE_FLAGS_100_PERCENT_FINISHED;
+			pData->nCurrentLevel = pOwner->Data.nCurrentLevel;
+			pData->nDifficulty = pOwner->Data.nDifficulty;
+			pData->nFlags = (pData->nFlags & ~nCampaignFlags) | (pOwner->Data.nFlags & nCampaignFlags);
+		}
+
+		// the session profile: the record's progress with the player's own settings
+		CPlayerProfile *pSession = papSession[p];
+		const u32 nSettingFlags = GAMESAVE_PROFILE_FLAGS_INVERT_ANALOG | GAMESAVE_PROFILE_FLAGS_AUTO_CENTER |
+			GAMESAVE_PROFILE_FLAGS_ASSISTED_TARGETING | GAMESAVE_PROFILE_FLAGS_FOUR_WAY_QUICK_SELECT;
+		const GameSave_ProfileData_t Personal = pPersonal->m_Data;
+		pSession->m_Data = *pData;
+		pSession->m_Data.nFlags = (pData->nFlags & ~nSettingFlags) | (Personal.nFlags & nSettingFlags) | GAMESAVE_PROFILE_FLAGS_VIRTUAL_PROFILE;
+		pSession->m_Data.nControllerConfigIndex = Personal.nControllerConfigIndex;
+		pSession->m_Data.nColorIndex = Personal.nColorIndex;
+		pSession->m_Data.fUnitVibrationIntensity = Personal.fUnitVibrationIntensity;
+		// Co-op records distinguish players even when they chose the same personal
+		// profile. Keep their co-op sensitivity instead of resetting it every boot.
+		pSession->m_Data.fUnitLookSensitivity = pRecord->nLastSave &&
+			pData->fUnitLookSensitivity >= 0.0f && pData->fUnitLookSensitivity <= 1.0f ?
+			pData->fUnitLookSensitivity : Personal.fUnitLookSensitivity;
+		pSession->m_Data.fUnitSoundLevel = Personal.fUnitSoundLevel;
+		pSession->m_Data.fUnitMusicLevel = Personal.fUnitMusicLevel;
+		wchar wszName[FSTORAGE_MAX_NAME_LEN];
+		fclib_wcsncpy( wszName, pwszName, FSTORAGE_MAX_NAME_LEN - 1 );
+		wszName[FSTORAGE_MAX_NAME_LEN - 1] = 0;
+		fang_MemZero( &pSession->m_SaveInfo, sizeof( GameSave_SaveInfo_t ) );
+		pSession->m_SaveInfo.nStorageDeviceID = FSTORAGE_DEVICE_ID_NONE;
+		fclib_wcsncpy( pSession->m_SaveInfo.wszProfileName, wszName, FSTORAGE_MAX_NAME_LEN - 1 );
+
+		_apCoopSessionRecord[p] = pRecord;
+		_apCoopSessionProfile[p] = pSession;
+	}
+
+	_nCoopSessionPlayers = nPlayers;
+	_bCoopSession = TRUE;
+}
+
+BOOL coopsave_SaveLookSensitivity( const CPlayerProfile *pSession ) {
+	if( !_bCoopSession || !_bCoopCanSave || !pSession ) return FALSE;
+	for( u32 p=0; p<_nCoopSessionPlayers; ++p ) {
+		if( _apCoopSessionProfile[p] != pSession ) continue;
+		_CoopRecord_t *pRecord = _apCoopSessionRecord[p];
+		// Players who joined without a saved profile are intentionally temporary.
+		if( pRecord == &_aCoopScratch[p] ) return TRUE;
+		const f32 fSensitivity = pSession->m_Data.fUnitLookSensitivity;
+		if( !(fSensitivity >= 0.0f && fSensitivity <= 1.0f) ) return FALSE;
+		if( !pRecord->nLastSave || pRecord->Data.fUnitLookSensitivity != fSensitivity ) {
+			pRecord->Data.fUnitLookSensitivity = fSensitivity;
+			pRecord->nLastSave = ++_CoopFile.nSaveCount;
+			_bCoopSensitivityDirty = TRUE;
+		}
+		if( !_bCoopSensitivityDirty ) return TRUE;
+		_CoopFile.nCRC = _CoopFileCRC();
+		if( !fstorage_PcCoopWrite( _wszCoopOwner, &_CoopFile, sizeof( _CoopFile_t ) ) ) {
+			DEVPRINTF( "Co-op settings: could not save look sensitivity for '%ls'.\n", _wszCoopOwner );
+			return FALSE;
+		}
+		_bCoopSensitivityDirty = FALSE;
+		DEVPRINTF( "Co-op settings: saved player %u look sensitivity %.3f.\n", p+1, fSensitivity );
+		return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL coopsave_SaveSession( void ) {
+	u32 p;
+
+	if( !_bCoopSession ) {
+		return FALSE;
+	}
+
+	_CoopFile.nSaveCount++;
+	for( p=0; p < _nCoopSessionPlayers; p++ ) {
+		_CoopRecord_t *pRecord = _apCoopSessionRecord[p];
+		pRecord->Data = _apCoopSessionProfile[p]->m_Data;
+		pRecord->Data.nFlags &= ~GAMESAVE_PROFILE_FLAGS_VIRTUAL_PROFILE;
+		pRecord->nLastSave = _CoopFile.nSaveCount;
+	}
+
+	if( !_bCoopCanSave ) {
+		return TRUE;
+	}
+
+	_CoopFile.nCRC = _CoopFileCRC();
+	if( !fstorage_PcCoopWrite( _wszCoopOwner, &_CoopFile, sizeof( _CoopFile_t ) ) ) {
+		DEVPRINTF( "Co-op save: could not write '%ls'.\n", _wszCoopOwner );
+		return FALSE;
+	}
+	DEVPRINTF( "Co-op save: saved '%ls' at level %u for %u players.\n", _wszCoopOwner, (u32)_CoopFile.aRecords[0].Data.nCurrentLevel, _nCoopSessionPlayers );
+	_bCoopSensitivityDirty = FALSE;
+	return TRUE;
+}
+
+void coopsave_EndSession( void ) {
+	_bCoopSession = FALSE;
+	_bCoopSensitivityDirty = FALSE;
+	_nCoopSessionPlayers = 0;
+}
+
+BOOL coopsave_IsSessionActive( void ) {
+	return _bCoopSession;
+}
+#endif
 
 
 

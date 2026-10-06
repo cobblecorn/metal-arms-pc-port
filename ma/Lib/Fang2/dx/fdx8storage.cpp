@@ -29,8 +29,11 @@
 
 // The PC has one storage device, a directory holding one file per profile.
 //
-// The directory is MA_PORT_SAVE_DIR (set by the launcher's -save-dir), else
-// %APPDATA%\Metal Arms PC Port\Saves, else "saves" in the working directory.
+// Everything the port saves lives under one root: MA_PORT_SAVE_DIR (set by the launcher's
+// -save-dir), else %APPDATA%\MAGITS, else "saves" in the working directory. Profiles are in its
+// Profiles folder; local co-op campaigns (fstorage_PcCoop*) are in its Co-op folder. The first time
+// the Profiles folder is made, profiles are copied in from the earlier layouts: the root itself (an
+// old -save-dir) and, for the default root, %APPDATA%\Metal Arms PC Port\Saves.
 //
 // Profile names can hold characters Windows rejects in file names, differ only by case, or end
 // in a space, so each UTF-16 unit of the name is stored as four hex digits: "Bob" is saved as
@@ -47,11 +50,15 @@
 #define _BYTES_TOTAL			( 12000000 )
 
 #define _SAVE_DIR_ENV			L"MA_PORT_SAVE_DIR"
-#define _SAVE_DIR_APPDATA		L"\\Metal Arms PC Port\\Saves"
+#define _SAVE_DIR_APPDATA		L"\\MAGITS"
 #define _SAVE_DIR_FALLBACK		L"saves"
+#define _SAVE_DIR_OLD_APPDATA	L"\\Metal Arms PC Port\\Saves"
+#define _PROFILES_SUBDIR		L"\\Profiles"
+#define _COOP_SUBDIR			L"\\Co-op"
 
 #define _PROFILE_PREFIX			L"profile-"
 #define _PROFILE_PREFIX_LEN		( 8 )
+#define _COOP_PREFIX			L"coop-"
 #define _PROFILE_EXT			L".sav"
 #define _PROFILE_EXT_LEN		( 4 )
 #define _TEMP_EXT				L".tmp"
@@ -71,8 +78,9 @@ static FStorage_DeviceInfo_t _oDeviceInfo;
 static u32 _uInserted;
 static u64 _uDevicePollDelay, _uDevicePollTimeStamp;
 
-// Absolute save directory, without a trailing separator.
+// Absolute profile and co-op directories, without a trailing separator.
 static WCHAR _awszSaveDir[ MAX_PATH ];
+static WCHAR _awszCoopDir[ MAX_PATH ];
 
 static const u8 _au8Zeros[ 4096 ] = { 0 };
 
@@ -126,8 +134,8 @@ static u32 _ProfileNameLength( cwchar *pwszName )
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-// Builds <save dir>\profile-<hex name>.sav, plus .tmp when bTemp.
-static BOOL _BuildProfilePath( cwchar *pwszName, BOOL bTemp, WCHAR *pwszPath )
+// Builds <pwszDir>\<pwszPrefix><hex name>.sav, plus .tmp when bTemp.
+static BOOL _BuildNamedPath( const WCHAR *pwszDir, const WCHAR *pwszPrefix, cwchar *pwszName, BOOL bTemp, WCHAR *pwszPath )
 {
 	u32 uNameLen = _ProfileNameLength( pwszName );
 	if( ! uNameLen )
@@ -138,8 +146,9 @@ static BOOL _BuildProfilePath( cwchar *pwszName, BOOL bTemp, WCHAR *pwszPath )
 
 	u32 uLen = 0;
 	pwszPath[ 0 ] = 0;
-	BOOL bFits = _AppendW( pwszPath, MAX_PATH, &uLen, _awszSaveDir ) &&
-				 _AppendW( pwszPath, MAX_PATH, &uLen, L"\\" _PROFILE_PREFIX );
+	BOOL bFits = _AppendW( pwszPath, MAX_PATH, &uLen, pwszDir ) &&
+				 _AppendW( pwszPath, MAX_PATH, &uLen, L"\\" ) &&
+				 _AppendW( pwszPath, MAX_PATH, &uLen, pwszPrefix );
 
 	for( u32 i = 0; bFits && i < uNameLen; ++i )
 	{
@@ -161,11 +170,18 @@ static BOOL _BuildProfilePath( cwchar *pwszName, BOOL bTemp, WCHAR *pwszPath )
 
 	if( ! bFits )
 	{
-		DEVPRINTF( "[ FSTORAGE ] Error %u: Profile path too long for save directory '%ls' !!!\n", __LINE__, _awszSaveDir );
+		DEVPRINTF( "[ FSTORAGE ] Error %u: Save path too long for directory '%ls' !!!\n", __LINE__, pwszDir );
 		return FALSE;
 	}
 
 	return TRUE;
+
+} // _BuildNamedPath
+
+// Builds <save dir>\profile-<hex name>.sav, plus .tmp when bTemp.
+static BOOL _BuildProfilePath( cwchar *pwszName, BOOL bTemp, WCHAR *pwszPath )
+{
+	return _BuildNamedPath( _awszSaveDir, _PROFILE_PREFIX, pwszName, bTemp, pwszPath );
 
 } // _BuildProfilePath
 
@@ -350,11 +366,84 @@ static void _StripTrailingSeparators( WCHAR *pwszDir )
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+// Copies each profile-<hex name>.sav in pwszDir into the profile directory. Profiles already there
+// and the originals are left alone.
+static void _CopyProfilesFrom( const WCHAR *pwszDir )
+{
+	WCHAR awszPattern[ MAX_PATH ];
+	u32 uLen = 0;
+	awszPattern[ 0 ] = 0;
+	if( ! _AppendW( awszPattern, MAX_PATH, &uLen, pwszDir ) ||
+		! _AppendW( awszPattern, MAX_PATH, &uLen, L"\\" _PROFILE_PREFIX L"*" ) )
+	{
+		return;
+	}
+
+	WIN32_FIND_DATAW oFindData;
+	HANDLE hFind = FindFirstFileW( awszPattern, &oFindData );
+	if( INVALID_HANDLE_VALUE == hFind )
+	{
+		return;
+	}
+
+	wchar awszName[ FSTORAGE_MAX_NAME_LEN ];
+	WCHAR awszSource[ MAX_PATH ];
+	WCHAR awszPath[ MAX_PATH ];
+
+	do
+	{
+		if( ( oFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) ||
+			! _DecodeProfileFileName( oFindData.cFileName, awszName ) ||
+			! _BuildProfilePath( awszName, FALSE, awszPath ) )
+		{
+			continue;
+		}
+
+		uLen = 0;
+		awszSource[ 0 ] = 0;
+		if( ! _AppendW( awszSource, MAX_PATH, &uLen, pwszDir ) ||
+			! _AppendW( awszSource, MAX_PATH, &uLen, L"\\" ) ||
+			! _AppendW( awszSource, MAX_PATH, &uLen, oFindData.cFileName ) )
+		{
+			continue;
+		}
+
+		if( CopyFileW( awszSource, awszPath, TRUE ) )
+		{
+			DEVPRINTF( "[ FSTORAGE ] Copied profile '%ls' from '%ls'.\n", awszName, pwszDir );
+		}
+		else if( ERROR_FILE_EXISTS != GetLastError() )
+		{
+			DEVPRINTF( "[ FSTORAGE ] Error %u: Could not copy profile '%ls' from '%ls' (error %u) !!!\n", __LINE__, awszName, pwszDir, GetLastError() );
+		}
+
+	} while( FindNextFileW( hFind, &oFindData ) );
+
+	FindClose( hFind );
+
+} // _CopyProfilesFrom
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+// Sets pwszDst to pwszRoot followed by pwszSubDir.
+static BOOL _JoinDir( WCHAR *pwszDst, const WCHAR *pwszRoot, const WCHAR *pwszSubDir )
+{
+	u32 uLen = 0;
+	pwszDst[ 0 ] = 0;
+	return _AppendW( pwszDst, MAX_PATH, &uLen, pwszRoot ) && _AppendW( pwszDst, MAX_PATH, &uLen, pwszSubDir );
+
+} // _JoinDir
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 static BOOL _InitSaveDir( void )
 {
 	WCHAR awszDir[ MAX_PATH ];
+	WCHAR awszRoot[ MAX_PATH ];
 	_awszSaveDir[ 0 ] = 0;
+	_awszCoopDir[ 0 ] = 0;
 
+	BOOL bDefaultRoot = FALSE;
 	DWORD dwLen = GetEnvironmentVariableW( _SAVE_DIR_ENV, awszDir, MAX_PATH );
 	if( dwLen >= MAX_PATH )
 	{
@@ -369,6 +458,10 @@ static BOOL _InitSaveDir( void )
 		{
 			fclib_wcscpy( awszDir, _SAVE_DIR_FALLBACK );
 		}
+		else
+		{
+			bDefaultRoot = TRUE;
+		}
 	}
 
 	_StripTrailingSeparators( awszDir );
@@ -379,14 +472,44 @@ static BOOL _InitSaveDir( void )
 		return FALSE;
 	}
 
-	dwLen = GetFullPathNameW( awszDir, MAX_PATH, _awszSaveDir, NULL );
+	dwLen = GetFullPathNameW( awszDir, MAX_PATH, awszRoot, NULL );
 	if( ! dwLen || dwLen >= MAX_PATH )
 	{
 		DEVPRINTF( "[ FSTORAGE ] Error %u: Could not resolve save directory '%ls' !!!\n", __LINE__, awszDir );
-		_awszSaveDir[ 0 ] = 0;
 		return FALSE;
 	}
-	_StripTrailingSeparators( _awszSaveDir );
+	_StripTrailingSeparators( awszRoot );
+
+	if( ! _JoinDir( _awszSaveDir, awszRoot, _PROFILES_SUBDIR ) || ! _JoinDir( _awszCoopDir, awszRoot, _COOP_SUBDIR ) )
+	{
+		DEVPRINTF( "[ FSTORAGE ] Error %u: Save directory '%ls' is too long !!!\n", __LINE__, awszRoot );
+		_awszSaveDir[ 0 ] = 0;
+		_awszCoopDir[ 0 ] = 0;
+		return FALSE;
+	}
+
+	BOOL bNewProfileDir = ( INVALID_FILE_ATTRIBUTES == GetFileAttributesW( _awszSaveDir ) );
+	if( ! _CreateDirectoryTree( _awszSaveDir ) )
+	{
+		DEVPRINTF( "[ FSTORAGE ] Error %u: Could not create profile directory '%ls' !!!\n", __LINE__, _awszSaveDir );
+		_awszSaveDir[ 0 ] = 0;
+		_awszCoopDir[ 0 ] = 0;
+		return FALSE;
+	}
+
+	if( bNewProfileDir )
+	{
+		// First run with this layout: bring the profiles over from the earlier layouts.
+		_CopyProfilesFrom( awszRoot );
+		if( bDefaultRoot )
+		{
+			u32 uLen = GetEnvironmentVariableW( L"APPDATA", awszDir, MAX_PATH );
+			if( uLen && uLen < MAX_PATH && _AppendW( awszDir, MAX_PATH, &uLen, _SAVE_DIR_OLD_APPDATA ) )
+			{
+				_CopyProfilesFrom( awszDir );
+			}
+		}
+	}
 
 	return TRUE;
 
@@ -1023,5 +1146,100 @@ FStorage_Error_e fstorage_WriteProfile( FStorage_DeviceID_e oeID, const u16 *pws
 	return _fstorage_ReadWriteProfile( FALSE, oeID, pwszName, uPosition, puBuff, uBuffSize );
 
 } // fstorage_WriteProfile
+
+#if FANG_WINGC
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+BOOL fstorage_PcCoopRead( const u16 *pwszName, void *puBuff, u32 uBuffSize, u32 *puBytesRead )
+{
+	if( puBytesRead )
+	{
+		*puBytesRead = 0;
+	}
+
+	WCHAR awszPath[ MAX_PATH ];
+	if( ! _awszCoopDir[ 0 ] || ! puBuff || ! uBuffSize || ! _BuildNamedPath( _awszCoopDir, _COOP_PREFIX, pwszName, FALSE, awszPath ) )
+	{
+		return FALSE;
+	}
+
+	HANDLE hFile = CreateFileW( awszPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+	if( INVALID_HANDLE_VALUE == hFile )
+	{
+		// A campaign nobody has saved yet is expected.
+		DWORD dwError = GetLastError();
+		if( ERROR_FILE_NOT_FOUND != dwError && ERROR_PATH_NOT_FOUND != dwError )
+		{
+			DEVPRINTF( "[ FSTORAGE ] Error %u: Could not open co-op save '%ls' (error %u) !!!\n", __LINE__, awszPath, dwError );
+		}
+		return FALSE;
+	}
+
+	DWORD dwSizeHigh = 0;
+	DWORD dwSize = GetFileSize( hFile, &dwSizeHigh );
+	DWORD dwDone = 0;
+	BOOL bOk = ( INVALID_FILE_SIZE != dwSize || NO_ERROR == GetLastError() ) && ! dwSizeHigh && dwSize <= uBuffSize &&
+			   ReadFile( hFile, puBuff, dwSize, &dwDone, NULL ) && dwDone == dwSize;
+	CloseHandle( hFile );
+
+	if( ! bOk )
+	{
+		DEVPRINTF( "[ FSTORAGE ] Error %u: Could not read co-op save '%ls' !!!\n", __LINE__, awszPath );
+		return FALSE;
+	}
+
+	if( puBytesRead )
+	{
+		*puBytesRead = dwSize;
+	}
+
+	return TRUE;
+
+} // fstorage_PcCoopRead
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+BOOL fstorage_PcCoopWrite( const u16 *pwszName, const void *puBuff, u32 uBuffSize )
+{
+	WCHAR awszPath[ MAX_PATH ];
+	WCHAR awszTemp[ MAX_PATH ];
+	if( ! _awszCoopDir[ 0 ] || ! puBuff || ! uBuffSize ||
+		! _BuildNamedPath( _awszCoopDir, _COOP_PREFIX, pwszName, FALSE, awszPath ) ||
+		! _BuildNamedPath( _awszCoopDir, _COOP_PREFIX, pwszName, TRUE, awszTemp ) )
+	{
+		return FALSE;
+	}
+
+	if( ! _CreateDirectoryTree( _awszCoopDir ) )
+	{
+		DEVPRINTF( "[ FSTORAGE ] Error %u: Could not create co-op directory '%ls' !!!\n", __LINE__, _awszCoopDir );
+		return FALSE;
+	}
+
+	HANDLE hFile = CreateFileW( awszTemp, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
+	if( INVALID_HANDLE_VALUE == hFile )
+	{
+		DEVPRINTF( "[ FSTORAGE ] Error %u: Could not create '%ls' (error %u) !!!\n", __LINE__, awszTemp, GetLastError() );
+		return FALSE;
+	}
+
+	DWORD dwDone = 0;
+	BOOL bOk = WriteFile( hFile, puBuff, uBuffSize, &dwDone, NULL ) && dwDone == uBuffSize && FlushFileBuffers( hFile );
+	if( ! bOk )
+	{
+		DEVPRINTF( "[ FSTORAGE ] Error %u: Could not write '%ls' (error %u) !!!\n", __LINE__, awszTemp, GetLastError() );
+	}
+	CloseHandle( hFile );
+
+	if( ! bOk || ! _CommitTempFile( awszTemp, awszPath ) )
+	{
+		DeleteFileW( awszTemp );
+		return FALSE;
+	}
+
+	return TRUE;
+
+} // fstorage_PcCoopWrite
+#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

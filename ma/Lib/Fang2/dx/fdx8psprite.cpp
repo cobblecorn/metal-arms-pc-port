@@ -683,6 +683,10 @@ FViewportPlanesMask_t CFPSpriteGroup::_RenderEmulatedGroup( BOOL bPerformFrustum
 
 	CFXfm::PopModel();
 
+	// The emulated quads are in view space. Restore the camera before the
+	// sorted list draws world-space translucencies (for example waterfalls).
+	fdx8xfm_SetViewDXMatrix( TRUE );
+
 	#if FPERF_ENABLE
 		FPerf_nPSGroupDrawnCount++;
 		FPerf_nPSpritesDrawnCount += m_nRenderCount;

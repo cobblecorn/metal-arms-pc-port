@@ -781,6 +781,14 @@ void CBarterItemInst::AddToWorld()
 			m_pWorldMesh = m_pCollectableType->GetWorldMesh(&bIsEUKMesh);
 			SetABox(bIsEUKMesh);
 		}
+#if FANG_WINGC
+		// Retry next frame if pickups or HUD animations temporarily occupy the display pool.
+		if( !m_pWorldMesh ) {
+			if( Fang_bPortDiag && FVid_nFrameCounter % 120 == 0 )
+				DEVPRINTF( "Co-op shop: waiting for display mesh '%s'.\n", m_pCollectableType->m_pszName );
+			return;
+		}
+#endif
 		FASSERT(m_pWorldMesh);
 		m_pWorldMesh->m_nFlags |= (FMESHINST_FLAG_NOSHADOWLOD|FMESHINST_FLAG_CAST_SHADOWS);
 		m_pWorldMesh->AddToWorld();
@@ -1449,6 +1457,14 @@ void CBarterLevel::_UpdateItemsForSaleBasedOn(CBotGlitch* pPlayerBot)
 		for(u32 nSalesChain=0; nSalesChain < pSlot->m_nSaleChains; nSalesChain++ )
 		{
 			pItem = &pSlot->m_paSaleChains[nSalesChain].m_paItemInsts[0];
+#if FANG_WINGC
+			// Legacy EUK-only catalog entries have no collectable enum in this source revision.
+			// UNKNOWN would otherwise resolve to an unrelated custom quest part (goffhead).
+			if( pItem->m_poItem->m_eCollectableType == COLLECTABLE_UNKNOWN ) {
+				pItem->SetNeeded(FALSE);
+				continue;
+			}
+#endif
 			if (pItem->m_poItem->m_eCollectableType == COLLECTABLE_BATTERY)
 			{
 				s8 nBatteriesToSell = (pItem->GetQuantity() - pPlayerBot->m_pInventory->m_uNumBatteries);
@@ -1471,6 +1487,14 @@ void CBarterLevel::_UpdateItemsForSaleBasedOn(CBotGlitch* pPlayerBot)
 		for(u32 nSalesChain=0; nSalesChain < pSlot->m_nSaleChains; nSalesChain++ )
 		{
 			pItem = &pSlot->m_paSaleChains[nSalesChain].m_paItemInsts[0];
+#if FANG_WINGC
+			// Legacy EUK-only catalog entries have no collectable enum in this source revision.
+			// UNKNOWN would otherwise resolve to an unrelated custom quest part (goffhead).
+			if( pItem->m_poItem->m_eCollectableType == COLLECTABLE_UNKNOWN ) {
+				pItem->SetNeeded(FALSE);
+				continue;
+			}
+#endif
 			pItem->SetNeeded(CCollectable::PlayerNeeds(pPlayerBot,pItem->m_poItem->m_eCollectableType,pItem->IsAmmo()));
 			if (pItem->IsNeeded() && CCollectable::IsPrimaryWeaponType(pItem->m_pCollectableType))
 				pItem->SetAutoOffered(TRUE);
@@ -1486,6 +1510,14 @@ void CBarterLevel::_UpdateItemsForSaleBasedOn(CBotGlitch* pPlayerBot)
 		for(u32 nSalesChain=0; nSalesChain < pSlot->m_nSaleChains; nSalesChain++ )
 		{
 			pItem = &pSlot->m_paSaleChains[nSalesChain].m_paItemInsts[0];
+#if FANG_WINGC
+			// Legacy EUK-only catalog entries have no collectable enum in this source revision.
+			// UNKNOWN would otherwise resolve to an unrelated custom quest part (goffhead).
+			if( pItem->m_poItem->m_eCollectableType == COLLECTABLE_UNKNOWN ) {
+				pItem->SetNeeded(FALSE);
+				continue;
+			}
+#endif
 			pItem->SetNeeded(CCollectable::PlayerNeeds(pPlayerBot,pItem->m_poItem->m_eCollectableType,FALSE));
 			if (pItem->m_poItem->m_eCollectableType == COLLECTABLE_WEAPON_CORING_CHARGE)
 				pItem->SetAutoOffered(TRUE);

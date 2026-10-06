@@ -27,6 +27,10 @@
 #include "fvtxpool.h"
 #include "PauseScreen.h"
 #include "player.h"
+#if FANG_WINGC
+#include "MultiplayerMgr.h"
+#include "bot.h"
+#endif
 
 #define _BAR_MAX_SIZE_Y				0.22f
 #define _BAR_SLIDE_RATE				(1.0f / 0.22f)		// Y units per second
@@ -45,6 +49,17 @@ static LetterboxState_e _nState;
 
 static BOOL _bHUDWSEnable = FALSE;
 static BOOL _bHUDDrawEnable = FALSE;
+
+#if FANG_WINGC
+// Local co-op (PC): the letterbox hides and restores every player's HUD. Retail handles only the
+// current player's, which in co-op left a partner's HUD off after a cutscene (or a dead player's on).
+static BOOL _abHUDWSEnable[MAX_PLAYERS];
+static BOOL _abHUDDrawEnable[MAX_PLAYERS];
+
+static BOOL _PortEveryHud( void ) {
+	return CPlayer::m_nPlayerCount > 1;
+}
+#endif
 
 BOOL letterbox_InitSystem( void ) {
 
@@ -85,6 +100,25 @@ void letterbox_Work( void ) {
 			_fUnitSlideOn = 0.0f;
 			_nState = LETTERBOX_STATE_MOTIONLESS;
 			CPauseScreen::SetEnabled(TRUE);
+#if FANG_WINGC
+			if( _PortEveryHud() ) {
+				for( s32 i = 0; i < CPlayer::m_nPlayerCount; ++i ) {
+					// a player who went down during the cutscene stays without a HUD until revived
+					CEntity *pEntity = Player_aPlayer[i].m_pEntityCurrent;
+					if( pEntity && (pEntity->TypeBits() & ENTITY_BIT_BOT) && ((CBot *)pEntity)->IsDeadOrDying() ) {
+						continue;
+					}
+					CHud2 *pPlayerHud = CHud2::GetHudForPlayer( i );
+					if( _abHUDWSEnable[i] ) {
+						pPlayerHud->SetWSEnable( TRUE );
+					}
+					if( _abHUDDrawEnable[i] ) {
+						pPlayerHud->SetDrawEnabled( TRUE );
+					}
+				}
+				break;
+			}
+#endif
 			CHud2* pHud = CHud2::GetCurrentHud();
 			if (pHud) {
 
@@ -120,6 +154,14 @@ void letterbox_Draw( void ) {
 		// Bars are completely off the screen...
 		return;
 	}
+
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() ) {
+		// Local co-op (PC): no bars. Every split view drew its own, leaving thick black bands between
+		// the views; the cutscene still hides the HUD and holds the players.
+		return;
+	}
+#endif
 
 	fBarSizeY = _fUnitSlideOn * _BAR_MAX_SIZE_Y;
 
@@ -204,6 +246,17 @@ void letterbox_SlideOn( BOOL bImmediate ) {
 	FASSERT( _bSystemInitialized );
 	_nState = LETTERBOX_STATE_SLIDING_ON;
 
+#if FANG_WINGC
+	if( _fUnitSlideOn == 0.0f && _PortEveryHud() ) {
+		for( s32 i = 0; i < CPlayer::m_nPlayerCount; ++i ) {
+			CHud2 *pPlayerHud = CHud2::GetHudForPlayer( i );
+			_abHUDWSEnable[i] = pPlayerHud->IsWSEnabled();
+			_abHUDDrawEnable[i] = pPlayerHud->IsDrawEnabled();
+			pPlayerHud->SetDrawEnabled( FALSE );
+			pPlayerHud->SetWSEnable( FALSE );
+		}
+	} else
+#endif
 	if( _fUnitSlideOn == 0.0f ) {
 		// Only get the states of the HUD once we know we made it all the way back
 		_bHUDWSEnable = CHud2::GetCurrentHud()->IsWSEnabled();
@@ -239,9 +292,32 @@ void letterbox_Reset( void ) {
 	_nState = LETTERBOX_STATE_MOTIONLESS;
 	_fUnitSlideOn = 0.0f;
 	CPauseScreen::SetEnabled(TRUE);
+#if FANG_WINGC
+	if( _PortEveryHud() ) {
+		for( s32 i = 0; i < CPlayer::m_nPlayerCount; ++i ) {
+			CHud2::GetHudForPlayer( i )->SetWSEnable( TRUE );
+			CHud2::GetHudForPlayer( i )->SetDrawEnabled( TRUE );
+		}
+		return;
+	}
+#endif
 	CHud2::GetCurrentHud()->SetWSEnable(TRUE);
 	CHud2::GetCurrentHud()->SetDrawEnabled(TRUE);
 }
+
+#if FANG_WINGC
+void letterbox_PortRestoreHud( s32 nPlayer ) {
+	FASSERT( nPlayer >= 0 && nPlayer < MAX_PLAYERS );
+	if( _nState == LETTERBOX_STATE_SLIDING_ON || _fUnitSlideOn != 0.0f ) {
+		// the bars are up: the HUD comes back with everyone's when they leave
+		_abHUDWSEnable[nPlayer] = TRUE;
+		_abHUDDrawEnable[nPlayer] = TRUE;
+		return;
+	}
+	CHud2::GetHudForPlayer( nPlayer )->SetDrawEnabled( TRUE );
+	CHud2::GetHudForPlayer( nPlayer )->SetWSEnable( TRUE );
+}
+#endif
 
 // Returns 0 if completely off the screen, or 1 if completely on the screen.
 f32 letterbox_GetUnitSlideOnAmount( void ) {

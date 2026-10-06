@@ -121,9 +121,6 @@ const u64 ENTITY_BIT_JUMPPAD			= 0x0800000000000000;	// CEJumpPad
 const u64 ENTITY_BIT_BOTCORROSIVE		= 0x1000000000000000;	// CBotCorrosive
 const u64 ENTITY_BIT_DEBRIS				= 0x2000000000000000;	// CEDebris
 const u64 ENTITY_BIT_UNSPECIFIED		= 0x4000000000000000;	// Unspecified entity
-// The entity bit namespace is full. Sniper bots share this generic leaf bit;
-// ENTITY_BIT_BOT remains present so bot-only filters still classify them as bots.
-const u64 ENTITY_BIT_BOTSNIPER			= ENTITY_BIT_UNSPECIFIED;	// CBotSniper
 
 
 const u64 ENTITY_BIT_RESERVED_FOR_FANG	= 0x8000000000000000;	// Fang reserves this bit for its internal tracker filter
@@ -160,7 +157,6 @@ const u64 ENTITY_BITS_ALLBOTBITS		= (	ENTITY_BIT_BOT		  |
 #define ENTITY_TYPE_WEAPON			"Weapon"				// Maps to CWeapon
 #define ENTITY_TYPE_MESH			"Mesh"					// Maps to CMeshEntity
 #define ENTITY_TYPE_BOTGLITCH		"BotGlitch"				// Maps to CBotGlitch
-#define ENTITY_TYPE_BOTSNIPER		"BotSniper"				// Maps to CBotSniper
 #define ENTITY_TYPE_WEAPONHAND		"WeaponHand"			// Maps to CWeaponHand
 #define ENTITY_TYPE_WEAPONLASER		"WeaponLaser"			// Maps to CWeaponLaser
 #define ENTITY_TYPE_WEAPONRIVET		"WeaponRivet"			// Maps to CWeaponRivet
@@ -563,7 +559,13 @@ public:
 	FINLINE BOOL IsTargetable( void ) const { return (BOOL)(m_nEntityFlags & ENTITY_FLAG_TARGETABLE); }
 	void SetTargetable( BOOL bEnable );
 
-	FINLINE BOOL IsInvincible( void ) const { return (BOOL)(m_nEntityFlags & (ENTITY_FLAG_INVINCIBLE | ENTITY_FLAG_INFINITE_ARMOR)); }
+	FINLINE BOOL IsInvincible( void ) const {
+#if defined(MA_PC_INPUT)
+		extern BOOL pccheats_Invulnerable( const CEntity *pEntity );
+		if( pccheats_Invulnerable( this ) ) return TRUE;
+#endif
+		return (BOOL)(m_nEntityFlags & (ENTITY_FLAG_INVINCIBLE | ENTITY_FLAG_INFINITE_ARMOR));
+	}
 	void SetInvincible( BOOL bEnable );
 
 	FINLINE BOOL IsActionable( void ) const { return (BOOL)(m_nEntityFlags & ENTITY_FLAG_ACTIONABLE); }
@@ -589,12 +591,18 @@ public:
 	FINLINE BOOL IsTripwireArmed( void ) const { return m_pTripwire ? m_nEntityFlags & ENTITY_FLAG_TRIPWIRE_ARMED : FALSE; }
 	void ArmTripwire( BOOL bArm );
 #if FANG_WINGC
-	// Local co-op (PC): a tripwire's enter event from a player waits until every standing player has
-	// arrived in it (entity.cpp). Work runs once a frame; Reset at level load; Waiting tells a
-	// player's HUD they are holding an event for the others.
+	// Local co-op (PC): checkpoint enters accept the first standing player; shared gates gather
+	// the standing team, including recovered crossings. Work runs once a frame; Reset at level load; Waiting tells a
+	// player's HUD they are at a currently held gate, rather than an earlier arrival.
 	static void CoopTripwireWork( void );
 	static void CoopTripwireReset( void );
 	static BOOL CoopTripwireWaiting( const CEntity *pPlayerEntity );
+	static BOOL CoopTripwireWaitMessage( const CEntity *pPlayerEntity );
+	static BOOL CoopTripwireExitWaiting( const CEntity *pPlayerEntity );
+	// Read-only point query using the same shape test as tripwire enter events.
+	FINLINE BOOL TripwireContainsPoint( const CFVec3A &Point_WS ) {
+		return IsTripwire() && (TripwireCollisionTest( &Point_WS, &Point_WS ) & TRIPWIRE_COLLFLAG_NEWPOS_INSIDE);
+	}
 #endif
 
 	FINLINE CFSphereA *TripwireBoundingSphere_WS( void ) const;
@@ -924,7 +932,7 @@ private:
 #if FANG_WINGC
 	BOOL _CoopHoldTripwireEnter( CEntity *pTripper );
 	void _CoopFireTripwireEnter( CEntity *pTripper );
-	u32 _CoopPlayersInsideMask( void );
+	u32 _CoopPlayersInsideMask( BOOL bCheckCrossings=FALSE );
 #endif
 	void _ClearTripwireArray( void );
 	void _UpdateTripwireArrayBasedOnFilterChange( void );

@@ -59,6 +59,7 @@
 #include "player.h"
 #if FANG_WINGC
 #include "MultiplayerMgr.h"
+#include "game.h"
 #endif
 #include "FCheckPoint.h"
 #include "spawnsys.h"
@@ -90,7 +91,6 @@
 #include "BotAAGun.h"
 #include "botscientist.h"
 #include "botsnarq.h"
-#include "botsniper.h"
 #include "botzombieboss.h"
 #include "difficulty.h"
 
@@ -459,9 +459,15 @@ BOOL CEntityBuilder::InterpretTable( void ) {
 		// They are specifying a specific goodie in the bag.
 		FGameData_VarType_e eType;
 
-		if( (fgamedata_GetNumFields( CEntityParser::m_hTable ) < 4) || (fgamedata_GetNumFields( CEntityParser::m_hTable ) > 5) ) {
+		const u32 uGoodieFieldCount = fgamedata_GetNumFields( CEntityParser::m_hTable );
+#if FANG_WINGC
+		const u32 uMaxGoodieFields = 6;
+#else
+		const u32 uMaxGoodieFields = 5;
+#endif
+		if( uGoodieFieldCount < 4 || uGoodieFieldCount > uMaxGoodieFields ) {
 			CEntityParser::Error_Prefix();
-			DEVPRINTF( "Error in 'goodie' table.  Need 5 params.\n" );
+			DEVPRINTF( "Error in 'goodie' table. Need 4 to %u params.\n", uMaxGoodieFields );
 			CEntityParser::Error_Dashes();
 			return TRUE;
 		}
@@ -523,7 +529,7 @@ BOOL CEntityBuilder::InterpretTable( void ) {
 		/////////////////////////////////////////////////////////////
 		// Get the angular velocity type set up.
 		GoodieBagAngVelType_e eAngVelType = GOODIEBAGANGVELTYPE_NONE;
-		if( fgamedata_GetNumFields( CEntityParser::m_hTable) == 5 ) {
+		if( uGoodieFieldCount >= 5 ) {
 			cchar *pszAngVelType;
 			pszAngVelType = (cchar *)fgamedata_GetPtrToFieldData( CEntityParser::m_hTable, 4, eType );
 			if( eType != FGAMEDATA_VAR_TYPE_STRING ) {
@@ -536,6 +542,11 @@ BOOL CEntityBuilder::InterpretTable( void ) {
 				eAngVelType = GOODIEBAGANGVELTYPE_NONE;
 			} else if( fclib_stricmp( pszAngVelType, "random" ) == 0 ) {
 				eAngVelType = GOODIEBAGANGVELTYPE_RANDOM;
+#if FANG_WINGC
+			} else if( uGoodieFieldCount == 6 && !fclib_stricmp( pszAngVelType, "X" ) ) {
+				// Retail's six-field loot entry uses X as the unused spin placeholder.
+				eAngVelType = GOODIEBAGANGVELTYPE_NONE;
+#endif
 			} else {
 				CEntityParser::Error_Prefix();
 				DEVPRINTF( "Error in angular velocity field of 'goodie' command. Unknown type '%s'.\n", pszAngVelType );
@@ -545,6 +556,21 @@ BOOL CEntityBuilder::InterpretTable( void ) {
 		}
 		//
 		/////////////////////////////////////////////////////////////
+
+#if FANG_WINGC
+		if( uGoodieFieldCount == 6 ) {
+			// Retail prison2's required chip is authored as: chip 1 1 1 X safe.
+			// The current collectable system already keeps chips out of ordinary loot reuse.
+			// Accept this known retail suffix without discarding the entire chip entry.
+			cchar *pszSafety = (cchar *)fgamedata_GetPtrToFieldData( CEntityParser::m_hTable, 5, eType );
+			if( eType != FGAMEDATA_VAR_TYPE_STRING || fclib_stricmp( pszSafety, "safe" ) ) {
+				CEntityParser::Error_Prefix();
+				DEVPRINTF( "Error in safety field of 'goodie' command. Expected 'safe'.\n" );
+				CEntityParser::Error_Dashes();
+				return TRUE;
+			}
+		}
+#endif
 
 		// Let's finally add it to the bag.
 		if( !m_oGoodieBag.AddGoodie( eGoodieType, uQuantity1, uQuantity2, fProb, eAngVelType ) ) {
@@ -4309,8 +4335,8 @@ void CEntity::_CheckMovedEntityAgainstTripwires( const CFVec3A *pPrevPos_WS, con
 
 
 #if FANG_WINGC
-// Local co-op: an enter event a player trips on a tripwire (an elevator start, a buddy's "follow me",
-// a script beat) waits until every standing player has arrived in the tripwire, in any order; a
+// Local co-op: checkpoint enters run for the first standing player. Other shared events (an
+// elevator start, a buddy's "follow me", a script beat) wait for every standing player, in any order; a
 // player who is down is not waited for. Arrival is sticky, so a thin trigger the players cross one
 // at a time still releases. Collectables and kill volumes are never held; an attached door still
 // opens for whoever arrives first.
@@ -4323,9 +4349,92 @@ typedef struct {
 
 static _CoopHeldTripwire_t _aCoopHeldTripwires[_COOP_MAX_HELD_TRIPWIRES];
 static u32 _nCoopHeldTripwires;
+static CEntity *_apCoopPreviousPlayers[MAX_PLAYERS];
+static CFVec3A _avCoopPreviousPositions[MAX_PLAYERS];
+static const CEntity *_apCoopWaitMessagePlayers[MAX_PLAYERS];
+static u64 _anCoopWaitMessageStartTicks[MAX_PLAYERS];
+
+// Checkpoint trigger families present in the retail campaign scripts. Require
+// the whole numeric suffix so objectives such as "saveus" are not checkpoints.
+static BOOL _CoopCheckpointTripwire( cchar *pszName ) {
+	if( !pszName ) {
+		return FALSE;
+	}
+	static cchar *apszPrefixes[] = {
+		"save", "check", "checkpoint", "checkpoint_trigger",
+		"trigger_checkpoint", "trig_checkpoint", "hall_checkpoint", "savepoint"
+	};
+	for( u32 i=0; i < sizeof(apszPrefixes)/sizeof(apszPrefixes[0]); i++ ) {
+		const s32 nPrefix = fclib_strlen( apszPrefixes[i] );
+		if( fclib_strnicmp( pszName, apszPrefixes[i], nPrefix ) ) {
+			continue;
+		}
+		cchar *pSuffix = pszName + nPrefix;
+		if( *pSuffix < '0' || *pSuffix > '9' ) {
+			continue;
+		}
+		while( *pSuffix >= '0' && *pSuffix <= '9' ) {
+			++pSuffix;
+		}
+		if( !*pSuffix ) {
+			return TRUE;
+		}
+	}
+	// Additional checkpoint enters in the Mines and research campaign scripts.
+	return !fclib_stricmp( pszName, "checksnaptrigger" ) ||
+		!fclib_stricmp( pszName, "bonusbuddysave" ) ||
+		!fclib_stricmp( pszName, "save_hall1" ) ||
+		!fclib_stricmp( pszName, "m3check01trigger" ) ||
+		!fclib_stricmp( pszName, "m3check02trigger" ) ||
+		!fclib_stricmp( pszName, "m3check03trigger" ) ||
+		!fclib_stricmp( pszName, "m3check04trigger" ) ||
+		!fclib_stricmp( pszName, "m3check05trigger" );
+}
+
+// Retail Morbot floor pads operate local structures. Their tiny footprints are
+// individual interactions, rather than team rendezvous or mission exits.
+static BOOL _CoopFloorSwitchTripwire( cchar *pszName ) {
+	if( !pszName || Level_nLoadedIndex < 0 || Level_nLoadedIndex >= LEVEL_SINGLE_PLAYER_COUNT ) return FALSE;
+	cchar *pszWorld = Level_aInfo[Level_nLoadedIndex].pszWorldResName;
+	if( !fclib_stricmp(pszWorld,"WERMmorbot1") ) {
+		return !fclib_stricmp(pszName,"circtrig1") || !fclib_stricmp(pszName,"circtrig2") ||
+			!fclib_stricmp(pszName,"fliptrig");
+	}
+	// I, Predator's beam opens the local bridge and starts its ambush. It
+	// neither carries the team nor advances to another mission.
+	if( !fclib_stricmp(pszWorld,"WERMmorbot2") ) {
+		return !fclib_stricmp(pszName,"bridge1trig");
+	}
+	// Reactor pressure pads must work from either side of a timed door.
+	// Keep exact world/name lists: hallway, lift and scene triggers also use
+	// "trig" names but still need the team to gather.
+	if( !fclib_stricmp(pszWorld,"WERRreactr1") ) {
+		static cchar *apszPads[] = {"door1_triga","door1_trigb",
+			"door2_triga","door2_trigb","door3_triga","door3_trigb",
+			"door4_triga","bridge1_triga","orb_trig1","orb_trig2"};
+		for( u32 i=0; i<sizeof(apszPads)/sizeof(apszPads[0]); ++i ) {
+			if( !fclib_stricmp(pszName,apszPads[i]) ) return TRUE;
+		}
+	}
+	if( !fclib_stricmp(pszWorld,"WERRreactr2") ) {
+		static cchar *apszPads[] = {"door1_triga","door1_trigb",
+			"door2_triga","door2_trigb","bridge1_triga","orb_trig1"};
+		for( u32 i=0; i<sizeof(apszPads)/sizeof(apszPads[0]); ++i ) {
+			if( !fclib_stricmp(pszName,apszPads[i]) ) return TRUE;
+		}
+	}
+	return FALSE;
+}
 
 static BOOL _CoopTripwireGateActive( void ) {
-	return MultiplayerMgr.IsSinglePlayer() && (CPlayer::m_nPlayerCount >= 2);
+	// Test aid: MA_PORT_COOP_HOLD=0 (-coop-hold off) lets player 1 trip events alone, so a test
+	// window whose partners can't move still reaches scripted scenes.
+	static int _nHold = -1;
+	if( _nHold < 0 ) {
+		char szHold[8];
+		_nHold = (GetEnvironmentVariableA( "MA_PORT_COOP_HOLD", szHold, sizeof(szHold) ) && szHold[0] == '0') ? 0 : 1;
+	}
+	return _nHold && MultiplayerMgr.IsSinglePlayer() && (CPlayer::m_nPlayerCount >= 2);
 }
 
 // Players whose current entity is up: in the world and not dead or dying.
@@ -4361,15 +4470,26 @@ static CEntity *_CoopReleaseTripper( CEntity *pFallback ) {
 	return pFallback;
 }
 
-u32 CEntity::_CoopPlayersInsideMask( void ) {
+u32 CEntity::_CoopPlayersInsideMask( BOOL bCheckCrossings ) {
 	u32 nMask = 0;
 	for( s32 i=0; i < CPlayer::m_nPlayerCount; i++ ) {
 		CEntity *pEntity = Player_aPlayer[i].m_pEntityCurrent;
-		if( !pEntity || !pEntity->IsInWorld() ) {
+		if( !pEntity || !pEntity->IsInWorld() ||
+			((pEntity->TypeBits() & ENTITY_BIT_BOT) && ((CBot *)pEntity)->IsDeadOrDying()) ) {
 			continue;
 		}
 		const CFVec3A *pPos_WS = &pEntity->MtxToWorld()->m_vPos;
-		if( TripwireCollisionTest( pPos_WS, pPos_WS ) & TRIPWIRE_COLLFLAG_NEWPOS_INSIDE ) {
+		const CFVec3A *pPrev_WS = pPos_WS;
+		// Recheck actual movement if the normal enter notification was missed.
+		// Only track the same living original body; possession, revival and large
+		// teleports must not claim all the gates along an unrelated path.
+		if( bCheckCrossings && _apCoopPreviousPlayers[i] == pEntity &&
+			Player_aPlayer[i].m_pEntityOrig == pEntity &&
+			_avCoopPreviousPositions[i].DistSq( *pPos_WS ) <= 100.0f ) {
+			pPrev_WS = &_avCoopPreviousPositions[i];
+		}
+		if( TripwireCollisionTest( pPrev_WS, pPos_WS ) &
+			(TRIPWIRE_COLLFLAG_NEWPOS_INSIDE | TRIPWIRE_COLLFLAG_ENTER_EVENT | TRIPWIRE_COLLFLAG_EXIT_EVENT) ) {
 			nMask |= (1 << i);
 		}
 	}
@@ -4377,8 +4497,8 @@ u32 CEntity::_CoopPlayersInsideMask( void ) {
 }
 
 void CEntity::_CoopFireTripwireEnter( CEntity *pTripper ) {
-	SCRIPT_MESSAGE( "TRIPWIRE ENTER EVENT tripwire='%s' tripper='%s' (co-op: every player arrived)", Name() ? Name() : "unknown", pTripper->Name() ? pTripper->Name() : "unknown" );
-	DEVPRINTF( "Co-op: tripwire '%s' released, every player arrived.\n", Name() ? Name() : "unknown" );
+	SCRIPT_MESSAGE( "TRIPWIRE ENTER EVENT tripwire='%s' tripper='%s' (co-op: released)", Name() ? Name() : "unknown", pTripper->Name() ? pTripper->Name() : "unknown" );
+	DEVPRINTF( "Co-op: tripwire '%s' released.\n", Name() ? Name() : "unknown" );
 	m_pTripwire->OnEnter( pTripper );
 	if( m_pTripwire->m_pDoorToOpen ) {
 		m_pTripwire->m_pDoorToOpen->GotoPos( 1, CDoorEntity::GOTOREASON_DESTINATION );
@@ -4395,8 +4515,8 @@ BOOL CEntity::_CoopHoldTripwireEnter( CEntity *pTripper ) {
 		return FALSE;
 	}
 	const s32 nPlayer = _CoopPlayerOfEntity( pTripper );
-	if( nPlayer < 0 ) {
-		// Not a player: retail handling.
+	if( nPlayer < 0 || Player_aPlayer[nPlayer].m_pEntityOrig != pTripper || m_pTripwire->m_pszTripwireFilterEntityName ) {
+		// Possession and entity-specific objectives retain the actual actor and retail timing.
 		return FALSE;
 	}
 
@@ -4407,7 +4527,29 @@ BOOL CEntity::_CoopHoldTripwireEnter( CEntity *pTripper ) {
 			break;
 		}
 	}
+	if( CBot::m_bCutscenePlaying && nPlayer == game_GetStoryPlayerIndex() ) {
+		// The team already gathered for the scene. Its scripted actor must be
+		// able to cross later triggers while spectators' controls are disabled.
+		if( pHeld ) {
+			*pHeld = _aCoopHeldTripwires[--_nCoopHeldTripwires];
+		}
+		return FALSE;
+	}
 	const u32 nStanding = _CoopStandingPlayerMask();
+	if( !(nStanding & (1 << nPlayer)) ) {
+		// A dying body's final movement cannot advance the campaign.
+		return TRUE;
+	}
+	const BOOL bFloorSwitch = _CoopFloorSwitchTripwire(Name());
+	if( bFloorSwitch || _CoopCheckpointTripwire( Name() ) ) {
+		if( pHeld ) {
+			*pHeld = _aCoopHeldTripwires[--_nCoopHeldTripwires];
+		}
+		DEVPRINTF( "Co-op: %s '%s' reached by player %d; no partner wait.\n",
+			bFloorSwitch ? "floor switch" : "checkpoint trigger", Name(), nPlayer + 1 );
+		_CoopFireTripwireEnter( bFloorSwitch ? pTripper : _CoopReleaseTripper(pTripper) );
+		return TRUE;
+	}
 	u32 nArrived = (1 << nPlayer) | _CoopPlayersInsideMask() | (pHeld ? pHeld->nArrivedMask : 0);
 	if( (nArrived & nStanding) == nStanding ) {
 		// Everyone has arrived (or this player is the only one up).
@@ -4433,11 +4575,8 @@ BOOL CEntity::_CoopHoldTripwireEnter( CEntity *pTripper ) {
 }
 
 void CEntity::CoopTripwireWork( void ) {
-	if( !_nCoopHeldTripwires ) {
-		return;
-	}
 	if( !_CoopTripwireGateActive() ) {
-		_nCoopHeldTripwires = 0;
+		CoopTripwireReset();
 		return;
 	}
 	const u32 nStanding = _CoopStandingPlayerMask();
@@ -4448,7 +4587,12 @@ void CEntity::CoopTripwireWork( void ) {
 			*pHeld = _aCoopHeldTripwires[--_nCoopHeldTripwires];
 			continue;
 		}
-		pHeld->nArrivedMask |= pTripwireEntity->_CoopPlayersInsideMask();
+		const u32 nReached = pTripwireEntity->_CoopPlayersInsideMask( TRUE );
+		const u32 nRecovered = nReached & ~pHeld->nArrivedMask;
+		if( nRecovered ) {
+			DEVPRINTF( "Co-op: tripwire '%s' recovered player arrival mask 0x%x from position/crossing.\n", pTripwireEntity->Name() ? pTripwireEntity->Name() : "unknown", nRecovered );
+		}
+		pHeld->nArrivedMask |= nReached;
 		if( nStanding && ((pHeld->nArrivedMask & nStanding) == nStanding) ) {
 			CEntity *pTripper = NULL;
 			for( s32 nPlayer=0; nPlayer < CPlayer::m_nPlayerCount && !pTripper; nPlayer++ ) {
@@ -4460,19 +4604,95 @@ void CEntity::CoopTripwireWork( void ) {
 			pTripwireEntity->_CoopFireTripwireEnter( _CoopReleaseTripper( pTripper ) );
 		}
 	}
+	for( s32 nPlayer=0; nPlayer < MAX_PLAYERS; nPlayer++ ) {
+		_apCoopPreviousPlayers[nPlayer] = (nStanding & (1 << nPlayer)) ? Player_aPlayer[nPlayer].m_pEntityCurrent : NULL;
+		if( _apCoopPreviousPlayers[nPlayer] ) {
+			_avCoopPreviousPositions[nPlayer] = _apCoopPreviousPlayers[nPlayer]->MtxToWorld()->m_vPos;
+		}
+	}
 }
 
 void CEntity::CoopTripwireReset( void ) {
 	_nCoopHeldTripwires = 0;
+	for( s32 nPlayer=0; nPlayer < MAX_PLAYERS; nPlayer++ ) {
+		_apCoopPreviousPlayers[nPlayer] = NULL;
+		_apCoopWaitMessagePlayers[nPlayer] = NULL;
+	}
 }
 
-BOOL CEntity::CoopTripwireWaiting( const CEntity *pPlayerEntity ) {
+BOOL CEntity::CoopTripwireWaitMessage( const CEntity *pPlayerEntity ) {
 	const s32 nPlayer = _CoopPlayerOfEntity( pPlayerEntity );
 	if( nPlayer < 0 ) {
 		return FALSE;
 	}
+	if( CBot::m_bCutscenePlaying || !CoopTripwireWaiting( pPlayerEntity ) ) {
+		_apCoopWaitMessagePlayers[nPlayer] = NULL;
+		return FALSE;
+	}
+	// Crossings that resolve in a few frames need no flashing HUD prompt.
+	// This delay changes only the message, never trigger release or exit safety.
+	if( _apCoopWaitMessagePlayers[nPlayer] != pPlayerEntity ||
+		FLoop_nTotalLoopTicks < _anCoopWaitMessageStartTicks[nPlayer] ) {
+		_apCoopWaitMessagePlayers[nPlayer] = pPlayerEntity;
+		_anCoopWaitMessageStartTicks[nPlayer] = FLoop_nTotalLoopTicks;
+		return FALSE;
+	}
+	return FLoop_nTotalLoopTicks - _anCoopWaitMessageStartTicks[nPlayer] >= (u64)(FLoop_nTicksPerSec * 0.85f);
+}
+
+BOOL CEntity::CoopTripwireWaiting( const CEntity *pPlayerEntity ) {
+	const s32 nPlayer = _CoopPlayerOfEntity( pPlayerEntity );
+	if( nPlayer < 0 || !_CoopTripwireGateActive() ) {
+		return FALSE;
+	}
+	// Terminal arrivals are parked deliberately, even if their entry momentum
+	// carried them just beyond the volume before the wait began.
+	if( CoopTripwireExitWaiting( pPlayerEntity ) ) {
+		return TRUE;
+	}
+	const u32 nStanding = _CoopStandingPlayerMask();
+	if( !(nStanding & (1 << nPlayer)) ) {
+		return FALSE;
+	}
 	for( u32 i=0; i < _nCoopHeldTripwires; i++ ) {
-		if( _aCoopHeldTripwires[i].nArrivedMask & (1 << nPlayer) ) {
+		const _CoopHeldTripwire_t *pHeld = &_aCoopHeldTripwires[i];
+		CEntity *pTripwire = pHeld->pTripwireEntity;
+		if( !(pHeld->nArrivedMask & (1 << nPlayer)) || !pTripwire->IsTripwire() ||
+			!pTripwire->IsInWorld() || !pTripwire->IsTripwireArmed() ||
+			(pHeld->nArrivedMask & nStanding) == nStanding ) {
+			continue;
+		}
+		// Arrival history stays sticky for thin gates crossed one at a time.
+		// The HUD only describes a gate the player is still standing inside;
+		// an unused side-route trigger must not leave a wait message over later play.
+		const CFVec3A *pPos_WS = &pPlayerEntity->MtxToWorld()->m_vPos;
+		if( pTripwire->TripwireCollisionTest( pPos_WS, pPos_WS ) & TRIPWIRE_COLLFLAG_NEWPOS_INSIDE ) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+BOOL CEntity::CoopTripwireExitWaiting( const CEntity *pPlayerEntity ) {
+	const s32 nPlayer = _CoopPlayerOfEntity( pPlayerEntity );
+	if( nPlayer < 0 || !_CoopTripwireGateActive() || !(_CoopStandingPlayerMask() & (1 << nPlayer)) ) {
+		return FALSE;
+	}
+	if( CBot::m_bCutscenePlaying && nPlayer == game_GetStoryPlayerIndex() ) {
+		return FALSE;
+	}
+	for( u32 i=0; i < _nCoopHeldTripwires; i++ ) {
+		const _CoopHeldTripwire_t *pHeld = &_aCoopHeldTripwires[i];
+		CEntity *pTripwire = pHeld->pTripwireEntity;
+		if( !(pHeld->nArrivedMask & (1 << nPlayer)) || !pTripwire->IsInWorld() || !pTripwire->IsTripwireArmed() ) {
+			continue;
+		}
+		// Common terminal tripwires in the retail WinLevel scripts. Ordinary
+		// checkpoint, combat and possession triggers must leave players free to move.
+		cchar *pszName = pTripwire->Name();
+		if( pszName && (!fclib_stricmp( pszName, "levelend" ) ||
+			!fclib_stricmp( pszName, "levelend1" ) || !fclib_stricmp( pszName, "levelend2" ) ||
+			!fclib_stricmp( pszName, "endlevel" )) ) {
 			return TRUE;
 		}
 	}
@@ -4639,7 +4859,7 @@ void CEntity::_EntityIsOutsideTripwire( CEntity *pTripwireEntity ) {
 			{
 
 				for( i=0; i<pTripwire->m_nContainedEntityCount; ++i ) {
-					if( pTripwire->m_ppContainedTrippersArray[i] = this ) {
+					if( pTripwire->m_ppContainedTrippersArray[i] == this ) {
 						// Found it...
 
 						if( i < (pTripwire->m_nContainedEntityCount - 1) ) {
@@ -4879,7 +5099,24 @@ BOOL CEntity::ActionNearby( CEntity *pFromWho )
 {
 	FASSERT( IsCreated() );
 
-	CFScriptSystem::TriggerEvent(CFScriptSystem::GetEventNumFromName("action"), (u32)(this), (u32)(pFromWho), 0);
+	CEntity *pScriptActor = pFromWho;
+#if FANG_WINGC
+	// xemc_crabt's escape conversation accepts only its cached Bot_GetPlayer
+	// handle. Let a co-op Glitch recruit the captain through that same story
+	// actor; keep proximity, buddy AI and other action callbacks on the operator.
+	if( MultiplayerMgr.IsLocalCoop() && Level_nLoadedIndex >= 0 &&
+		!fclib_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WEMCcity_01") &&
+		Name() && !fclib_stricmp(Name(),"CapnPeanuts") ) {
+		for( s32 n=0; n<CPlayer::m_nPlayerCount; ++n ) {
+			if( Player_aPlayer[n].m_pEntityOrig == pFromWho &&
+				Player_aPlayer[n].m_pEntityCurrent == pFromWho ) {
+				pScriptActor = Player_aPlayer[game_GetStoryPlayerIndex()].m_pEntityCurrent;
+				break;
+			}
+		}
+	}
+#endif
+	CFScriptSystem::TriggerEvent(CFScriptSystem::GetEventNumFromName("action"), (u32)(this), (u32)(pScriptActor), 0);
 
 	if (HasAlarmSysUse())
 	{
@@ -5274,51 +5511,6 @@ void CEntity::_AttachWorldShape( CEntity *pChildEntity, CFWorldShapeInit *pShape
 }
 
 
-#if FANG_WINGC
-// PC port: the cut Mil Sniper (CBotSniper) returns in place of some world-placed Grunts.
-// - Grunts named "sniper<digits>" (wewjjourn02's script-spawned sniper1-3) are the retail sniper roles.
-// - -snipers-every N also turns about one Grunt in N into a Sniper. The pick hashes the level and the
-//   placement's position, so the same Grunts become Snipers every time a level loads.
-extern "C" int port_GetSnipersEvery( void );
-extern "C" int port_GetCutEnemies( void );
-
-static BOOL _PortGruntBecomesSniper( cchar *pszWorldResName, const CFWorldShapeInit *pShapeInit, cchar *pszName ) {
-	if( !port_GetCutEnemies() ) {
-		return FALSE;
-	}
-	if( pszName && !fclib_strnicmp( pszName, "sniper", 6 ) && pszName[6] >= '0' && pszName[6] <= '9' ) {
-		cchar *psz = pszName + 6;
-		while( *psz >= '0' && *psz <= '9' ) {
-			++psz;
-		}
-		if( !*psz ) {
-			DEVPRINTF( "Port: '%s' in %s is a Mil Sniper (retail sniper role).\n", pszName, pszWorldResName ? pszWorldResName : "?" );
-			return TRUE;
-		}
-	}
-	const int nEvery = port_GetSnipersEvery();
-	if( nEvery < 1 || !pShapeInit ) {
-		return FALSE;
-	}
-	u32 nHash = 2166136261u;
-	for( cchar *psz = pszWorldResName; psz && *psz; ++psz ) {
-		nHash = (nHash ^ (u8)fclib_tolower( *psz )) * 16777619u;
-	}
-	const s32 anPos[3] = { (s32)pShapeInit->m_Mtx43.m_vPos.x, (s32)pShapeInit->m_Mtx43.m_vPos.y, (s32)pShapeInit->m_Mtx43.m_vPos.z };
-	for( u32 i = 0; i < 3; ++i ) {
-		for( u32 nByte = 0; nByte < 4; ++nByte ) {
-			nHash = (nHash ^ ((u32)anPos[i] >> (nByte * 8) & 0xFF)) * 16777619u;
-		}
-	}
-	if( (nHash % (u32)nEvery) != 0 ) {
-		return FALSE;
-	}
-	DEVPRINTF( "Port: Grunt '%s' at (%d, %d, %d) in %s is a Mil Sniper (1 in %d).\n", pszName ? pszName : "?",
-			   anPos[0], anPos[1], anPos[2], pszWorldResName ? pszWorldResName : "?", nEvery );
-	return TRUE;
-}
-#endif
-
 CEntity *CEntity::_CreateWorldShape( cchar *pszWorldResName, CFWorldShapeInit *pShapeInit, const void *pFixupOffsetBase ) {
 	const CFWorldShapeMesh *pShapeMesh = pShapeInit->m_pMesh;
 	CEntity *pEntity;
@@ -5398,16 +5590,8 @@ CEntity *CEntity::_CreateWorldShape( cchar *pszWorldResName, CFWorldShapeInit *p
 			_SET_ENTITY_TYPE( CBotGlitch, "CBotGlitch" );
 
 		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_BOTGRUNT ) ) {
-#if FANG_WINGC
-			if( _PortGruntBecomesSniper( pszWorldResName, pShapeInit, CEntityParser::m_pszEntityName ) ) {
-				pEntity = fnew CBotSniper;
-				_SET_ENTITY_TYPE( CBotSniper, "CBotSniper" );
-			} else
-#endif
-			{
-				pEntity = fnew CBotGrunt;
-				_SET_ENTITY_TYPE( CBotGrunt, "CBotGrunt" );
-			}
+			pEntity = fnew CBotGrunt;
+			_SET_ENTITY_TYPE( CBotGrunt, "CBotGrunt" );
 
 		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_DOOR ) || !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_LIFT ) ) {
 			pEntity = fnew CDoorEntity;
@@ -5545,10 +5729,6 @@ CEntity *CEntity::_CreateWorldShape( cchar *pszWorldResName, CFWorldShapeInit *p
 		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_BOTSNARQ ) ) {
 			pEntity = fnew CBotSnarq;
 			_SET_ENTITY_TYPE( CBotSnarq, "CBotSnarq" );
-
-		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_BOTSNIPER ) ) {
-			pEntity = fnew CBotSniper;
-			_SET_ENTITY_TYPE( CBotSniper, "CBotSniper" );
 		
 		} else if( !fclib_stricmp( CEntityParser::m_pszEntityType, ENTITY_TYPE_BOTZOMBIEBOSS) ) {
 			pEntity = fnew CBotZombieBoss;
@@ -5881,11 +6061,11 @@ void CEntity::DrawAllDebugText( void )
 			{
 				if( checkpoint_Saved( 1 ) )
 				{
-					checkpoint_Restore(1, TRUE);
+					checkpoint_Restore( 1, TRUE, "dev:checkpoint-button" );
 				}
 				else
 				{
-					checkpoint_Restore(0, TRUE);
+					checkpoint_Restore( 0, TRUE, "dev:checkpoint-button" );
 				}
 			}
 		}

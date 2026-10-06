@@ -13,7 +13,7 @@ usage: python tools/mission_parallel.py [options] WORLD [WORLD ...]
   --no-audio               skip audio setup entirely (faster loads; sound errors are then meaningless)
   --test-keys KEYS         passed to every instance, e.g. "10:0x20,14:0x20,18:0x20,24:0x20" (Space skips
                            intro movies and only jumps in gameplay)
-  --game-args "ARGS"       extra game arguments passed to every instance (e.g. "-snipers-every 4")
+  --game-args "ARGS"       extra game arguments passed to every instance (e.g. "-test-win-level 60")
   --quiet                  skip the per-mission summaries (use tools/log_errors.py on the run instead)
 
 Every instance has separate engine, asset, screenshot, and save paths. Audio is on and Discord is off
@@ -51,7 +51,7 @@ def main():
     audio_group.add_argument("--mute", action="store_true", help="run silently in every instance")
     audio_group.add_argument("--no-audio", action="store_true", help="skip audio setup")
     parser.add_argument("--test-keys")
-    parser.add_argument("--game-args", default="", help="extra game arguments for every instance, e.g. \"-snipers-every 4\"")
+    parser.add_argument("--game-args", default="", help="extra game arguments for every instance, e.g. \"-test-win-level 60\"")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("missions", nargs="+")
     args = parser.parse_args()

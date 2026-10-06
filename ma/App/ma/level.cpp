@@ -1384,6 +1384,7 @@ static _LevelMusicData_t _LMData;
 static _LevelDuckData_t _LDData;
 static _StreamingAudioInfo_t _aStreamingAudioInfo[_STREAM_COUNT];
 static cutscene_Handle_t _hIntroMovie;
+static cutscene_Handle_t _hEndingMovie;
 static BOOL _bPlayIntroMovie;
 static cwchar **_ppwszMissionText;
 static u8 _nMissionTextCount;	// Number of mission text entries for the currently-loaded level
@@ -1431,6 +1432,7 @@ BOOL level_InitSystem( void ) {
 	}
 
 	_hIntroMovie = CUTSCENE_INVALID_HANDLE;
+	_hEndingMovie = CUTSCENE_INVALID_HANDLE;
 	_bPlayIntroMovie = FALSE;
 
 	Level_fStartingFadeSecs = _DEFAULT_STARTING_FADE_SECS;
@@ -1916,6 +1918,7 @@ void level_Unload( void ) {
 		CGColl::ClearMaterialTable();
 
 		_hIntroMovie = CUTSCENE_INVALID_HANDLE;
+		_hEndingMovie = CUTSCENE_INVALID_HANDLE;
 	}
 }
 
@@ -2038,6 +2041,12 @@ static void _LoadMovieData( void ) {
 		return;
 	}
 
+	FGameDataTableHandle_t hEndTable = fgamedata_GetFirstTableHandle( Level_hLevelDataFile, "EndMovie" );
+	if( hEndTable != FGAMEDATA_INVALID_TABLE_HANDLE && fgamedata_GetNumFields( hEndTable ) > 0 ) {
+		FGameData_VarType_e nType;
+		cchar *pszEnd = (cchar *)fgamedata_GetPtrToFieldData( hEndTable, 0, nType );
+		if( pszEnd && nType == FGAMEDATA_VAR_TYPE_STRING ) _hEndingMovie = cutscene_AcquireHandle( pszEnd, TRUE );
+	}
 	FGameDataFileHandle_t hMovieTable = fgamedata_GetFirstTableHandle( Level_hLevelDataFile, "StartMovie" );
 	if( hMovieTable == FGAMEDATA_INVALID_TABLE_HANDLE ) {
 		return;
@@ -2378,6 +2387,8 @@ static void _LoadCollectableOverrideCSV( void ) {
 	}
 }
 
+cutscene_Handle_t level_GetEndingMovieHandle( void ) { return _hEndingMovie; }
+
 void level_SetIntroMovieHandle ( cutscene_Handle_t hIntroMovie ) {
 	_hIntroMovie = hIntroMovie;
 }
@@ -2526,6 +2537,17 @@ int level_StartStream( cchar *pszFilename,
 	DEVPRINTF( "level_StartStream(): Starting streaming audio file '%s'.\n", pszFilename );
 
 	return i;
+}
+
+CFAudioStream *level_GetStreamByName( cchar *pszFilename ) {
+	if( !pszFilename ) return NULL;
+	for( u32 i=0; i<_STREAM_COUNT; ++i ) {
+		if( _aStreamingAudioInfo[i].pAudioStream &&
+			!fclib_stricmp( pszFilename, _aStreamingAudioInfo[i].szFilename ) ) {
+			return _aStreamingAudioInfo[i].pAudioStream;
+		}
+	}
+	return NULL;
 }
 
 void level_StopStream( cchar *pszFilename ) {

@@ -282,6 +282,11 @@ BOOL CFAnimInst::Create( const FAnim_t *pAnim )
 //
 static u16 _SetUnitKeySlider( u8 *paKeyTime, u16 nKeyCount, s32 nLowKey, f32 fAnimSecs, f32 fDeltaSecs )
 {
+	// Hold endpoint keys outside the authored range. Some retail constant
+	// tracks have both timestamps at the final frame (factory builder root).
+	if( fAnimSecs <= (f32)paKeyTime[0] ) return 0;
+	if( fAnimSecs >= (f32)paKeyTime[nKeyCount-1] ) return nKeyCount-2;
+
 	s32 nInitialLowKey = nLowKey;
 	s32 nHighKey = nLowKey + 1;
 	u8 n8BitAnimSecs = (u8)fAnimSecs;
@@ -336,6 +341,11 @@ static u16 _SetUnitKeySlider( u8 *paKeyTime, u16 nKeyCount, s32 nLowKey, f32 fAn
 //
 static u16 _SetUnitKeySlider( u16 *paKeyTime, u16 nKeyCount, s32 nLowKey, f32 fAnimSecs, f32 fDeltaSecs )
 {
+	// Hold endpoint keys outside the authored range. Some retail constant
+	// tracks have both timestamps at the final frame (factory builder root).
+	if( fAnimSecs <= (f32)paKeyTime[0] ) return 0;
+	if( fAnimSecs >= (f32)paKeyTime[nKeyCount-1] ) return nKeyCount-2;
+
 	s32 nInitialLowKey = nLowKey;
 	s32 nHighKey = nLowKey + 1;
 	u16 n16BitAnimSecs = (u16)fAnimSecs;
@@ -390,6 +400,11 @@ static u16 _SetUnitKeySlider( u16 *paKeyTime, u16 nKeyCount, s32 nLowKey, f32 fA
 //
 static u16 _SetUnitKeySlider( f32 *paKeyTime, u16 nKeyCount, s32 nLowKey, f32 fAnimSecs, f32 fDeltaSecs )
 {
+	// Hold endpoint keys outside the authored range. Some retail constant
+	// tracks have both timestamps at the final frame (factory builder root).
+	if( fAnimSecs <= (f32)paKeyTime[0] ) return 0;
+	if( fAnimSecs >= (f32)paKeyTime[nKeyCount-1] ) return nKeyCount-2;
+
 	s32 nInitialLowKey = nLowKey;
 	s32 nHighKey = nLowKey + 1;
 

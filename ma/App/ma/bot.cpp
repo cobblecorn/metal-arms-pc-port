@@ -1722,10 +1722,7 @@ BOOL CBot::ClassHierarchyBuild( void ) {
 	FASSERT( IsSystemInitialized() );
 	FASSERT( !IsCreated() );
 	FASSERT( FWorld_pWorld );
-	// CBotSniper has no free u64 leaf bit and shares ENTITY_BIT_UNSPECIFIED.
-	// Its inherited BOT bit still makes it part of all bot collision filters.
-	FASSERT( (TypeBits() & ENTITY_BITS_ALLBOTBITS) != ENTITY_BIT_BOT ||
-			(LeafTypeBit() == ENTITY_BIT_UNSPECIFIED && (TypeBits() & ENTITY_BIT_UNSPECIFIED)) );
+	FASSERT( (TypeBits() & ENTITY_BITS_ALLBOTBITS) != ENTITY_BIT_BOT);
 	// Get a frame...
 	FResFrame_t ResFrame = fres_GetFrame();
 
@@ -2592,6 +2589,12 @@ BOOL CBot::ActionCallback( CFWorldTracker *pTracker, FVisVolume_t *pVolume ) {
 
 	if( (pEntity->IsActionable()) ) {
 		BOOL bContinue = !pEntity->ActionNearby( m_pCollBot );
+#if FANG_WINGC
+		if( Fang_bPortDiag ) {
+			DEVPRINTF("PORT-ACTION actor='%s' target='%s' consumed=%d\n",
+				ActionGuy->Name(), pEntity->Name(), !bContinue);
+		}
+#endif
 
 		if(	(bContinue==FALSE) && // new def, if a human actions, and the action is swallowed, the code here will eat the action msg
 			pHumanControl ) {
@@ -2650,6 +2653,12 @@ void CBot::ClassHierarchyWork( void ) {
 	if( !IsOurWorkBitSet() ) {
 		return;
 	}
+
+#if FANG_WINGC
+	if( TypeBits() & ENTITY_BIT_BOTZOM ) {
+		aiutils_EnsureFreedWastelandZombieFollowsPlayer( this );
+	}
+#endif
 
 	if( m_pPartMgr->IsCreated() ) {
 		m_pPartMgr->Work();
@@ -2897,7 +2906,11 @@ BOOL CBot::Recruit( CBot *pRecruiterBot, const CFVec3A *pEpicenter_WS ) {
 		return FALSE;
 	}
 
-	if( !Recruit_CanBeRecruited() ) {
+	if( !Recruit_CanBeRecruited()
+#if FANG_WINGC
+		&& !aiutils_CanScriptRecruitWastelandZombie( this, pRecruiterBot, pEpicenter_WS )
+#endif
+		) {
 		// This bot cannot be recruited...
 		return FALSE;
 	}
@@ -10726,9 +10739,10 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 	CPlayer*				pPlayer;
 	//GCollSurfType_e			eImpactedSurfaceType;
 
-	// Build tracker skip list...
+	// A RAT gun must exclude the entire occupied vehicle while targeting.
 	FWorld_nTrackerSkipListCount = 0;
-	AppendTrackerSkipList();
+	if( (TypeBits() & ENTITY_BIT_SITEWEAPON) && GetParent() && (GetParent()->TypeBits() & ENTITY_BIT_VEHICLERAT) ) GetParent()->AppendTrackerSkipList();
+	else AppendTrackerSkipList();
 	nThisBotTrackerCount = FWorld_nTrackerSkipListCount;
 
 	pPlayer = &Player_aPlayer[ m_nPossessionPlayerIndex ];

@@ -43,6 +43,9 @@ public:
 	static void UninitSystem();
 	static BOOL InitLevel();
 	static void UninitLevel();
+#if FANG_WINGC
+	static void RefreshCoopScriptPlayers();
+#endif
 };
 
 class CMAST_EntityWrapper

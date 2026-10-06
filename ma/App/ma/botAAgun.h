@@ -289,6 +289,12 @@ public:
 	static BOOL InitSystem( void );
 	static void UninitSystem( void );
 	
+#if FANG_WINGC
+	BOOL PortCreateDefenseGun( const CBotAAGun *pOriginal, cchar *pszName, const CFMtx43A *pMtx );
+	BOOL PortBoardDefensePlayer( CBot *pBot );
+	BOOL PortDefensePlayerReady( CBot *pBot ) const;
+#endif
+
 	BOOL Create( s32 nPlayerIndex=-1, 
 				BOOL bInstallDataPort=FALSE, 
 				cchar *pszEntityName=NULL,

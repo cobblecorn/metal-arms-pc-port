@@ -304,7 +304,11 @@ void CVehicle::DriverEnter( CBot *pDriverBot, cchar *pszAttachPointBoneName /* =
 
 
 	// set vehicle's index to that of driver bot
-	if( !GetGunnerBot() || !GetGunnerBot()->IsPlayerBot() )
+	if( !GetGunnerBot() || !GetGunnerBot()->IsPlayerBot()
+#if FANG_WINGC
+		|| (MultiplayerMgr.IsLocalCoop() && pDriverBot->IsPlayerBot())
+#endif
+	)
 	{
 		m_nPossessionPlayerIndex = pDriverBot->m_nPossessionPlayerIndex;
 	}

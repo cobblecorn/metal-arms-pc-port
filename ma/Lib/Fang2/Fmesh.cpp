@@ -478,6 +478,10 @@ CFMeshInst::CFMeshInst( void )
 	m_aTexLayerID = NULL; 
 	m_aAnimTC = NULL; 
 	m_aTexFlip = NULL; 
+	#if FANG_WINGC
+	m_pDrawFilter = NULL;
+	m_pDrawFilterData = NULL;
+	#endif
 	m_pPreDrawCallback = NULL; 
 	m_pPostDrawCallback = NULL; 
 	m_pPreDrawData = NULL; 
@@ -1731,6 +1735,10 @@ FViewportPlanesMask_t CFMeshInst::DrawPrep( FViewportPlanesMask_t nCrossesPlanes
 #endif		
 
 	AnimateLayers();
+
+	#if FANG_WINGC
+	if( m_pDrawFilter && !m_pDrawFilter( this, m_pDrawFilterData ) ) return -1;
+	#endif
 
 	// If a pre-draw callback has been specified, call it
 	if ( m_pPreDrawCallback )

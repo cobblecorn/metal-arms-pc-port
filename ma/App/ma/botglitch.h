@@ -765,6 +765,10 @@ public:
 
 	BOOL GrabCable( CEZipLine *pCable );
 	void ReleaseCable( void );
+#if FANG_WINGC
+	void PortStopForCoopScene( void );
+	void PortWorkForCoopScene( void );
+#endif
 
 	virtual BOOL SwitchingWeapons( void ) const;
 	virtual void NotifyWeaponUpgraded( CWeapon *pUpgradedWeapon );
@@ -781,6 +785,11 @@ public:
 	// Just like CheckpointRestore, but used when restoring only this bot
 	// for multiplayer.
 	void		 CheckpointRestoreThisBot( void );
+#if FANG_WINGC
+	// Local co-op (PC): the checkpoint-restore respawn effect and sound, for a player brought back
+	// beside a partner instead of by a checkpoint restore.
+	void		 PortPlayRespawnEffect( void );
+#endif
 
 	virtual void Die( BOOL bSpawnDeathEffects=TRUE, BOOL bSpawnGoodies=TRUE );
 

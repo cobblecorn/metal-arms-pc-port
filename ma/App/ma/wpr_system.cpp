@@ -66,7 +66,12 @@
 //====================
 // private definitions
 
+#if FANG_WINGC
+// PC: the attract demo waits five minutes on the main menu (retail's 25 s kept interrupting).
+#define _MAIN_MENU_INACTIVE_TIME				300.0f
+#else
 #define _MAIN_MENU_INACTIVE_TIME				25.0f
+#endif
 #define _MAX_ROWS_OF_KEYS						8
 #define _MU_SELECT_DISPLAY_NAME_X				0.50f
 #define _MU_SELECT_DISPLAY_NAME_Y				0.26f
@@ -677,16 +682,33 @@ static _MenuData_t _MenuState;
 #if defined(MA_PC_INPUT)
 // Local co-op uses the retail multiplayer "Players Join In" screen (_bPcCoopJoin): each player joins
 // on their own controls and picks a profile, which brings their settings and multiplayer colour.
-// Controls are dealt automatically (PCINPUT_LAYOUT_AUTO): keyboard/mouse is player 1's box,
-// controllers take players 2-4 as they connect.
+// Keyboard/mouse stay with P1; the pad opening this screen stays with P1 too.
+// Other pads preview unused sections and become owned only when their player joins.
 static BOOL _bPcCoopJoin = FALSE;
+// Then player 1 picks Start / Continue / Replay on the retail Launch menu (and its Start Over,
+// Difficulty and Pick Level screens), which show the campaign saved with player 1's profile
+// (coopsave_*, gamesave.cpp) in _paProfiles[0]. Everyone's own profiles wait in _aPcCoopPersonal.
 static BOOL _bPcCoopLaunch = FALSE;
+static CPlayerProfile _aPcCoopPersonal[MAX_PLAYERS];
+static BOOL _bPcCoopHavePersonal = FALSE;
+static void _PcCoopEnterCampaignMenu( void );
+static void _PcCoopReturnToJoin( void );
+static void _PcCoopRestoreProfiles( void );
 static f32 _fPcCoopNeedPlayersTimer = 0.0f;	// shows "needs two players" after a refused start
 // Each ready player's multiplayer colour (GAMESAVE_MP_COLORS_...), chosen with left/right in their box.
 static u8 _anPcCoopColor[MAX_PLAYERS];
 static u16 _anPcCoopLastState[MAX_PLAYERS];
 static cwchar *_apwszPcCoopColorNames[GAMESAVE_MP_COLORS_COUNT] = { L"Yellow", L"Blue", L"Purple", L"Red", L"Green", L"Black" };
 static cwchar *_apwszPcCoopColorCodes[GAMESAVE_MP_COLORS_COUNT] = { L"95851099", L"30559999", L"70359599", L"99251599", L"25902599", L"55555599" };
+#endif
+#if defined(MA_PC_INPUT)
+// Input routing is shared by the two local join screens; campaign rules are
+// selected separately by _bPcCoopJoin/_bPcCoopLaunch, not by the input layer.
+static void _PcBeginLocalJoinRouting( BOOL bCoop ) {
+	pcinput_BeginLocalJoin( _MenuState.nControllerIndex );
+	_bPcCoopJoin = bCoop;
+	_bPcCoopLaunch = FALSE;
+}
 #endif
 static FResFrame_t _ResFrame;
 static CFStringTable *_pStringTable;
@@ -1329,6 +1351,9 @@ static void _DrawText( Wpr_DataTypes_TextLayout_t *pText,
 static void _DrawSelectingPlayerMsg( f32 fX=0.155f, f32 fY=0.215f );
 static void _DrawOnOffSelection( f32 fX, f32 fY, BOOL bActiveItem, f32 fScale, BOOL bSelected );
 static void _ResetSystem( void );
+#if defined(MA_PC_INPUT)
+static void _PcMenuResetLabelTexture( void );
+#endif
 static BOOL _IsCardStillAttached( FStorage_DeviceID_e nStorageDeviceID,
 								cwchar *pwszCardName,
 								BOOL bCheckCardIsReadyForUse = TRUE );
@@ -2015,6 +2040,8 @@ void wpr_system_ResetToStartupScreen( BOOL bBootup ) {
 #if defined(MA_PC_INPUT)
 	_bPcCoopJoin = FALSE;
 	_bPcCoopLaunch = FALSE;
+	coopsave_EndSession();
+	_PcCoopRestoreProfiles();
 	pcinput_SetLocalCoopSession( false );
 #endif
 	//////////////////////
@@ -2716,6 +2743,7 @@ static BOOL _Init( void ) {
 #if FANG_WINGC
 	FGameDataTableHandle_t hCommonPhrases = FGAMEDATA_INVALID_TABLE_HANDLE;
 	u32 nNumCommonPhrases = 0;
+	BOOL bRetailScreenOrder = FALSE;
 #endif
 	cchar *pszText, *pszTableName;
 	cwchar *pwszText;
@@ -2957,8 +2985,19 @@ static BOOL _Init( void ) {
 		goto _EXIT_WITH_ERROR;
 	}
 	#if FANG_WINGC
-	if( i > (WPR_DATATYPES_SCREEN_COUNT*6) ) {
-		DEVPRINTF( "wpr_system::_Init() : Ignoring %d trailing screen table entries from newer screens.\n", i - (WPR_DATATYPES_SCREEN_COUNT*6) );
+	// Retail removed the source's rename-space row before difficulty, then added
+	// other error screens. A positional load made difficulty display Reset while
+	// its Accept button still started the campaign. The pause table is all NULL
+	// at these indices and keeps its original order.
+	if( bWrappers && i >= 36*6 ) {
+		pszTableName = (cchar *)fgamedata_GetPtrToFieldData( hTableNames,
+			WPR_DATATYPES_SCREENS_ERROR_RENAME_SPACE*6, nDataType );
+		bRetailScreenOrder = !fclib_stricmp( pszTableName, "diff_level_text" );
+	}
+	if( bRetailScreenOrder ) {
+		DEVPRINTF( "wpr_system::_Init() : Mapping retail difficulty and confirmation screen rows.\n" );
+	} else if( i > (WPR_DATATYPES_SCREEN_COUNT*6) ) {
+		DEVPRINTF( "wpr_system::_Init() : Ignoring %d extra screen table fields.\n", i - (WPR_DATATYPES_SCREEN_COUNT*6) );
 	}
 	#endif
 
@@ -2971,6 +3010,16 @@ static BOOL _Init( void ) {
 	nPlatformOffset = 1;
 #endif
 	for( i=0; i < WPR_DATATYPES_SCREEN_COUNT; i++ ) {
+	#if FANG_WINGC
+		nNameTableIndex = i*6;
+		if( bRetailScreenOrder ) {
+			switch( i ) {
+			case WPR_DATATYPES_SCREENS_ERROR_RENAME_SPACE: nNameTableIndex = 35*6; break;
+			case WPR_DATATYPES_SCREENS_DIFFICULTY_LEVEL: nNameTableIndex = 32*6; break;
+			case WPR_DATATYPES_SCREENS_CONFIRM_FORMAT: nNameTableIndex = 33*6; break;
+			}
+		}
+	#endif
 		// grab a ptr to the screen data
 		pScreen = &Wpr_DataTypes_paScreenData[i];
 
@@ -4583,6 +4632,7 @@ static void _ResetSystem( void ) {
 	_bSystemOK = FALSE;
 #if defined(MA_PC_INPUT)
 	_MouseUninstall();
+	_PcMenuResetLabelTexture();
 #endif
 
 	_pAudioStream = NULL;
@@ -4873,6 +4923,12 @@ static Wpr_DataTypes_NavCode_e _MainMenu_Work( void ) {
 	} else {
 		// no change, time how long the player is on this screen with no change, if too long, switch to demo mode
 		_MenuState.fModeTimer += FLoop_fPreviousLoopSecs;
+#if defined(MA_PC_INPUT)
+		// moving the mouse over the menu is activity too
+		if( pcinput_MenuPointerMoved() ) {
+			_MenuState.fModeTimer = 0.0f;
+		}
+#endif
 		if( _MenuState.fModeTimer >= _MAIN_MENU_INACTIVE_TIME ) {
 			return WPR_DATATYPES_NAV_CODE_BACK;
 		}
@@ -4933,6 +4989,13 @@ static const _PcMenuPiece_t _aPcMenuCloseGame[] = {
 
 static CFTexInst _PcMenuLabelTex;
 static BOOL _bPcMenuLabelTexTried = FALSE;
+
+static void _PcMenuResetLabelTexture( void ) {
+	// The atlas belongs to the wrapper resource frame, not this static instance.
+	// Clear it before that frame is released, and load the new atlas on the next menu visit.
+	_PcMenuLabelTex.SetTexDef( NULL );
+	_bPcMenuLabelTexTried = FALSE;
+}
 
 // Lays out (and with bDraw, draws) a label whose MultiPlayer-line quad centre is at ortho
 // (fCenterX, fCenterY), tinted by fBrightness (the menu's fade-in). Returns the gold's bounds in ortho
@@ -5173,10 +5236,9 @@ static void _MainMenu_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 			gameloop_ScheduleExit();
 			break;
 		case _MENU_ITEMS_MM_COOP:
-			// The retail Players Join In screen, in co-op mode: the keyboard/mouse gets player 1's box
-			// and controllers are dealt to players 2-4 (so a keyboard player and pad players can join).
-			pcinput_SetLocalCoopSession( true, PCINPUT_LAYOUT_AUTO, MAX_PLAYERS );
-			_bPcCoopJoin = TRUE;
+			// P1 keeps keyboard/mouse and the controller used to open selection.
+			// Other controllers become owned when their players join.
+			_PcBeginLocalJoinRouting( TRUE );
 			_fPcCoopNeedPlayersTimer = 0.0f;
 			for( u32 nSection = 0; nSection < MAX_PLAYERS; ++nSection ) {
 				_anPcCoopColor[nSection] = GAMESAVE_MP_COLORS_YELLOW;
@@ -5191,6 +5253,9 @@ static void _MainMenu_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 			break;
 #endif
 		case _MENU_ITEMS_MM_MULTI:
+#if defined(MA_PC_INPUT)
+			_PcBeginLocalJoinRouting( FALSE );
+#endif
 			_MenuState.nMode = WPR_DATATYPES_MODES_MULTIPLAYER;
 			// setup the multiplayer join screen
 			_MenuState.nCurItemIndex = 0;
@@ -6686,6 +6751,10 @@ static void _StartOverWarning_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode
 	case WPR_DATATYPES_NAV_CODE_FORWARD:
 		// reset the player's level progress back to the first level, but keep their settings
 		_paProfiles[0].ResetToBeginning();
+#if defined(MA_PC_INPUT)
+		// co-op: the campaign is written when a level is completed (coopsave_SaveSession)
+		if( !_bPcCoopLaunch )
+#endif
 		pSaveInfo->nFlags |= GAMESAVE_SAVE_INFO_FLAGS_NEEDS_SAVING;
 
 		_MenuState.bLMNewProfile = (_paProfiles[0].m_Data.nCurrentLevel == 0);
@@ -6807,6 +6876,12 @@ static Wpr_DataTypes_NavCode_e _LaunchMenu_Work( void ) {
 		// continue is disabled
 		_MenuState.nCurItemIndex += nUpDown;
 	}
+#if defined(MA_PC_INPUT)
+	if( _bPcCoopLaunch && _MenuState.nCurItemIndex == _MENU_ITEMS_LM_EDIT_SETTINGS ) {
+		// co-op has no Edit Settings: each player changes their own in their pause menu
+		_MenuState.nCurItemIndex = _MenuState.bLMNewProfile ? _MENU_ITEMS_LM_START_NEW : _MENU_ITEMS_LM_REPLAY;
+	}
+#endif
 	if( nCache != _MenuState.nCurItemIndex ) {
 		fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CURSOR_MOVED] );
 	}
@@ -6856,6 +6931,20 @@ static void _LaunchMenu_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHal
 			}
 		}
 
+#if defined(MA_PC_INPUT)
+		if( _bPcCoopLaunch ) {
+			// co-op: retitled, and no Edit Settings
+			if( i == _MENU_ITEMS_LM_START_OFFSET + _MENU_ITEMS_LM_EDIT_SETTINGS ) {
+				continue;
+			}
+			if( i == 0 ) {
+				Wpr_DataTypes_TextLayout_t Title = pScreen->pText[0];
+				Title.pwszText = L"Co-op";
+				_DrawText( &Title, bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes, bDisabled );
+				continue;
+			}
+		}
+#endif
 		_DrawText( &pScreen->pText[i], bSelected, fScaleMultiplier, fHalfXRes, fHalfYRes, bDisabled );
 #if defined(MA_PC_INPUT)
 		if( i >= _MENU_ITEMS_LM_START_OFFSET && !bDisabled ) {
@@ -6930,8 +7019,15 @@ static void _LaunchMenu_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 		break;
 
 	case WPR_DATATYPES_NAV_CODE_BACK:
+#if defined(MA_PC_INPUT)
+		if( _bPcCoopLaunch ) {
+			// co-op: back to the join screen
+			_PcCoopReturnToJoin();
+			break;
+		}
+#endif
 		// return to profile select
-		
+
 		// find the selected profile and make that the current selected
 		_SelectProfile_SetupReturnVisit( _MenuState.pPPDevInfo, pSaveInfo->wszProfileName );
 		break;
@@ -6941,7 +7037,7 @@ static void _LaunchMenu_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 		break;
 	}
 
-	_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_LAUNCH;	
+	_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_LAUNCH;
 }
 
 // the Code is: RTrigger Down + A then B then X then Y
@@ -8500,6 +8596,13 @@ static Wpr_DataTypes_NavCode_e _MultiJoin_Work( void ) {
 	}
 #endif
 
+#if defined(MA_PC_INPUT)
+	u32 nJoinedInputs=0;
+	for(i=0;i<MAX_PLAYERS;++i)
+		if(_MenuState.aMJSections[i].nState!=_MULTI_JOIN_STATE_ENTER) nJoinedInputs|=1u<<i;
+	pcinput_KeepLocalJoinPlayers(nJoinedInputs);
+#endif
+
 	// update our waiting for other players var
 	_MenuState.MJJoinInfo.bWaitingForOtherPlayers = FALSE;
 	for( i=0; i < MAX_PLAYERS; i++ ) {
@@ -8546,6 +8649,45 @@ static Wpr_DataTypes_NavCode_e _MultiJoin_Work( void ) {
 	return WPR_DATATYPES_NAV_CODE_NOTHING;
 }
 
+#if defined(MA_PC_INPUT)
+// Screen-fraction panels avoid stretching the retail 4:3 box meshes by the window's width.
+static void _PcCoopJoinPanel( f32 fLeft, f32 fTop, f32 fRight, f32 fBottom, f32 fHalfXRes, f32 fHalfYRes ) {
+	const f32 fL = (fLeft * 2.0f - 1.0f) * fHalfXRes, fR = (fRight * 2.0f - 1.0f) * fHalfXRes;
+	const f32 fT = (1.0f - fTop * 2.0f) * fHalfYRes, fB = (1.0f - fBottom * 2.0f) * fHalfYRes;
+	const f32 fStroke = FMATH_MAX( 1.0f, FMATH_MIN( fHalfYRes / 240.0f, 3.0f ) );
+	CFVec3 a(fL,fT,1), b(fR,fT,1), c(fR,fB,1), d(fL,fB,1);
+	CFColorRGBA Face(0.01f,0.02f,0.03f,0.83f), Edge(0.14f,0.24f,0.43f,0.95f);
+	fdraw_SolidQuad( &a, &b, &c, &d, &Face );
+	c.y = d.y = fT - fStroke;
+	fdraw_SolidQuad( &a, &b, &c, &d, &Edge );
+	a.y = b.y = fB + fStroke; c.y = d.y = fB;
+	fdraw_SolidQuad( &a, &b, &c, &d, &Edge );
+	a.Set(fL,fT,1); b.Set(fL+fStroke,fT,1); c.Set(fL+fStroke,fB,1); d.Set(fL,fB,1);
+	fdraw_SolidQuad( &a, &b, &c, &d, &Edge );
+	a.x = d.x = fR-fStroke; b.x = c.x = fR;
+	fdraw_SolidQuad( &a, &b, &c, &d, &Edge );
+}
+
+static void _PcCoopJoinPanels( f32 fHalfXRes, f32 fHalfYRes ) {
+	frenderer_Push( FRENDERER_DRAW, NULL );
+	fdraw_Depth_EnableWriting( FALSE );
+	fdraw_Depth_SetTest( FDRAW_DEPTHTEST_ALWAYS );
+	fdraw_SetTexture( NULL );
+	fdraw_Color_SetFunc( FDRAW_COLORFUNC_DECAL_AI );
+	fdraw_Alpha_SetBlendOp( FDRAW_BLENDOP_LERP_WITH_ALPHA_OPAQUE );
+	const FDrawCullDir_e nOldCull = fdraw_GetCullDir();
+	fdraw_SetCullDir( FDRAW_CULLDIR_NONE );
+	_PcCoopJoinPanel( 0.12f, 0.075f, 0.88f, 0.91f, fHalfXRes, fHalfYRes );
+	for( u32 n = 0; n < MAX_PLAYERS; ++n ) {
+		const f32 fLeft = n & 1 ? 0.51f : 0.14f;
+		const f32 fTop = n < 2 ? 0.285f : 0.545f;
+		_PcCoopJoinPanel( fLeft, fTop, fLeft + 0.35f, fTop + 0.24f, fHalfXRes, fHalfYRes );
+	}
+	fdraw_SetCullDir( nOldCull );
+	frenderer_Pop();
+}
+#endif
+
 static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {
 	u32 i, nDeviceIndex;
 	Wpr_DataTypes_ScreenData_t *pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_MULTI_JOIN];
@@ -8562,6 +8704,8 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 		}
 		aCoopText[0].pwszText = L"Co-op";
 		CoopScreen.pText = aCoopText;
+		CoopScreen.nNumMeshElements = 0;
+		_PcCoopJoinPanels( fHalfXRes, fHalfYRes );
 		pScreen = &CoopScreen;
 	}
 #endif
@@ -8578,7 +8722,7 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 		// right-aligned on the player boxes' right edge
 		ftext_Printf( 0.84f, pSubtitle->fUnitY + 0.012f, L"~f8~C%ls~w0~aR~s%.2f%ls",
 			WprDataTypes_pwszInstructionTextColor, pSubtitle->fScale * 0.70f,
-			_fPcCoopNeedPlayersTimer > 0.0f ? L"Needs two players" : L"Progress is not saved" );
+			_fPcCoopNeedPlayersTimer > 0.0f ? L"Needs two players" : L"Saves with player 1's profile" );
 	}
 #endif
 
@@ -8712,19 +8856,91 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 	}
 }
 
+#if defined(MA_PC_INPUT)
+// A profile saved on disk, not one of the join screen's "None" profiles.
+static BOOL _PcCoopIsSavedProfile( const CPlayerProfile *pProfile ) {
+	return !pProfile->IsVirtual() && pProfile->m_SaveInfo.nStorageDeviceID != FSTORAGE_DEVICE_ID_NONE &&
+		pProfile->m_SaveInfo.wszProfileName[0];
+}
+
+// Everyone has joined: player 1 (the first box in play) picks Start, Continue or Replay on the retail
+// Launch menu, showing the campaign saved with player 1's profile.
+static void _PcCoopEnterCampaignMenu( void ) {
+	u32 i, nOwnerPort = 0;
+
+	for( i=0; i < MAX_PLAYERS; i++ ) {
+		_aPcCoopPersonal[i] = _paProfiles[i];
+	}
+	_bPcCoopHavePersonal = TRUE;
+	for( i=0; i < MAX_PLAYERS; i++ ) {
+		if( _MenuState.nMPPlayerMask & (1 << i) ) {
+			nOwnerPort = i;
+			break;
+		}
+	}
+	const CPlayerProfile *pOwner = &_aPcCoopPersonal[nOwnerPort];
+	coopsave_Load( _PcCoopIsSavedProfile( pOwner ) ? pOwner->m_SaveInfo.wszProfileName : NULL );
+
+	// The menus read and change _paProfiles[0]: here the campaign, virtual so that no menu saves it
+	// over a profile.
+	CPlayerProfile *pMenu = &_paProfiles[0];
+	pMenu->m_Data = *coopsave_GetOwnerData();
+	pMenu->m_Data.nFlags |= GAMESAVE_PROFILE_FLAGS_VIRTUAL_PROFILE;
+	fang_MemZero( &pMenu->m_SaveInfo, sizeof( GameSave_SaveInfo_t ) );
+	pMenu->m_SaveInfo.nStorageDeviceID = FSTORAGE_DEVICE_ID_NONE;
+	fclib_wcsncpy( pMenu->m_SaveInfo.wszProfileName, pOwner->m_SaveInfo.wszProfileName, FSTORAGE_MAX_NAME_LEN - 1 );
+	pMenu->m_nControllerIndex = nOwnerPort;
+
+	_bPcCoopLaunch = TRUE;
+	_MenuState.nMode = WPR_DATATYPES_MODES_SINGLE_PLAYER;
+	_MenuState.nControllerIndex = nOwnerPort;
+	_MenuState.nStartGameMethod = _START_METHOD_NEW;
+	_MenuState.fModeTimer = 0.0f;
+	_SetupLaunchMenu();
+}
+
+// Everyone's own profiles back in _paProfiles (after the co-op menus or a co-op game).
+static void _PcCoopRestoreProfiles( void ) {
+	if( !_bPcCoopHavePersonal || !_paProfiles ) {
+		return;
+	}
+	for( u32 i=0; i < MAX_PLAYERS; i++ ) {
+		_paProfiles[i] = _aPcCoopPersonal[i];
+	}
+	_bPcCoopHavePersonal = FALSE;
+}
+
+// Back from the co-op Launch menu: the join screen again, where everyone joins again (as retail
+// multiplayer does coming back from its Game Type screen).
+static void _PcCoopReturnToJoin( void ) {
+	coopsave_EndSession();
+	_PcCoopRestoreProfiles();
+	_bPcCoopLaunch = FALSE;
+	_bPcCoopJoin = TRUE;
+	pcinput_BeginLocalJoin(_MenuState.nControllerIndex);
+	_fPcCoopNeedPlayersTimer = 0.0f;
+	for( u32 nSection = 0; nSection < MAX_PLAYERS; ++nSection ) {
+		_anPcCoopLastState[nSection] = _MULTI_JOIN_STATE_ENTER;
+	}
+	_MenuState.nMode = WPR_DATATYPES_MODES_MULTIPLAYER;
+	_MenuState.nCurItemIndex = 0;
+	_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_MULTI_JOIN;
+	_MJ_InitJoinInfoAndSections( &_MenuState.MJJoinInfo, _MenuState.aMJSections, MAX_PLAYERS );
+}
+#endif
+
 static void _MultiJoin_MP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
+#if defined(MA_PC_INPUT)
+	if(nNavCode==WPR_DATATYPES_NAV_CODE_FORWARD) pcinput_FinishLocalJoin(_MenuState.nMPPlayerMask);
+#endif
 
 #if defined(MA_PC_INPUT)
 	if( _bPcCoopJoin ) {
 		_bPcCoopJoin = FALSE;
 		_MenuState.nLastScreen = WPR_DATATYPES_SCREENS_MULTI_JOIN;
 		if( nNavCode == WPR_DATATYPES_NAV_CODE_FORWARD ) {
-			// everyone in _MenuState.nMPPlayerMask plays the campaign (see _bPcCoopLaunch)
-			_bPcCoopLaunch = TRUE;
-			_MenuState.nMode = WPR_DATATYPES_MODES_SINGLE_PLAYER;
-			_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_NONE;
-			_MenuState.nStartGameMethod = _START_METHOD_NEW;
-			_MenuState.fModeTimer = 0.0f;
+			// everyone in _MenuState.nMPPlayerMask plays the campaign, which player 1 picks next
+			_PcCoopEnterCampaignMenu();
 		} else {
 			// back to the main menu, on Co-op, with the normal controller layout
 			pcinput_SetLocalCoopSession( false );
@@ -8742,6 +8958,9 @@ static void _MultiJoin_MP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 		
 	case WPR_DATATYPES_NAV_CODE_BACK:
 		// go back to the Main Menu screen
+#if defined(MA_PC_INPUT)
+		pcinput_SetLocalCoopSession( false );
+#endif
 		_MenuState.nMode = WPR_DATATYPES_MODES_MAIN_MENU;
 		_MenuState.fModeTimer = 0.0f;
 		_MenuState.nCurItemIndex = _MENU_ITEMS_MM_MULTI;
@@ -8852,6 +9071,9 @@ static Wpr_DataTypes_NavCode_e _MJ_SectionWork_EnterState( const _JoinInfo_t *pJ
 
 	// waiting for user to click the button to move to the next state
 	if( _CheckAcceptButtons( pSection->pProfile->m_nControllerIndex ) ) {
+#if defined(MA_PC_INPUT)
+		pcinput_ClaimLocalJoinPort(pSection->pProfile->m_nControllerIndex);
+#endif
 		// the user finally pressed the accept button, move to the enter state
 		pSection->nState = _MULTI_JOIN_STATE_SELECT;
 		pSection->nProfileKey = pJoinInfo->nDefaultKey;
@@ -10820,43 +11042,53 @@ static Wpr_DataTypes_NavCode_e _PrepareToLoad_Work( void ) {
 
 #if defined(MA_PC_INPUT)
 		if( _bPcCoopLaunch ) {
-			// Campaign rules for everyone who joined on the co-op Players Join In screen. Each keeps
-			// their profile's settings and multiplayer colour; everything else starts new, and the
-			// profile is a virtual copy, so nothing is written back to anyone's save.
+			// Campaign rules for everyone who joined on the co-op Players Join In screen, from the
+			// co-op save (coopsave_*): each player's own progress and inventory with their own
+			// profile's settings and the colour they chose. The session profiles are virtual, so no
+			// one's profile is written; completing a level writes the co-op save.
+			const CPlayerProfile *apPersonal[MAX_PLAYERS];
+			CPlayerProfile *apSession[MAX_PLAYERS];
+			u32 anPort[MAX_PLAYERS];
 			u32 nPlayers = 0, nPorts = 0;
 			for( u32 nPort = 0; nPort < MAX_PLAYERS; ++nPort ) {
 				if( !(_MenuState.nMPPlayerMask & (1 << nPort)) ) {
 					continue;
 				}
-				CPlayerProfile *pProfile = &_paProfiles[nPort];
-				const GameSave_ProfileData_t Chosen = pProfile->m_Data;
-				wchar wszName[FSTORAGE_MAX_NAME_LEN];
-				fclib_wcsncpy( wszName, pProfile->m_SaveInfo.wszProfileName, FSTORAGE_MAX_NAME_LEN - 1 );
-				wszName[FSTORAGE_MAX_NAME_LEN - 1] = 0;
-				pProfile->InitNewProfile( TRUE );
-				const u32 nSettingFlags = GAMESAVE_PROFILE_FLAGS_INVERT_ANALOG | GAMESAVE_PROFILE_FLAGS_AUTO_CENTER |
-					GAMESAVE_PROFILE_FLAGS_ASSISTED_TARGETING | GAMESAVE_PROFILE_FLAGS_FOUR_WAY_QUICK_SELECT;
-				pProfile->m_Data.nFlags = (pProfile->m_Data.nFlags & ~nSettingFlags) | (Chosen.nFlags & nSettingFlags) | GAMESAVE_PROFILE_FLAGS_VIRTUAL_PROFILE;
-				pProfile->m_Data.nControllerConfigIndex = Chosen.nControllerConfigIndex;
-				pProfile->m_Data.nColorIndex = _anPcCoopColor[nPort];	// chosen on the join screen
-				pProfile->m_Data.fUnitVibrationIntensity = Chosen.fUnitVibrationIntensity;
-				pProfile->m_Data.fUnitLookSensitivity = Chosen.fUnitLookSensitivity;
-				fang_MemZero( &pProfile->m_SaveInfo, sizeof( GameSave_SaveInfo_t ) );
-				pProfile->m_SaveInfo.nStorageDeviceID = FSTORAGE_DEVICE_ID_NONE;
-				fclib_wcsncpy( pProfile->m_SaveInfo.wszProfileName, wszName, FSTORAGE_MAX_NAME_LEN - 1 );
-				pProfile->m_nControllerIndex = nPort;
-				_GameInitInfo.apProfile[nPlayers++] = pProfile;
+				apPersonal[nPlayers] = &_aPcCoopPersonal[nPort];
+				apSession[nPlayers] = &_paProfiles[nPort];
+				anPort[nPlayers] = nPort;
+				nPlayers++;
 				nPorts = nPort + 1;
 			}
+			// the campaign as the menus left it (difficulty, Start Over), before the session profiles
+			// are filled (player 1's may be _paProfiles[0] itself)
+			*coopsave_GetOwnerData() = _paProfiles[0].m_Data;
+			coopsave_BeginSession( apPersonal, apSession, nPlayers, _MenuState.nStartGameMethod == _START_METHOD_NEW );
+			for( u32 p = 0; p < nPlayers; ++p ) {
+				apSession[p]->m_Data.nColorIndex = _anPcCoopColor[anPort[p]];	// chosen on the join screen
+				apSession[p]->m_nControllerIndex = anPort[p];
+				_GameInitInfo.apProfile[p] = apSession[p];
+			}
+			const GameSave_ProfileData_t *pCampaign = &apSession[0]->m_Data;
 			_GameInitInfo.nNumPlayers = (u8)nPlayers;
 			_GameInitInfo.bSinglePlayer = TRUE;
-			_GameInitInfo.bNewGame = TRUE;
-			_GameInitInfo.nLevelToPlay = 0;
-			_GameInitInfo.nDifficultyLevel = GAMESAVE_DIFFICULTY_NORMAL;
+			_GameInitInfo.nDifficultyLevel = pCampaign->nDifficulty;
+			if( _MenuState.nStartGameMethod == _START_METHOD_NEW ) {
+				_GameInitInfo.bNewGame = TRUE;
+				_GameInitInfo.nLevelToPlay = _MenuState.PLSelectInfo.panLevelNumbers[0] - 1;
+			} else if( _MenuState.nStartGameMethod == _START_METHOD_CONTINUE ) {
+				_GameInitInfo.nLevelToPlay = _MenuState.PLSelectInfo.panLevelNumbers[ pCampaign->nCurrentLevel ] - 1;
+			} else {
+				_GameInitInfo.bReplayingALevel = TRUE;
+				_GameInitInfo.nLevelToPlay = _MenuState.PLSelectInfo.panLevelNumbers[_MenuState.nLevelToPlay] - 1;
+			}
+			FASSERT( _GameInitInfo.nLevelToPlay < LEVEL_SINGLE_PLAYER_COUNT );
 			// Keep the controllers as they were dealt on the join screen, for the ports in play.
 			pcinput_SetLocalCoopPlayers( nPorts );
-			DEVPRINTF( "Campaign co-op menu: %u local players (ports mask 0x%x), automatic controls (%u controllers connected), no profile saves.\n",
-				nPlayers, (u32)_MenuState.nMPPlayerMask, pcinput_ConnectedPadCount() );
+			DEVPRINTF( "Campaign co-op menu: %u local players (ports mask 0x%x), automatic controls (%u controllers connected), level %u (%s), %s.\n",
+				nPlayers, (u32)_MenuState.nMPPlayerMask, pcinput_ConnectedPadCount(), (u32)_GameInitInfo.nLevelToPlay,
+				_MenuState.nStartGameMethod == _START_METHOD_NEW ? "new game" : (_MenuState.nStartGameMethod == _START_METHOD_CONTINUE ? "continue" : "replay"),
+				coopsave_CanSave() ? "saved with player 1's profile" : "not saved (player 1 has no saved profile)" );
 		} else
 #endif
 		if( _MenuState.nMode == WPR_DATATYPES_MODES_SINGLE_PLAYER ) {
@@ -11353,6 +11585,16 @@ static void _DifficultyLevel_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode 
 			break;
 
 		case WPR_DATATYPES_NAV_CODE_BACK:
+#if defined(MA_PC_INPUT)
+			if( _bPcCoopLaunch ) {
+				// co-op: back to the Launch menu, undoing a Start Over (the campaign is only written
+				// when a level is completed)
+				_paProfiles[0].m_Data = *coopsave_GetOwnerData();
+				_paProfiles[0].m_Data.nFlags |= GAMESAVE_PROFILE_FLAGS_VIRTUAL_PROFILE;
+				_SetupLaunchMenu();
+				break;
+			}
+#endif
 			// the user wants to pick a memory card...
 			_MUSelectUpdate( _MenuState.paMUEntries, TRUE );
 			_MenuState.nCurItemIndex = 0;

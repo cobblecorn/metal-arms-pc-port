@@ -49,11 +49,24 @@
 
 #define FDX8_SAFE_RELEASE(p)	{ if(p) { (p)->Release(); (p)=NULL; } }
 
+#if FANG_WINGC
+// Saturate effect fades before unsigned conversion; NaN maps to zero.
+FINLINE u32 fdx8_ColorByte( f32 fValue ) {
+	if( !(fValue > 0.0f) ) return 0;
+	if( fValue >= 1.0f ) return 255;
+	return fmath_FloatToU32( fValue * 255.0f );
+}
+#define FDX8_RGBA_TO_DXCOLOR( ColorRGBA ) ( \
+	(fdx8_ColorByte((ColorRGBA).fAlpha)<<24) | \
+	(fdx8_ColorByte((ColorRGBA).fRed)<<16) | \
+	(fdx8_ColorByte((ColorRGBA).fGreen)<<8) | fdx8_ColorByte((ColorRGBA).fBlue) )
+#else
 #define FDX8_RGBA_TO_DXCOLOR( ColorRGBA ) (		\
 			(fmath_FloatToU32((ColorRGBA).fAlpha*255.0f)<<24)	|	\
 			(fmath_FloatToU32((ColorRGBA).fRed*255.0f)<<16)		|	\
 			(fmath_FloatToU32((ColorRGBA).fGreen*255.0f)<<8)	|	\
 			fmath_FloatToU32((ColorRGBA).fBlue*255.0f) )
+#endif
 
 
 extern IDirect3D8			*FDX8_pD3D;

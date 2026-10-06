@@ -414,7 +414,7 @@ void gamepad_Sample( void )
 	pcinput_BeginFrame( _anCurrentMap[pcinput_KeyboardPort()] == GAMEPAD_MAP_MAIN1 && !pausescreen_IsActive() );
 	game_PcPromptWork();
 	{
-		// Local co-op deals controllers as they connect (PCINPUT_LAYOUT_AUTO); log each new deal.
+		// Log preview, explicit join ownership and later hotplug routing changes.
 		static u32 _nLoggedPadAssignment = 0;
 		const u32 nPadAssignment = pcinput_PadAssignmentSerial();
 		if( pcinput_Layout() == PCINPUT_LAYOUT_AUTO && nPadAssignment != _nLoggedPadAssignment ) {

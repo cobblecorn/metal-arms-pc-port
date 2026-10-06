@@ -81,7 +81,6 @@ BOOL CWeaponMortarBuilder::InterpretTable( void ) {
 
 CWeaponMortar::_UserProps_t CWeaponMortar::m_aUserProps[EUK_COUNT_MORTAR];
 FTexDef_t *CWeaponMortar::m_apTexDef[EUK_COUNT_MORTAR];
-CFAnimCombinerConfig *CWeaponMortar::m_pAnimCombinerConfig;
 
 // This table describes to fgamedata how our user property table is to be interpreted:
 const FGameData_TableEntry_t CWeaponMortar::m_aUserPropVocab[] = {
@@ -437,7 +436,7 @@ void CWeaponMortar::ClassHierarchyDestroy( void ) {
 	fdelete( m_aResourceData[0].m_pForkWorldMesh );
 	fdelete( m_aResourceData[0].m_pForkAnimCombiner );
 	fdelete( m_aResourceData[0].m_pForkAnimMeshRest );
-	fdelete( m_pResourceData->m_pSlingMeshEntity );
+	fdelete( m_aResourceData[0].m_pSlingMeshEntity );
 	fdelete( m_pAnimCombinerConfig );
 
 	_ClearDataMembers();
@@ -797,7 +796,7 @@ u32 CWeaponMortar::TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, cons
 
 	// Find the most recent trigger value peak...
 
-	f32 fMaxTriggerValue, fElapsedTime, fReleaseRate;
+	f32 fMaxTriggerValue, fElapsedTime = 0.0f, fReleaseRate;
 	s32 nIndex, nIndexOfMaxValue;
 	u32 i;
 
@@ -841,6 +840,11 @@ u32 CWeaponMortar::TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, cons
 	m_nNextFreeTriggerSampleIndex = 0;
 	m_nTriggerSampleCount = 0;
 
+#if defined(MA_PC_INPUT)
+	// Digital release and a gradual analog release both fire the loaded round.
+	// Frame stalls must not turn a held shot into an abort.
+	if( fMaxTriggerValue <= 0.0f ) return 0;
+#else
 	if( fElapsedTime <= 0.000001f ) {
 		return 0;
 	}
@@ -850,6 +854,7 @@ u32 CWeaponMortar::TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, cons
 	if( fReleaseRate < 10.0f ) {
 		return 0;
 	}
+#endif
 
 #if 0
 		// Find the average of our trigger velocities...

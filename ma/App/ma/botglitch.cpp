@@ -562,7 +562,10 @@ BOOL CBotGlitch::ClassHierarchyBuild( void ) {
 	DataPort_SetupTetherShockInfo();
 
 	// NKM - For Spy Vs. Spy
-	if( Level_nLoadedIndex >= 0 && Level_aInfo[Level_nLoadedIndex].nLevel == LEVEL_SPY_VS_SPY ) {
+	// The factory's shared body-part state belongs to the scripted P1 body.
+	// Partners keep their normal rig and must not replace the factory actor.
+	if( Level_nLoadedIndex >= 0 && Level_aInfo[Level_nLoadedIndex].nLevel == LEVEL_SPY_VS_SPY &&
+		(!MultiplayerMgr.IsLocalCoop() || m_nPossessionPlayerIndex == 0) ) {
 		CSpyVsSpy::SetupGlitchPointer( this );
 		m_Anim.m_pAnimCombiner->SetBoneCallback( &_AnimBoneCallbackSpyVsSpy );
 	}
@@ -1072,6 +1075,18 @@ void CBotGlitch::ClassHierarchyWork() {
 		return;
 	}
 
+#if FANG_WINGC
+	if( CEntity::CoopTripwireExitWaiting( this ) ) {
+		// These exits normally unload the map immediately, so the space beyond
+		// them may have no floor. Park the first arrival while partners catch up.
+		PortStopForCoopScene();
+		ZeroControls();
+		ZeroVelocity();
+		m_ImpulseVelocity_WS.Zero();
+		return;
+	}
+#endif
+
 	m_fCableGrabTime -= FLoop_fPreviousLoopSecs;
 	FMATH_CLAMPMIN( m_fCableGrabTime, 0.0f );
 
@@ -1403,6 +1418,37 @@ void CBotGlitch::ReleaseCable( void ) {
 	*m_Anim.m_pAnimManMtx->GetFrameAndFlagAsChanged( BONE_LEFT_HAND ) = CFMtx43A::m_IdentityMtx;
 	Summer_UpdateBoneMask( m_apszBoneNameTable[BONE_LEFT_HAND], FALSE );
 }
+
+#if FANG_WINGC
+void CBotGlitch::PortStopForCoopScene( void ) {
+	if( m_pCableHook ) {
+		ReleaseCable();
+		m_nJumpState = BOTJUMPSTATE_AIR;
+	}
+	ZeroVelocity();
+	m_ImpulseVelocity_WS.Zero();
+}
+
+void CBotGlitch::PortWorkForCoopScene( void ) {
+	// Keep gravity and collision running until the spectator really lands.
+	const BOOL bGrounded = !m_pCableHook && !IsInAir() && !IsJumping() &&
+		(GetCollisionState() & COLLSTATE_FLOOR);
+	CFMtx43A Mtx = *MtxToWorld();
+	if( m_pCableHook ) {
+		ReleaseCable();
+		m_nJumpState = BOTJUMPSTATE_AIR;
+	}
+	if( bGrounded ) PortStopForCoopScene();
+	Work();
+	if( bGrounded && !IsInAir() && (GetCollisionState() & COLLSTATE_FLOOR) && !GetStickyEntity() && !GetParent() ) {
+		// Keep floor correction in Y. Moving-platform/parent movement owns
+		// all axes, so never relocate it back to an old world position.
+		Mtx.m_vPos.y = MtxToWorld()->m_vPos.y;
+		Relocate_RotXlatFromUnitMtx_WS( &Mtx, FALSE );
+		PortStopForCoopScene();
+	}
+}
+#endif
 
 void CBotGlitch::_HandleCableAndDoubleJump( void ) {
 	// If Glitch is in a forced panic, that means he is being carried and thus cannot jump
@@ -1958,9 +2004,17 @@ void CBotGlitch::_ChangeWeaponIndex( u32 nHandIndex, u32 nNewIndex ) {
 
 	m_WeaponInv[ nHandIndex ].m_nWeaponInvIndex = (u8)nNewIndex;
 
-	BOOL bWeaponDrawEnabled = TRUE;
+	// Equipped weapons follow Glitch's visibility, not an outgoing weapon's
+	// temporary hidden state. Reapply the mesh state even when its entity flag
+	// already matches, so a stale mesh flag cannot survive the swap.
+	BOOL bWeaponDrawEnabled = IsDrawEnabled();
 	if( m_apWeapon[nHandIndex] ) {
-		bWeaponDrawEnabled = m_apWeapon[nHandIndex]->IsDrawEnabled();
+#if defined(MA_PC_INPUT)
+		if( m_apWeapon[nHandIndex]->IsDrawEnabled() != bWeaponDrawEnabled ) {
+			DEVPRINTF( "Port: weapon visibility resync: player=%d hand=%u owner=%d outgoing=%d.\n",
+				m_nPossessionPlayerIndex + 1, nHandIndex, bWeaponDrawEnabled, m_apWeapon[nHandIndex]->IsDrawEnabled() );
+		}
+#endif
 		m_apWeapon[nHandIndex]->RemoveFromWorld();
 	}
 
@@ -1968,7 +2022,7 @@ void CBotGlitch::_ChangeWeaponIndex( u32 nHandIndex, u32 nNewIndex ) {
 
 	if( m_apWeapon[nHandIndex] ) {
 		m_apWeapon[nHandIndex]->AddToWorld();
-		m_apWeapon[nHandIndex]->DrawEnable(bWeaponDrawEnabled);
+		m_apWeapon[nHandIndex]->DrawEnable( bWeaponDrawEnabled, TRUE );
 
 		if( nHandIndex == 0 ) {
 			m_apWeapon[nHandIndex]->ResetToState( CWeapon::STATE_STOWED );
@@ -3590,7 +3644,13 @@ void CBotGlitch::_HandleWeaponFiring( void ) {
 		FMATH_CLEARBITMASK( m_nBotFlags, BOTFLAG_PLAY_FIRE1_ANIM );
 		EnableAiming( FALSE );
 		fTrig1 = 0.0f;
-		
+#if defined(MA_PC_INPUT)
+		// Stance gating is not a physical release of the slingshot trigger.
+		// Keep its sample history held rather than launching a round mid movement.
+		if( m_apWeapon[0]->Type() == CWeapon::WEAPON_TYPE_MORTAR && m_fControls_Fire1 > 0.0f ) {
+			fTrig1 = m_fControls_Fire1;
+		}
+#endif
 	}
 
 	fTrig2 = m_bFingerOnTrigger2 ? m_fControls_Fire2 : 0.0f;
@@ -4430,6 +4490,18 @@ void CBotGlitch::CheckpointRestoreThisBot( void )
 	// Now restore this bot
 	CheckpointRestore();
 }
+
+#if FANG_WINGC
+// The same effect CheckpointRestore() plays: the respawn shell, particles and animation, with player
+// controls held until it ends.
+void CBotGlitch::PortPlayRespawnEffect( void )
+{
+	if( m_bRespawnEffectInitialized && !IsInPieces() ) {
+		RespawnEffect_Start();
+		PlaySound( m_BotInfo_Glitch.pSoundGroupRespawn );
+	}
+}
+#endif
 
 void CBotGlitch::CheckpointRestore( void )
 {
@@ -5953,7 +6025,8 @@ void CBotGlitch::DrawText( void )
                     ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_OPERATE_GUN, nPromptPort ) );
 				}
 			}
-		} else if ( m_pActionableEntityNearby->IsActionable())	{
+		} else if ( m_pActionableEntityNearby->IsActionable() ||
+			(m_pActionableEntityNearby->TypeBitsRecurseParents() & ENTITY_BIT_SWITCH) )	{
 			if (m_pActionableEntityNearby->TypeBits() & ENTITY_BIT_BOT)
 			{
 				CBot* pActionableBot = (CBot*) m_pActionableEntityNearby;
@@ -6020,7 +6093,8 @@ void CBotGlitch::DrawText( void )
 			{
 				if (bartersystem_IsBarterBot(m_pActionableEntityNearby))
 				{
-					ftext_Printf( 0.5f, 0.58f, wszFormat, game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_SHOP, nPromptPort ) );
+					ftext_Printf( 0.5f, 0.58f, wszFormat, bartersystem_HasEmptyOfferNotice(this) ?
+						L"No items available for you" : game_GetPromptPhrase( GAMEPHRASE_PRESS_Y_TO_SHOP, nPromptPort ) );
 				}
 			}
 		}

@@ -28,6 +28,9 @@
 #include "player.h"
 #include "ItemInst.h"
 #include "fsndfx.h"
+#if FANG_WINGC
+#include "fsound.h"
+#endif
 #include "fresload.h"
 #include "meshentity.h"
 #include "flamer.h"
@@ -39,6 +42,11 @@
 
 #define _USER_PROP_FILENAME		"w_flamer.csv"
 #define _MAX_CLIP_AMMO			100
+
+#if FANG_WINGC
+// Retail fields 24-30 are sound groups, after seven particle columns.
+static cchar *_apszRetailFlamerSounds[CWeapon::EUK_COUNT_FLAMER][6];
+#endif
 
 
 
@@ -300,6 +308,28 @@ BOOL CWeaponFlamer::InitSystem( void ) {
 		goto _ExitWithError;
 	}
 
+#if FANG_WINGC
+	{
+		static const u32 anSoundFields[] = { 24, 25, 29, 30, 28, 27 };
+		static const FGameData_TableEntry_t StringField = {
+			FGAMEDATA_VAR_TYPE_STRING | FGAMEDATA_FLAGS_STRING_PTR_TO_MAIN_STR_TBL,
+			sizeof(char *), F32_DATATABLE_0, F32_DATATABLE_0 };
+		FMemFrame_t Frame = fmem_GetFrame();
+		FGameDataFileHandle_t hFile = fgamedata_LoadFileToFMem( _USER_PROP_FILENAME );
+		BOOL bOK = hFile != FGAMEDATA_INVALID_FILE_HANDLE;
+		for( u32 nLevel=0; bOK && nLevel<EUK_COUNT_FLAMER; ++nLevel ) {
+			FGameDataTableHandle_t hTable = fgamedata_GetFirstTableHandle( hFile, m_aUserPropMapTable[nLevel].pszTableName );
+			bOK = hTable != FGAMEDATA_INVALID_TABLE_HANDLE && fgamedata_GetNumFields( hTable ) == 31;
+			for( u32 nSound=0; bOK && nSound<6; ++nSound ) {
+				bOK = fgamedata_GetFieldFromTable( hTable, anSoundFields[nSound], &StringField, &_apszRetailFlamerSounds[nLevel][nSound] );
+			}
+			m_aUserProps[nLevel].fSoundRadius = 100.0f; // Same radius as the flame stream.
+		}
+		fmem_ReleaseFrame( Frame );
+		if( !bOK ) goto _ExitWithError;
+	}
+#endif
+
 	// Do this for each EUK level...
 	for( i=0; i<EUK_COUNT_FLAMER; i++ ) {
 		// Fill out our global info data...
@@ -398,6 +428,21 @@ BOOL CWeaponFlamer::ClassHierarchyBuild( void ) {
 		// Parent class could not be built...
 		goto _ExitWithError;
 	}
+
+#if FANG_WINGC
+	// Resolve after the level's sound banks are loaded, as the retail laser does.
+	for( i=0; i<EUK_COUNT_FLAMER; ++i ) {
+		FSndFx_FxHandle_t *apSounds[] = {
+			&m_aUserProps[i].hFiringSound, &m_aUserProps[i].hFadeOutSound,
+			&m_aUserProps[i].hAttachClipSound, &m_aUserProps[i].hSlapInSound,
+			&m_aUserProps[i].hEjectSound, &m_aUserProps[i].hEmptyClickSound };
+		for( u32 nSound=0; nSound<6; ++nSound ) {
+			cchar *pszGroup = _apszRetailFlamerSounds[i][nSound];
+			CFSoundGroup *pGroup = pszGroup && fclib_stricmp( pszGroup, "None" ) ? CFSoundGroup::RegisterGroup( pszGroup ) : NULL;
+			*apSounds[nSound] = pGroup ? CFSoundGroup::GetRandomSoundHandle( pGroup ) : FSNDFX_INVALID_FX_HANDLE;
+		}
+	}
+#endif
 
 	// Set defaults...
 	_ClearDataMembers();

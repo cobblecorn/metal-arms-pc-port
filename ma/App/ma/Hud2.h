@@ -447,11 +447,17 @@ public:
 
 	BOOL TransmissionMsg_Start( TransmissionAuthor_e nAuthorIndex, FSndFx_FxHandle_t hSndFx, f32 fUnitVolume, BOOL bAbortWithCutScene );
 	BOOL TransmissionMsg_Start( TransmissionAuthor_e nAuthorIndex, cchar *pszStreamingFileName, f32 fUnitVolume, BOOL bAbortWithCutScene );
+	static BOOL TransmissionShared_Start( TransmissionAuthor_e nAuthorIndex, FSndFx_FxHandle_t hSndFx, f32 fUnitVolume, BOOL bAbortWithCutScene );
+	static BOOL TransmissionShared_Start( TransmissionAuthor_e nAuthorIndex, cchar *pszFile, f32 fUnitVolume, BOOL bAbortWithCutScene );
+	static void TransmissionShared_Stop( BOOL bFadeOut );
 	void TransmissionMsg_Stop( BOOL bFadeOut=TRUE );
 	BOOL TransmissionMsg_IsDonePlaying( void ) const;
 	BOOL Transmission_GetAbortWithCutSceneFlag( void ) const;
 
 	BOOL StartWeaponSelect(u32 uWhichSide, CInventory *pInventory, BOOL bDelay);		// 0 = primary, 1 = secondary.
+#if defined(MA_PC_INPUT)
+	BOOL PcWeaponSelectTap(u32 uWhichSide, CInventory *pInventory, BOOL bCycle);
+#endif
 	FINLINE BOOL IsWSActive()
 	{
 		return((m_eWeaponSelectState == WEAPONSELECTSTATE_SCROLLINGON)
@@ -576,6 +582,7 @@ private:
 	cwchar *m_pwszTransmissionAuthor;
 	CMeshEntity *m_pTransmissionAntennaMeshEntity;
 	BOOL m_bTransmissionAbortWithCutScene;
+	BOOL m_bTransmissionMirror;
 
 	void _TransmissionMsg_Start( TransmissionAuthor_e nAuthorIndex, BOOL bAbortWithCutScene );
 	void _TransmissionWork();

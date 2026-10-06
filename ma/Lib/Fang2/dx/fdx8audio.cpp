@@ -4051,6 +4051,26 @@ void _TrackEmittersProgress( FLinkRoot_t *poVirtualEmittersListActive )
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+#if FANG_WINGC
+static void _Update3DDistanceGain( _VirtualEmitter_t *pEmitter )
+{
+	if( !(pEmitter->uProperties & _EMITTER_PROPERTIES_3D) ) return;
+	f32 fGain = 0.0f;
+	for( u32 i=0; i<_uActiveVirtualListeners; ++i ) {
+		CFVec3A vDistance = _aoVirtualListeners[i].poXfmCurrentOrientation_WS->m_MtxF.m_vPos;
+		vDistance.Sub( *pEmitter->poVecCurrentPosition_WS );
+		const f32 fListenerGain = _GC3DDistanceGain( vDistance.Mag(), pEmitter->fRadiusOuter );
+		if( fListenerGain > fGain ) fGain = fListenerGain;
+	}
+	const f32 fChange = fGain - pEmitter->fDistanceGain;
+	if( pEmitter->fDistanceGain < 0.0f || fChange*fChange > _SIGNIFICANT_VOLUME_CHANGE_SQ ||
+		(fGain == 0.0f && pEmitter->fDistanceGain != 0.0f) ) {
+		pEmitter->fDistanceGain = fGain;
+		pEmitter->uStateChanges |= _EMITTER_STATE_CHANGE_VOLUME;
+	}
+}
+#endif
+
 void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 	FLinkRoot_t *poVirtualEmittersList;
 	_VirtualEmitter_t *poVirtualEmitter;
@@ -4068,6 +4088,11 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 			if( poVirtualEmitter->poRealEmitter ) {
 				pDSBuffer = poVirtualEmitter->poRealEmitter->poDSBuffer;
 
+#if FANG_WINGC
+				// Gain must also refresh for listener switches, radius changes and a new voice
+				// on a stationary loop; none of those require an orientation/position change.
+				_Update3DDistanceGain( poVirtualEmitter );
+#endif
 				// Position, Velocity, Radius, Doppler.
 				if( poVirtualEmitter->poVirtualListenerCurrent ) {
 
@@ -4076,17 +4101,6 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 						
 						// Position.
 						poVirtualEmitter->poVirtualListenerCurrent->poXfmCurrentOrientation_WS->TransformPointR( _oTempVec3A.v3, poVirtualEmitter->poVecCurrentPosition_WS->v3 );
-#if FANG_WINGC
-						{
-							const f32 fGain = _GC3DDistanceGain( _oTempVec3A.Mag(), poVirtualEmitter->fRadiusOuter );
-							const f32 fChange = fGain - poVirtualEmitter->fDistanceGain;
-							if( poVirtualEmitter->fDistanceGain < 0.0f || fChange * fChange > _SIGNIFICANT_VOLUME_CHANGE_SQ )
-							{
-								poVirtualEmitter->fDistanceGain = fGain;
-								poVirtualEmitter->uStateChanges |= _EMITTER_STATE_CHANGE_VOLUME;
-							}
-						}
-#endif
 
 						_oDSEmitterAttributes.vPosition.x = _oTempVec3A.x;
 						_oDSEmitterAttributes.vPosition.y = _oTempVec3A.y;
@@ -4135,8 +4149,7 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 					const BOOL b3D = poVirtualEmitter->poRealEmitter->poDS3DBuffer != NULL;
 					if( b3D )
 					{
-						// Not computed yet (no listener update): the flat 3D scale, never silence.
-						fVolume *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? _GC_3D_VOLUME_SCALE : poVirtualEmitter->fDistanceGain;
+						fVolume *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? 0.0f : poVirtualEmitter->fDistanceGain;
 					}
 					pDSBuffer->SetVolume( _GainToDSVolume( fVolume * fVolume * _PortSfxGain( poVirtualEmitter->oWaveHandle, b3D ) ) );
 #else
@@ -4149,7 +4162,7 @@ void _ApplyRealEmittersChanges( FLinkRoot_t *poVirtualEmittersListActive ) {
 					f32 fMidi = _GCMusyxVolume( FAudio_fMasterSfxUnitVol * poVirtualEmitter->fVolumeDucked );
 					const BOOL b3D = poVirtualEmitter->poRealEmitter->poDS3DBuffer != NULL;
 					if( b3D ) {
-						fMidi *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? _GC_3D_VOLUME_SCALE : poVirtualEmitter->fDistanceGain;
+						fMidi *= ( poVirtualEmitter->fDistanceGain < 0.0f ) ? 0.0f : poVirtualEmitter->fDistanceGain;
 					}
 					const f32 fTrim = _PortSfxGain( poVirtualEmitter->oWaveHandle, b3D );
 					DEVPRINTF( "PORT-MIX   %s '%s' vol=%.2f ducked=%.2f dist=%.2f radius=%.0f -> amp %.3f (trim %.1f dB)\n", b3D ? "3D" : "2D",
