@@ -293,6 +293,11 @@ BOOL wpr_drawutils_DrawKeyCapCentered( cwchar *pwszLabel, f32 fTextX, f32 fCente
 									 pfLeft, pfTop, pfRight, pfBottom, bScreenPixels );
 }
 
+void wpr_drawutils_PrintPromptCentered( cwchar *pwszText, f32 fTextX, f32 fCenterY, wchar cAlign, f32 fFontScale, cwchar *pwszColor ) {
+	const f32 fTextY = (fCenterY - (0.5f * _fPromptLineHeightPerScale + _fPromptLineTopPerScale) * fFontScale) * 0.75f;
+	ftext_Printf( fTextX, fTextY, L"~f1~C%ls~w0~a%lc~s%.2f%ls", pwszColor, cAlign, fFontScale, pwszText );
+}
+
 // A thick stroke from a to b, fWidth across.
 static void _GlyphStroke( const CFVec3 &a, const CFVec3 &b, f32 fWidth, CFColorRGBA *pColor ) {
 	f32 fDX = b.x - a.x, fDY = b.y - a.y;

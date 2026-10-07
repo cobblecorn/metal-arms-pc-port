@@ -90,6 +90,11 @@ protected:
 	f32 m_fLastUnitDist;		// how far from m_MinCamPos_WS did we get last frame
 	f32 m_fLastCenterRayUnitDist;// where did the center ray collide last frame?
 	f32 m_fLastDeltaZoom;		// how much did the zoom factor change last frame?
+#if FANG_WINGC
+	u32 m_nPortFovVersion;		// the player's field-of-view setting last applied (pc_display)
+	f32 m_fPortHalfFov;			// the half FOV this camera last set from it
+	void _PortApplyFov( void );
+#endif
 	
 	
 #define _MAX_COLLISION_SPHERES		12

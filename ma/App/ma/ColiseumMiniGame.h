@@ -33,6 +33,7 @@
 #include "ai\aicorrosive.h"
 
 class CBot;
+class CBotCorrosive;
 class CBotGrunt;
 class CWeapon;
 class CMeshEntity;
@@ -162,6 +163,10 @@ public:
 	static BOOL Targeting( const CFVec3A *pRayStart_WS, const CFVec3A *pRayEnd_WS, CFVec3A *TargetedPointOnTarget_WS, CFWorldMesh **pTargetedTargetWorldMesh );
 		
 private:
+#if FANG_WINGC
+	void PortSetCorrosiveWinner( s32 nPlayer );
+	BOOL PortCheckCorrosivePlayers( CBotCorrosive *pCorrosive );
+#endif
 
 	typedef enum
 	{

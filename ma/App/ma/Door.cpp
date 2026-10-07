@@ -35,6 +35,7 @@
 #include "AI\AIBrain.h"
 #include "AI\AIMover.h"
 #include "fdraw.h"
+#include "level.h"
 
 const cchar* _kpszDamLiftDamageProfile = "RocketL1";//"DamLift"
 const cchar* _kpszDamLiftSoundGroup = "DamLiftSound";
@@ -786,6 +787,16 @@ BOOL CDoorEntity::ClassHierarchyBuild()
 		/////////////////////////////////////////////////////////////
 		// Get the brain set up.
 		m_eBehavior = pBuilder->m_eBehavior;
+
+#if FANG_WINGC
+		// Coliseum 3 omits behavetype=other on these two scripted arena gates.
+		// Proximity behavior closes them before the battle's delayed open check.
+		if( Level_nLoadedIndex >= 0 && Level_nLoadedIndex < Level_nCount &&
+			Level_aInfo[Level_nLoadedIndex].nLevel == LEVEL_COLISEUM_3 && Name() &&
+			(!fclib_stricmp(Name(), "outerdoor6") || !fclib_stricmp(Name(), "outerdoor3")) ) {
+			m_eBehavior = DOOR_BEHAVIOR_OTHER;
+		}
+#endif
 
 		m_uBehaviorCtrlFlags = pBuilder->m_uBehaviorCtrlFlags;
 		m_fAutoCloseDelay = pBuilder->m_fAutoCloseDelay;

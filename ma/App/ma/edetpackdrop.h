@@ -172,6 +172,7 @@ protected:
 private:
 	// Internal state...
 	void _SetState(DetState_e);
+	void _ClearHudTimer( void );
 	void _StateWork();
 	void _SetDefaults();
 	

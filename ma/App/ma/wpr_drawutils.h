@@ -74,6 +74,8 @@ extern void wpr_drawutils_MeasureFontLine( f32 fPrintY, f32 fScale );
 // measured line metrics.
 extern BOOL wpr_drawutils_DrawKeyCapCentered( cwchar *pwszLabel, f32 fTextX, f32 fCenterY, wchar cAlign, f32 fFontScale, f32 fMinWidth,
 											  f32 fXScale, f32 fYScale, f32 *pfLeft, f32 *pfTop, f32 *pfRight, f32 *pfBottom, BOOL bScreenPixels = FALSE );
+// Plain text in the prompt font (pwszStyle: color codes etc. before it), its line centered on fCenterY like a key cap.
+extern void wpr_drawutils_PrintPromptCentered( cwchar *pwszText, f32 fTextX, f32 fCenterY, wchar cAlign, f32 fFontScale, cwchar *pwszColor );
 #endif
 
 

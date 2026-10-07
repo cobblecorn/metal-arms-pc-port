@@ -738,6 +738,16 @@ BOOL CBotGrunt::ClassHierarchyBuild( void ) {
 		shieldInit.fShieldRechargeDelay = m_BotInfo_Grunt.fShieldRechargeDelay;
 		shieldInit.pArmorProfile = CDamage::FindArmorProfile( m_BotInfo_Grunt.pszShieldArmorProfile );
 		m_pShield->Init( this, &shieldInit );
+#if FANG_WINGC
+		// Coliseum levels only: the bubble doesn't shove Glitches, Grunts and Miners out (CEShield's
+		// push-out) and isn't solid to them (CBot::NewTrackerCollisionCallback). The shielded escorts
+		// at the cell door pushed each other and the players apart, so nobody could get through. The
+		// bubble still takes the shots; other levels keep the retail behaviour.
+		if( Level_nLoadedIndex >= 0 && Level_aInfo[Level_nLoadedIndex].nLevel >= LEVEL_COLISEUM_1 &&
+			Level_aInfo[Level_nLoadedIndex].nLevel <= LEVEL_COLISEUM_4 ) {
+			m_pShield->EnablePushOutBots( FALSE );
+		}
+#endif
 		m_pShield->RemoveFromWorld();
 	}
 

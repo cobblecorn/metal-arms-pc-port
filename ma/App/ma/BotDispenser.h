@@ -145,6 +145,7 @@ public:
 
 	// Returns TRUE If the dispenser wants an autobot
 	BOOL NeedsAutoBot();  
+	BOOL IsBotExiting( const CBot *pBot ) const;
 	
 	// Returns the index into papAutoBots that was used by the dispenser, -1 in none were used
     s32 DeployAutoBot( CBot **papAutoBots, const u8 *pauAutoBotUseageFlags, u32 uNumAutoBots );
@@ -236,6 +237,7 @@ private:
 	BOOL InitBotInfo( BotDispenser_Init_t *pInitData );
 	void SetBotProperties( BOOL bStartingSpawn, CBot *pBot );
 	BOOL IsWatchedBotIsDead();
+	BOOL IsWatchedBotInsideDispenser() const;
 	BOOL HasWatchedBotExitedTheDispenser();
 	void SetWaitTimes();
 	void SetupNeedBotVars();

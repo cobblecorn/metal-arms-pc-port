@@ -4723,6 +4723,16 @@ u32 CBot::NewTrackerCollisionCallback( CFWorldTracker *pTracker ) {
 			}
 		}
 
+#if FANG_WINGC
+		// A Grunt's shield bubble that doesn't push bots out (the Coliseum escorts, see CBotGrunt) isn't
+		// solid to them either: it stops shots but not bodies. Elsewhere it stays as in retail.
+		if( (((CEntity *)pTracker->m_pUser)->TypeBits() & ENTITY_BIT_SHIELD) &&
+			!((CEShield *)pTracker->m_pUser)->IsPushOutBotsEnabled() &&
+			((CEntity *)pTracker->m_pUser)->GetParentOfType( ENTITY_BIT_BOTGRUNT ) ) {
+			return FCOLL_CHECK_CB_DO_NOT_CHECK_TRACKER;
+		}
+#endif
+
 		if (((CEntity *)pTracker->m_pUser)->IsActionable())
 		{
 			//bot has come close to an actionable entity, record that in case the bot cares to do something about it.

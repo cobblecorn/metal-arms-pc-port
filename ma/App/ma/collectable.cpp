@@ -38,6 +38,7 @@
 #include "weapon.h"
 #include "MultiplayerMgr.h"
 #include "sas_user.h"
+#include "FScriptSystem.h"
 
 #define _COLLECTABLE_CSV					( "goodies.csv" )
 #define _COLLECTABLE_SOUNDS					( "powerups" )
@@ -3460,11 +3461,34 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 		}
 	}
 
+#if FANG_WINGC
+	const cchar *pszStoryPart = m_pCollectableType->m_pszName;
+	const BOOL bGoffStoryPart = MultiplayerMgr.IsSinglePlayer() &&
+		( !fclib_stricmp( pszStoryPart, "goffhead" ) ||
+		  !fclib_stricmp( pszStoryPart, "goffleg" ) ||
+		  !fclib_stricmp( pszStoryPart, "gofftorso" ) );
+	// These retail quest props are counted by the mission script, not the source item repository.
+	if( bGoffStoryPart ) bClassified = TRUE;
+#endif
+
 	// If we got here and bClassified == FALSE, we have a user defined collectable type
 	// Stick it into the bot's inventory
 	if( !bClassified ) {
 		_AddToInventory();
 	}
+
+#if FANG_WINGC
+	// Retail Sniper's Lair counts these shared story pickups through goffpickup.
+	// The older source's generic inventory path did not notify that script.
+	if( bGoffStoryPart ) {
+		const s32 nEvent = CFScriptSystem::GetEventNumFromName( "goffpickup" );
+		if( nEvent >= 0 ) {
+			CFScriptSystem::TriggerEvent( nEvent, (u32)this, (u32)m_pCollectBot, 0 );
+			DEVPRINTF( "Port: Agent Goff part '%s' collected by player %d; goffpickup notified.\n",
+				pszStoryPart, (s32)(m_pPlayer - Player_aPlayer) + 1 );
+		}
+	}
+#endif
 
 	// If we've got a collection callback, call it
 	if( m_pCollectionCallback ) {

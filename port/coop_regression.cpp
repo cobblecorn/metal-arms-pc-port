@@ -35,6 +35,7 @@
 #include "FScriptSystem.h"
 #include "SpyVsSpy.h"
 #include "meshentity.h"
+#include "AlarmSys.h"
 
 static int Ammo(CBot *pBot, const char *pszTag = "coring charge") {
     CItemInst *pItem = pBot->m_pInventory->IsWeaponInInventory(pszTag);
@@ -78,18 +79,187 @@ void port_CoopRegressionWork() {
     const BOOL spyCrane = !strcmp(mode,"spy-crane") || spyCraneDead;
     const BOOL spyClaw = !strcmp(mode,"spy-claw") || spyCrane;
     const BOOL spyFixture = !strcmp(mode,"spy-control") || spyRestart || spyClaw;
-    const BOOL soloFixture = !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
-    if (!mode[0] || CPlayer::m_nPlayerCount < 1 || (CPlayer::m_nPlayerCount < 2 && !soloFixture) || step == 99) return;
+    const BOOL coliseumGates = !strcmp(mode,"coliseum-gates");
+    const BOOL soloFixture = !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
+    if (!mode[0] || CPlayer::m_nPlayerCount < 1 || (CPlayer::m_nPlayerCount < 2 && !soloFixture && !coliseumGates) || step == 99) return;
     CBot *p0 = (CBot *)Player_aPlayer[0].m_pEntityOrig;
     CBot *p1 = CPlayer::m_nPlayerCount > 1 ? (CBot *)Player_aPlayer[1].m_pEntityOrig : p0;
     if (!p0 || !p1 || (!step && (!p0->IsInWorld() || !p1->IsInWorld()))) return;
     const u32 now = GetTickCount();
     if (!nStart) nStart = now;
-    if (now - nStart < 1500) return;
-    if (!step && !spyFixture) {
+    if (now - nStart < 1500 && strncmp(mode,"fabricator",10)) return;
+    if (!step && !spyFixture && !coliseumGates && strncmp(mode,"fabricator",10)) {
         if (!Player_aPlayer[0].HasEntityControl()) { nControlReadyTime = 0; return; }
         if (!nControlReadyTime) nControlReadyTime = now;
         if (now - nControlReadyTime < 3000) return;
+    }
+    if (coliseumGates) {
+        CDoorEntity *gate6=(CDoorEntity*)CEntity::Find("outerdoor6");
+        CDoorEntity *gate3=(CDoorEntity*)CEntity::Find("outerdoor3");
+        if(!step) {
+            CEntity *trigger=CEntity::Find("trig_doorclose");
+            if(Level_aInfo[Level_nLoadedIndex].nLevel!=LEVEL_COLISEUM_3 || !gate6 || !gate3 || !trigger) {
+                Check(FALSE,"Coliseum 3 authored gates and battle trigger exist");step=99;return;
+            }
+            // Keep every player well away from both gates. Exercise the real
+            // battle callback and its four-second delay, not a replacement script.
+            for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityOrig;
+                actor->SetInvincible(TRUE);actor->SetBotFlag_NoGravity();actor->EnableTripper(FALSE);
+                CFMtx43A at=*actor->MtxToWorld();at.m_vPos.Set(-80.0f+12*n,8.0f,305.0f);
+                actor->Relocate_RotXlatFromUnitMtx_WS(&at);actor->ZeroVelocity();
+            }
+            // The level starts with several arena gates open. Reset the two
+            // tested gates so the request must actually move them.
+            gate6->SnapToPos(CDoorEntity::DOORSTATE_ZERO);
+            gate3->SnapToPos(CDoorEntity::DOORSTATE_ZERO);
+            Check(gate3->GotoPos(CDoorEntity::DOORSTATE_ONE,CDoorEntity::GOTOREASON_UNKNOWN),"script can open outerdoor3");
+            CFScriptSystem::TriggerEvent(CFScriptSystem::GetEventNumFromName(ENTITY_TRIPWIRE_EVENT_NAME),
+                (u32)CEntity::TRIPWIRE_EVENTTYPE_ENTER,(u32)trigger,(u32)p0);
+            DEVPRINTF("COLISEUM-GATE-TEST real battle trigger dispatched\n");
+            step=1;nStepTime=now;
+        } else if(step==1 && now-nStepTime>6500) {
+            Check(gate6->GetUnitPos()==1.0f,"outerdoor6 stays open beyond battle delay without nearby players");
+            Check(gate3->GetUnitPos()==1.0f,"outerdoor3 stays open without nearby players");
+            Check(gate3->GotoPos(CDoorEntity::DOORSTATE_ZERO,CDoorEntity::GOTOREASON_UNKNOWN),"script can close outerdoor3");
+            step=2;nStepTime=now;
+        } else if(step==2 && now-nStepTime>3500) {
+            Check(gate3->GetUnitPos()==0.0f,"outerdoor3 closes on script command");
+            Check(gate6->GotoPos(CDoorEntity::DOORSTATE_ZERO,CDoorEntity::GOTOREASON_UNKNOWN),"script can close outerdoor6");
+            step=3;nStepTime=now;
+        } else if(step==3 && now-nStepTime>3500) {
+            Check(gate6->GetUnitPos()==0.0f,"Coliseum gate test complete");step=99;
+        }
+        return;
+    }
+    if (!strncmp(mode,"fabricator",10)) {
+        static u32 lastReport=0;
+        static BOOL released=FALSE;
+        static BOOL buildingSeen=FALSE;
+        static CFVec3A buildOrigin;
+        const BOOL upper=!strcmp(mode,"fabricator-upper");
+        CBot *bot=(CBot*)CEntity::Find(upper?"xa_autobot_group_jumptrooper3":"xa_autobot_group_jumptrooper2");
+        if(!step) {
+            Check(!_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WECDsneak02"),"Night Sneak fabricator section loaded");
+            if(!bot) { Check(FALSE,"authored Jumper exists");step=99;return; }
+            for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityOrig;
+                actor->SetInvincible(TRUE);
+                actor->SetBotFlag_NoGravity();
+                CFMtx43A at=*actor->MtxToWorld();
+                if(upper)at.m_vPos.Set(-153.3f,-4.0f,675.73f+8*n);
+                else at.m_vPos.Set(-47.75f+8*n,-163.0f,403.35f);
+                actor->Relocate_RotXlatFromUnitMtx_WS(&at);actor->ZeroVelocity();
+            }
+            CAlarmNet *net=CAlarmNet::FindAlarmNet("Dispense_Net");
+            if(net) {
+                net->TurnOn(p0,&p0->MtxToWorld()->m_vPos);
+                net->m_pIntruder=p0;net->m_uIntruderGUID=p0->Guid();net->m_LastIntruderPos_WS=p0->MtxToWorld()->m_vPos;
+            }
+            step=1;nStepTime=now;
+        }
+        if(bot && bot->IsInWorld() && bot->IsUnderConstruction()) { buildingSeen=TRUE;buildOrigin=bot->MtxToWorld()->m_vPos; }
+        if(bot && bot->IsInWorld() && now-lastReport>1000) {
+            const CFVec3A& at=bot->MtxToWorld()->m_vPos;
+            DEVPRINTF("FABRICATOR-TEST bot=(%.2f,%.2f,%.2f) building=%d powered=%d thought=%s\n",at.x,at.y,at.z,bot->IsUnderConstruction(),bot->Power_IsPoweredUp(),CAIBrain::ThoughtTypeToString(bot->AIBrain()->GetCurThought()));
+            if(buildingSeen && !bot->IsUnderConstruction() && at.DistSqXZ(buildOrigin)>144.0f)released=TRUE;
+            lastReport=now;
+        }
+        if(step==1 && now-nStepTime>10000) {
+            for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityOrig;
+                CFMtx43A at=*actor->MtxToWorld();at.m_vPos.Set(-258.0f+8*n,-231.0f,784.0f);
+                actor->Relocate_RotXlatFromUnitMtx_WS(&at);actor->ZeroVelocity();
+            }
+            DEVPRINTF("FABRICATOR-TEST players retreat to mission start\n");step=2;
+        }
+        if(now-nStepTime>25000) {
+            Check(released,"Jumper exits fabricator with players nearby");step=99;
+        }
+    } else if (!strncmp(mode,"rendezvous",10)) {
+        static CEConsole *console = NULL;
+        static CEntity *pack = NULL;
+        if (!step) {
+            Check(!_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WEMCcity_02"),"Secret Rendezvous retail level loaded");
+            console = (CEConsole *)flinklist_GetNext(&CEConsole::m_ConsoleRoot,NULL);
+            pack = CEntity::Find("detpack1");
+            pControlled = (CBot *)CEntity::Find("controltitan");
+            if (!console || !pack || !pControlled) { Check(FALSE,"authored console, Titan and DET pack exist");step=99;return; }
+            for(CEntity *e=console->GetFirstChild(); e; e=console->GetNextChild(e))
+                if(e->TypeBits() & ENTITY_BIT_BOX) { pOperatorBox=e;break; }
+            if(!pOperatorBox) { Check(FALSE,"console operator area exists");step=99;return; }
+            p0->m_pInventory->m_aoItems[INVPOS_CHIP].m_nClipAmmo=1;
+            p0->m_pInventory->m_aoItems[INVPOS_DETPACK].m_nClipAmmo=1;
+            for(int n=0;n<CPlayer::m_nPlayerCount;++n) ((CBot*)Player_aPlayer[n].m_pEntityOrig)->SetInvincible(TRUE);
+            p0->SetBotFlag_NoGravity();p0->Relocate_RotXlatFromUnitMtx_WS(pOperatorBox->MtxToWorld());p0->ZeroVelocity();
+            step=1;nStepTime=now;
+        } else if(step==1 && now-nStepTime>800) {
+            p0->Relocate_RotXlatFromUnitMtx_WS(pOperatorBox->MtxToWorld());p0->ZeroVelocity();
+            if(pOperatorBox->ActionNearby(p0)) { Check(TRUE,"console accepts last authored chip");step=2;nStepTime=now; }
+            else if(now-nStepTime>10000) { Check(FALSE,"console accepts chip");step=99; }
+        } else if(step==2 && now-nStepTime>1500) {
+            if(console->NumInsertedChips()==console->NumSockets()) {
+                Check(TRUE,"last chip automatically starts possession");step=3;nStepTime=now;
+            } else if(now-nStepTime>15000) { Check(FALSE,"chip insertion finishes");step=99; }
+        } else if(step==3) {
+            if(Player_aPlayer[0].m_pEntityCurrent==pControlled && Player_aPlayer[0].HasEntityControl()) {
+                if(!nControlReadyTime)nControlReadyTime=now;
+                if(now-nControlReadyTime>1500) {
+                    Check(pControlled->IsPossessedByConsole(),"real console handoff gives P1 the Titan");
+                    pControlled->SetInvincible(TRUE);pControlled->DataPort_SetPossessionDist(10000);
+                    if(!strcmp(mode,"rendezvous-timer")) {
+                        pControlled->m_pInventory->m_aoItems[INVPOS_DETPACK].m_nClipAmmo=1;
+                        pControlled->Relocate_RotXlatFromUnitMtx_WS(pack->MtxToWorld());
+                        Check(pack->ActionNearby(pControlled),"possessed Titan plants authored DET pack");
+                        step=4;nStepTime=now;
+                    } else {
+                        CEntity *trigger=CEntity::Find("shhcut");
+                        CFMtx43A at=*trigger->MtxToWorld();at.m_vPos=CEntity::Find("shhhgoto")->MtxToWorld()->m_vPos;at.m_vPos.x+=32;
+                        for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                            CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityCurrent;
+                            actor->Relocate_RotXlatFromUnitMtx_WS(&at);actor->ZeroVelocity();
+                        }
+                        step=6;nStepTime=now;
+                    }
+                }
+            } else nControlReadyTime=0;
+            if(now-nStepTime>20000) { Check(FALSE,"console possession finishes in time");step=99; }
+        } else if(step==4 && now-nStepTime>1500) {
+            Player_aPlayer[0].ReturnToOriginalBot();
+            Check(Player_aPlayer[0].m_pEntityCurrent==p0,"player returns to Glitch while DET pack is counting down");
+            step=5;nStepTime=now;
+        } else if(step==5) {
+            // Cancel the normal console back-jump in this stationary fixture;
+            // test-only NoGravity would otherwise carry solo P1 out of bounds.
+            p0->Relocate_RotXlatFromUnitMtx_WS(pOperatorBox->MtxToWorld());p0->ZeroVelocity();
+            if(now-nStepTime>35000) {
+                Check(!pack->IsInWorld(),"authored DET pack finishes explosion and removal");
+                Check(!(Player_aPlayer[0].m_Hud.GetDrawFlags() & CHud2::DRAW_ICON_TIMER),"DET timer is cleared despite changed possession ownership");
+                step=99;
+            }
+        } else if(step==6 && now-nStepTime>2500) {
+            CFMtx43A at=*CEntity::Find("shhhgoto")->MtxToWorld();
+            for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityCurrent;
+                actor->Relocate_RotXlatFromUnitMtx_WS(&at);actor->ZeroVelocity();
+            }
+            step=7;nStepTime=now;
+        } else if(step==7) {
+            if(CBot::m_bCutscenePlaying) {
+                Check(Player_aPlayer[0].m_pEntityCurrent==p0,"ending restores Glitch as dialogue actor");
+                step=99;
+            } else if(now-nStepTime>15000) { Check(FALSE,"retail ending cutscene starts");step=99; }
+        }
+        return;
+    }
+    if(!strcmp(mode,"spy-box-resume")) {
+        // One-run user resume at packing, with normal story behavior afterward.
+        // This is outside the regression fixture's invincibility/destruction path.
+        if(!CSpyVsSpy::PortTestStage(3)) return;
+        CEntity *crate=CSpyVsSpy::FindEntity("funnyname",ENTITY_BIT_MESHENTITY);
+        p0->Relocate_Xlat_WS(&crate->MtxToWorld()->m_vPos);p0->ZeroVelocity();
+        DEVPRINTF("Factory resume: skipped completed instruction/combat; real box packing started.\n");
+        step=99;return;
     }
     if(!strcmp(mode,"spy-resume")) {
         // User-requested one-run skip; ordinary boots never take this branch.
@@ -105,6 +275,36 @@ void port_CoopRegressionWork() {
     CBot *pPartner = owner ? p0 : p1;
     CPlayer::SetCurrent(owner);
 
+    if(!strcmp(mode,"goff-parts")) {
+        const char *names[3]={"goffhead","goffleg","gofftorso"};
+        const int part=step/2;
+        if(part>=3) { CPlayer::SetCurrent(previous);step=99;return; }
+        const int recipient=part ? CPlayer::m_nPlayerCount-1 : 0;
+        CBot *bot=(CBot *)Player_aPlayer[recipient].m_pEntityOrig;
+        if(!(step&1)) {
+            pPickup=NULL;
+            for(CEntity *p=CEntity::InWorldList_GetHead();p;p=p->InWorldList_GetNext()) {
+                if(!(p->TypeBits()&ENTITY_BIT_GOODIE)) continue;
+                CCollectable *goodie=(CCollectable *)p;
+                if(!fclib_stricmp(goodie->GetCollectableType()->m_pszName,names[part])) {pPickup=goodie;break;}
+            }
+            Check(pPickup!=NULL,"real authored Goff part exists");
+            if(!pPickup) {step=99;CPlayer::SetCurrent(previous);return;}
+            bot->SetInvincible(TRUE);
+            bot->SetBotFlag_NoGravity();
+            bot->Relocate_Xlat_WS(&pPickup->MtxToWorld()->m_vPos);
+            bot->ZeroVelocity();
+            DEVPRINTF("GOFF-TEST: move player %d to authored %s.\n",recipient+1,names[part]);
+            ++step;nStepTime=now;
+        } else if(now-nStepTime>1800) {
+            // These retail quest props have no source inventory repository entry.
+            // Verify consumption here; the runner checks one script event per part and Next.
+            Check(!pPickup->IsInWorld(),"story pickup is consumed for the whole team");
+            if(pPickup->IsInWorld()) {step=99;CPlayer::SetCurrent(previous);return;}
+            ++step;nStepTime=now;
+        }
+        CPlayer::SetCurrent(previous);return;
+    }
     if(!strcmp(mode,"spy-packing")) {
         if(step==5) for(s32 n=0;n<CPlayer::m_nPlayerCount;++n) {
             Player_aPlayer[n].m_HumanControl.Zero();
@@ -169,6 +369,7 @@ void port_CoopRegressionWork() {
             for(s32 n=0;n<CPlayer::m_nPlayerCount;++n) {
                 CBot *bot=(CBot *)Player_aPlayer[n].m_pEntityOrig;
                 Check(Player_aPlayer[n].HasEntityControl()&&Player_aPlayer[n].m_Hud.IsDrawEnabled()&&bot->IsDrawEnabled(),"box exit restores each player's visibility HUD and controls");
+                Check(bot->IsReticleEnabled(),"box exit clears each player's forced crosshair suppression");
                 Check(bot->MtxToWorld()->m_vPos.DistSq(p0->MtxToWorld()->m_vPos)<150&&!bot->IsInAir(),"box exit regroups every player on usable ground");
             }
             launcher_EnterMenus(LAUNCHER_FROM_GAME);step=99;
@@ -716,7 +917,61 @@ void port_CoopRegressionWork() {
         }
     }
 
-    if (!strcmp(mode,"floor-pads1") || !strcmp(mode,"floor-pads-reactor1")) {
+    if(!strcmp(mode,"encounter-group")) {
+        static CEntity *trigger=NULL,*enemy=NULL;
+        static CFMtx43A nearby;
+        if(!step || step==10) {
+            const char *name=step==10?"titan2trigger":"titan1trigger";
+            trigger=CEntity::Find(name);enemy=CEntity::Find(step==10?"titan2":"titan1");
+            if(!trigger || !enemy) {Check(FALSE,"retail encounter entities exist");step=99;}
+            else {
+                Check(trigger->IsInWorld() && !enemy->IsInWorld(),"retail encounter starts armed with enemy hidden");
+                origin=*trigger->MtxToWorld();origin.m_vPos=trigger->TripwireBoundingSphere_WS()->m_Pos;
+                if(trigger->TypeBits() & ENTITY_BIT_BOX) {
+                    const CFVec3A *corners=((CEBox *)trigger)->Corner_WS();
+                    origin.m_vPos=corners[0];origin.m_vPos.Add(corners[1]);origin.m_vPos.Mul(.5f);
+                }
+                Check(trigger->TripwireContainsPoint(origin.m_vPos),"real crossing target is inside original volume");
+                nearby=origin;BOOL outside=FALSE;
+                for(int axis=0;axis<2 && !outside;++axis) for(int sign=-1;sign<=1 && !outside;sign+=2)
+                    for(int offset=2;offset<=11 && !outside;++offset) {
+                        nearby=origin;
+                        if(axis==0) nearby.m_vPos.x+=sign*offset;else nearby.m_vPos.z+=sign*offset;
+                        outside=!trigger->TripwireContainsPoint(nearby.m_vPos);
+                    }
+                if(!outside) {Check(FALSE,"retail partner can stand outside volume within group radius");step=99;}
+                else {
+                    for(int n=0;n<2;++n) {
+                        Player_aPlayer[n].DisableEntityControl();
+                        ((CBot *)Player_aPlayer[n].m_pEntityOrig)->SetNoCollideStateAir(TRUE);
+                    }
+                    CFMtx43A away=origin;away.m_vPos.x+=40;
+                    p1->Relocate_RotXlatFromUnitMtx_WS(step==10?&away:&nearby,FALSE);
+                    p0->Relocate_RotXlatFromUnitMtx_WS(&origin,TRUE);
+                    step=step==10?11:1;nStepTime=now;
+                }
+            }
+        } else {
+            p0->Relocate_RotXlatFromUnitMtx_WS(&origin,FALSE);
+            if(step==1) p1->Relocate_RotXlatFromUnitMtx_WS(&nearby,FALSE);
+            else if(step==11) {CFMtx43A away=origin;away.m_vPos.x+=40;p1->Relocate_RotXlatFromUnitMtx_WS(&away,FALSE);}
+            else p1->Relocate_RotXlatFromUnitMtx_WS(&nearby,FALSE);
+            if(now-nStepTime>1500) {
+                if(step==1) {
+                    Check(enemy->IsInWorld() && !trigger->IsInWorld(),"real Titan spawn releases when only P1 crosses with nearby P2");
+                    Check(!trigger->TripwireContainsPoint(p1->MtxToWorld()->m_vPos),"P2 never crosses the spawn trigger");
+                    step=10;
+                } else if(step==11) {
+                    Check(!enemy->IsInWorld() && trigger->IsInWorld(),"distant partner keeps real second Titan encounter held");
+                    step=12;nStepTime=now;
+                } else {
+                    Check(enemy->IsInWorld() && !trigger->IsInWorld(),"real held encounter releases as P2 approaches without crossing");
+                    Check(!trigger->TripwireContainsPoint(p1->MtxToWorld()->m_vPos),"approaching P2 remains outside original trigger");
+                    step=99;
+                }
+            }
+        }
+    } else if (!strcmp(mode,"floor-pads1") || !strcmp(mode,"floor-pads-reactor1")) {
         static int pad=0;
         static f32 peak=0;
         static const char *pads1[]={"circtrig1","circtrig2","fliptrig"};

@@ -72,6 +72,9 @@ s32 CPlayer::m_nCurrent;
 CPlayer *CPlayer::m_pCurrent;
 BOOL CPlayer::m_bSystemInitialized;
 CInventory *CPlayer::m_pInvSave=NULL;
+#if FANG_WINGC
+CInventory *CPlayer::m_apPortInvSave[MAX_PLAYERS];
+#endif
 f32 CPlayer::m_fStartOfLevelMusicVol;
 f32 CPlayer::m_fStartOfLevelSfxVol;
 static s32 m_nPlayerKillEntityEvent = -1;
@@ -190,6 +193,11 @@ BOOL CPlayer::InitSystem( void ) {
 	m_pCurrent = NULL;
 
 	m_pInvSave = NULL;
+#if FANG_WINGC
+	for( s32 nSave = 0; nSave < MAX_PLAYERS; ++nSave ) {
+		m_apPortInvSave[nSave] = NULL;
+	}
+#endif
 
 	fvid_SetDrawOverlayFcn( _FVidDrawOverlay );
 
@@ -445,6 +453,10 @@ void CPlayer::UninitLevel( Level_e nLevel, BOOL bLevelCompleted ) {
 						if ( m_pInvSave ) {
 							CMemCardInventory::SaveInventory( &pProfile->m_Data.aLevelProgress[nLevel+1].Inventory, m_pInvSave );
 							m_pInvSave = NULL;
+#if FANG_WINGC
+						} else if( m_apPortInvSave[i] ) {
+							CMemCardInventory::SaveInventory( &pProfile->m_Data.aLevelProgress[nLevel+1].Inventory, m_apPortInvSave[i] );
+#endif
 						} else {
 							CMemCardInventory::SaveInventory( &pProfile->m_Data.aLevelProgress[nLevel+1].Inventory, pPlayer->GetInventory(i) );
 						}
@@ -492,9 +504,15 @@ void CPlayer::UninitLevel( Level_e nLevel, BOOL bLevelCompleted ) {
 			}
 
 			// update profile user settings
-			pPlayer->UpdateProfileUserSettings();		
+			pPlayer->UpdateProfileUserSettings();
 		}
 	}
+#if FANG_WINGC
+	// per-level, used or not
+	for( i=0; i < MAX_PLAYERS; ++i ) {
+		m_apPortInvSave[i] = NULL;
+	}
+#endif
 
 	// restore the master volume
 	faudio_SetMusicMasterVol( m_fStartOfLevelMusicVol );

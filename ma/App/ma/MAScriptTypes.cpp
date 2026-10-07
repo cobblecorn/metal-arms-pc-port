@@ -4940,9 +4940,47 @@ cell AMX_NATIVE_CALL CMAST_Checkpoint::Checkpoint_Save(AMX *pAMX, cell *aParams)
 /////////////////////////////////////////////////////////////////
 // destruct entity functions
 
+#if FANG_WINGC
+static void _PrepareRendezvousEndingActor( AMX *pAMX ) {
+	CFScriptInst *pInst = CFScriptSystem::m_pCurScriptInst;
+	if( !MultiplayerMgr.IsLocalCoop() || Level_nLoadedIndex < 0 ||
+		fclib_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WEMCcity_02") ||
+		!pInst || !pInst->m_pScript || &pInst->m_oAMX != pAMX ||
+		fclib_stricmp(pInst->m_pScript->m_szScriptFileName,"xemc_shhh.sma") ) return;
+	CPlayer *pPlayer = &Player_aPlayer[game_GetStoryPlayerIndex()];
+	CEntity *pBorrowed = pPlayer->m_pEntityCurrent;
+	CEntity *pOriginal = pPlayer->m_pEntityOrig;
+	if( !pOriginal || pBorrowed == pOriginal || !pBorrowed ||
+		!(pOriginal->TypeBits() & ENTITY_BIT_BOTGLITCH) || !(pBorrowed->TypeBits() & ENTITY_BIT_BOT) ||
+		!pBorrowed->IsInWorld() || ((CBot *)pBorrowed)->IsDeadOrDying() ) return;
+	const CFMtx43A sceneMtx = *pBorrowed->MtxToWorld();
+	pPlayer->ReturnToOriginalBot();
+	if( pPlayer->m_pEntityCurrent != pOriginal ) return;
+	CEConsole::ReleaseOperatorForStoryScene((CBotGlitch *)pOriginal);
+	pOriginal->Relocate_RotXlatFromUnitMtx_WS(&sceneMtx);
+	((CBot *)pOriginal)->ZeroVelocity();
+	// This native executes inside OnEvent. Refresh the live AMX cell before
+	// the following Bot_GotoE; OnEvent then copies it back into saved data.
+	for( u32 n=0; n<_nCoopScriptPlayerBindings; ++n ) {
+		_CoopScriptPlayerBinding &binding = _aCoopScriptPlayerBindings[n];
+		if( binding.pInst != pInst ) continue;
+		cell *pCell = NULL;
+		if( amx_GetAddr(pAMX,binding.nOffset,&pCell) == AMX_ERR_NONE && *pCell == (cell)pBorrowed ) {
+			*pCell = (cell)pOriginal;
+			binding.nLastPlayer = (cell)pOriginal;
+		}
+	}
+	DEVPRINTF("Co-op: Secret Rendezvous ending returned player %d from '%s' to Glitch.\n",
+		(s32)(pPlayer-Player_aPlayer)+1,pBorrowed->Name());
+}
+#endif
+
 cell AMX_NATIVE_CALL CMAST_GameWrapper::Game_BeginCutScene(AMX *pAMX, cell *aParams)
 {
 	SCRIPT_CHECK_NUM_PARAMS( "Game_BeginCutScene", 1 );
+#if FANG_WINGC
+	_PrepareRendezvousEndingActor(pAMX);
+#endif
 	char szTitle[100] = "";
 	if (aParams[1])
 	{

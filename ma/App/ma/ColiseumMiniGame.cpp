@@ -98,6 +98,81 @@
 
 CInventory CColiseumMiniGame::m_InvCopy;
 
+#if FANG_WINGC
+// Local co-op (PC): partners enter the arena unarmed too, each picks their own weapon in the
+// selection room, and they get their own weapons back at the end (retail does this for player 1).
+static CInventory _aPortPartnerInv[MAX_PLAYERS];
+
+static void _PortStripPartners( void ) {
+	for( s32 i = 1; i < CPlayer::m_nPlayerCount; ++i ) {
+		CInventory *pInv = CPlayer::GetInventory( i );
+		_aPortPartnerInv[i].CopyInv( pInv );
+		pInv->SetToUnarmed( TRUE );
+	}
+}
+
+static void _PortRestorePartners( void ) {
+	for( s32 i = 1; i < CPlayer::m_nPlayerCount; ++i ) {
+		CPlayer::PortSetSaveInventory( i, &_aPortPartnerInv[i] );
+	}
+}
+
+// Player nPlayer holds a weapon from the selection room (more than the unarmed slot).
+static BOOL _PortHasArenaWeapon( s32 nPlayer ) {
+	return CPlayer::GetInventory( nPlayer )->m_auNumWeapons[0] > 1;
+}
+
+// The battle script's arena intro (a cutscene after the weapon room) walks the story Glitch onto the
+// field and closes the tunnel door behind it, leaving partners outside. When that first cutscene
+// ends, put the partners beside the story Glitch; later cutscenes leave everyone where they are.
+static BOOL _bPortPartnersInArena = FALSE;
+static BOOL _bPortWasCutscene = FALSE;
+static s32 _nPortCorrosiveWinner = 0;
+static u32 _aPortHutPlayers[CColiseumMiniGame::MAX_TRIPWIRES];
+
+static CBotGlitch *_PortAliveArenaGlitch( s32 nPlayer ) {
+	CEntity *pEntity = Player_aPlayer[nPlayer].m_pEntityOrig;
+	if( !pEntity || !(pEntity->TypeBits() & ENTITY_BIT_BOTGLITCH) ||
+		!pEntity->IsInWorld() || pEntity->IsMarkedForWorldRemove() || ((CBot *)pEntity)->IsDeadOrDying() ) return NULL;
+	return (CBotGlitch *)pEntity;
+}
+
+static BOOL _PortAnyArenaPlayerAlive( void ) {
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) if( _PortAliveArenaGlitch(n) ) return TRUE;
+	return FALSE;
+}
+
+static void _PortRetargetCorrosive( CBot *pBoss, CGroundCombat *pCombat ) {
+	if( !pBoss || !pCombat ) return;
+	CEntity *pEnemy = pCombat->m_pEnemy;
+	if( pEnemy && pEnemy->IsInWorld() && !pEnemy->IsMarkedForWorldRemove() &&
+		(!(pEnemy->TypeBits() & ENTITY_BIT_BOT) || !((CBot *)pEnemy)->IsDeadOrDying()) ) return;
+	CBotGlitch *pClosest = NULL;
+	f32 fClosest = 1.0e30f;
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		CBotGlitch *pGlitch = _PortAliveArenaGlitch(n);
+		if( pGlitch ) {
+			CFVec3 vOffs = pGlitch->MtxToWorld()->m_vPos.v3 - pBoss->MtxToWorld()->m_vPos.v3;
+			if( vOffs.Mag2() < fClosest ) { fClosest = vOffs.Mag2(); pClosest = pGlitch; }
+		}
+	}
+	if( pClosest ) {
+		pCombat->ChangeEnemy(pClosest);
+		DEVPRINTF("Co-op: Corrosive retargets surviving player %d.\n", pClosest->m_nPossessionPlayerIndex + 1);
+	}
+}
+
+static void _PortPartnersIntoArena( BOOL bWeaponsChosen ) {
+	const BOOL bCutscene = CBot::m_bCutscenePlaying;
+	if( bWeaponsChosen && !_bPortPartnersInArena && _bPortWasCutscene && !bCutscene && MultiplayerMgr.IsLocalCoop() ) {
+		_bPortPartnersInArena = TRUE;
+		DEVPRINTF( "Co-op: Coliseum arena intro over; partners join player %d on the field.\n", game_GetStoryPlayerIndex() + 1 );
+		CPlayer::CoopPlaceStartingPartners( TRUE, game_GetStoryPlayerIndex() );
+	}
+	_bPortWasCutscene = bCutscene;
+}
+#endif
+
 static cchar* _Coliseum_pszSoundEffectBank = "Level_26";
 static cchar* _Coliseum_pszLevelBanks[] =
 {
@@ -863,6 +938,9 @@ BOOL CColiseumMiniGame::LoadLevel1( LevelEvent_e eEvent )
 			CInventory *pInv = Player_aPlayer[0].GetInventory(0);
 			m_InvCopy.CopyInv(pInv);
 			pInv->SetToUnarmed(TRUE);
+#if FANG_WINGC
+			_PortStripPartners();
+#endif
 		}	
 		return TRUE;
 	}
@@ -890,6 +968,9 @@ BOOL CColiseumMiniGame::LoadLevel2( LevelEvent_e eEvent )
 			CInventory *pInv = Player_aPlayer[0].GetInventory(0);
 			m_InvCopy.CopyInv(pInv);
 			pInv->SetToUnarmed(TRUE);
+#if FANG_WINGC
+			_PortStripPartners();
+#endif
 		}	
 		return TRUE;
 	}
@@ -936,6 +1017,9 @@ BOOL CColiseumMiniGame::LoadLevel3( LevelEvent_e eEvent )
 			CInventory *pInv = Player_aPlayer[0].GetInventory(0);
 			m_InvCopy.CopyInv(pInv);
 			pInv->SetToUnarmed(TRUE);
+#if FANG_WINGC
+			_PortStripPartners();
+#endif
 		}	
 		return TRUE;
 	}
@@ -963,6 +1047,9 @@ BOOL CColiseumMiniGame::LoadLevel4( LevelEvent_e eEvent )
 			CInventory *pInv = Player_aPlayer[0].GetInventory(0);
 			m_InvCopy.CopyInv(pInv);
 			pInv->SetToUnarmed(TRUE);
+#if FANG_WINGC
+			_PortStripPartners();
+#endif
 		}	
 		return TRUE;
 	}
@@ -1347,14 +1434,27 @@ void CColiseumMiniGame::Work( void )
 	{
 		//Disable Glitch's radar when he's in the Coliseum levels.
 		Player_aPlayer[0].m_Hud.EnableRadar( FALSE );
+#if FANG_WINGC
+		// local co-op: every player's, not only player 1's
+		for( s32 nPlayer = 1; nPlayer < CPlayer::m_nPlayerCount; ++nPlayer ) {
+			Player_aPlayer[nPlayer].m_Hud.EnableRadar( FALSE );
+		}
+#endif
 	}
 
 	if (m_pColiseumMiniGame)
 	{
+#if FANG_WINGC
+		_PortPartnersIntoArena( m_pColiseumMiniGame->m_State >= STATE_ESCORT_OUT && m_pColiseumMiniGame->m_State <= STATE_MAIN_GAME );
+#endif
 		switch (m_pColiseumMiniGame->m_State)
 		{
 			case STATE_INIT:
 				{
+#if FANG_WINGC
+					_bPortPartnersInArena = FALSE;
+					_bPortWasCutscene = FALSE;
+#endif
 					m_pColiseumMiniGame->InitGame();
 					m_pColiseumMiniGame->m_State = STATE_ESCORT;
 					
@@ -1452,6 +1552,10 @@ void CColiseumMiniGame::InitGame()
 	m_fStreamVolume = 0.2f;
 
 	m_bHitWhole = FALSE;
+#if FANG_WINGC
+	_nPortCorrosiveWinner = 0;
+	fang_MemSet(_aPortHutPlayers, 0, sizeof(_aPortHutPlayers));
+#endif
 	m_nScore = 0;
 	m_nMilScore = 0;
 	m_fScored = 0.0f;
@@ -1697,6 +1801,14 @@ void CColiseumMiniGame::InitGame()
 						m_pFriendly[0] = (CBot *)pEntity;
 						m_nNumFriendly++;
 					}
+#if FANG_WINGC
+					// Local co-op: partner Glitches are players, not the droid buddies this list holds.
+					// Counted as buddies, they got buddy AI settings and, in Coliseum 2, CBotMiner-only
+					// weapon/armor writes that corrupted the Glitch (crash when it is freed at level end).
+					else if ( pEntity->TypeBits() & ENTITY_BIT_BOTGLITCH )
+					{
+					}
+#endif
 					else if ( pEntity != Player_aPlayer[0].m_pEntityOrig )
 					{
 						m_pFriendly[m_nNumFriendly++] = (CBot *)pEntity;
@@ -2005,13 +2117,37 @@ BOOL CColiseumMiniGame::WeaponSelect()
 
 	//Have I picked up a weapon yet?
 	CInventory *pInv = Player_aPlayer[0].GetInventory(0);
+#if FANG_WINGC
+	// Local co-op: every standing player picks their own weapon (each pedestal once); the room
+	// stays open until they all have.
+	BOOL bEveryonePicked = (pInv->m_auNumWeapons[0] > 1);
+	for( s32 nPartner = 1; nPartner < CPlayer::m_nPlayerCount; ++nPartner ) {
+		CEntity *pPartner = Player_aPlayer[nPartner].m_pEntityOrig;
+		if( pPartner && (pPartner->TypeBits() & ENTITY_BIT_BOT) && !((CBot *)pPartner)->IsDeadOrDying() &&
+			!_PortHasArenaWeapon( nPartner ) ) {
+			bEveryonePicked = FALSE;
+		}
+	}
+	CWeapon *apPlayerWpn[MAX_PLAYERS] = { NULL };
+	if (bEveryonePicked)
+#else
 	if (pInv->m_auNumWeapons[0] > 1)
+#endif
 	{
 		bRet = TRUE;
 
 		//Max out the ammo for the weapon picked up.
 		u32 i;
+#if FANG_WINGC
+		for( s32 nPlayer = 0; nPlayer < CPlayer::m_nPlayerCount; ++nPlayer ) {
+		pInv = CPlayer::GetInventory( nPlayer );
+		if( !Player_aPlayer[nPlayer].m_pEntityOrig || !(Player_aPlayer[nPlayer].m_pEntityOrig->TypeBits() & ENTITY_BIT_BOTGLITCH) ) {
+			continue;
+		}
+		CBotGlitch *pPlayer = (CBotGlitch *)Player_aPlayer[nPlayer].m_pEntityOrig;
+#else
 		CBotGlitch *pPlayer = (CBotGlitch *)Player_aPlayer[0].m_pEntityOrig;
+#endif
 		for (i=0; i<ItemInst_uMaxInventoryWeapons; i++)
 		{
 			if (pInv->m_aoWeapons[0][i].m_pItemData && pInv->m_aoWeapons[0][i].m_nReserveAmmo >= 0)
@@ -2023,7 +2159,13 @@ BOOL CColiseumMiniGame::WeaponSelect()
 				pCurWpn = pPlayer->m_WeaponInv[0].m_apWeapon[i];
 			}
 		}
-		
+#if FANG_WINGC
+		apPlayerWpn[nPlayer] = pCurWpn;
+		pCurWpn = NULL;
+		}
+		pCurWpn = apPlayerWpn[0];
+#endif
+
 		char szName[32];
 		CFMtx43A *pMtx;
 		CEntity *pEntity=NULL;
@@ -2039,6 +2181,11 @@ BOOL CColiseumMiniGame::WeaponSelect()
 				for (i=1; i<(u32)m_nNumFriendly; i++)
 				{
 					bWpnFound=FALSE;
+#if FANG_WINGC
+					// Co-op players take pedestals too: give up (the droid keeps its own gun) rather
+					// than loop forever once none is left.
+					u32 nTries = 0;
+#endif
 					do
 					{
 						nRand = fmath_RandomInt32();
@@ -2051,6 +2198,11 @@ BOOL CColiseumMiniGame::WeaponSelect()
 						{
 							bWpnFound = TRUE;
 						}
+#if FANG_WINGC
+						if( ++nTries >= 256 ) {
+							break;
+						}
+#endif
 					} while (bWpnFound == FALSE);
 
 					if (bWpnFound && pEntity)
@@ -2118,6 +2270,31 @@ BOOL CColiseumMiniGame::WeaponSelect()
 		}
 
 		//replace "ammo" entities with the correct weapon.
+#if FANG_WINGC
+		// Co-op: the ammo spots take turns between the players' chosen weapons.
+		CWeapon *apAmmoWpn[MAX_PLAYERS];
+		u32 nAmmoWpns = 0;
+		for( s32 nPlayer = 0; nPlayer < CPlayer::m_nPlayerCount; ++nPlayer ) {
+			if( apPlayerWpn[nPlayer] ) {
+				apAmmoWpn[nAmmoWpns++] = apPlayerWpn[nPlayer];
+			}
+		}
+		if( nAmmoWpns > 1 && m_nNumAmmo )
+		{
+			for (i=0; i<(u32)m_nNumAmmo; i++)
+			{
+				CWeapon *pAmmoWpn = apAmmoWpn[i % nAmmoWpns];
+				const char *pszName = CItem::GetWeaponName( pAmmoWpn );
+				sprintf(szName, "%s l%d", pszName, pAmmoWpn->GetUpgradeLevel()+1 );
+				if (fclib_stricmp(pszName, "scatter blaster")==0)
+				{
+					sprintf(szName, "blaster l%d", pAmmoWpn->GetUpgradeLevel()+1 );
+				}
+				CCollectable::PlaceIntoWorld(szName, m_pAmmoPlacement[i]->MtxToWorld());
+			}
+		}
+		else
+#endif
 		if (pCurWpn)
 		{
 			const char *pszName = CItem::GetWeaponName( pCurWpn );
@@ -2750,6 +2927,20 @@ void CColiseumMiniGame::HutDestroyedCallback(u32 nUserData)
 			{
 				m_pColiseumMiniGame->m_pHutInside = NULL;
 
+#if FANG_WINGC
+				if( MultiplayerMgr.IsLocalCoop() ) {
+					for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+						CBotGlitch *pGlitch = _PortAliveArenaGlitch(n);
+						if( (_aPortHutPlayers[nUserData] & (1U << n)) && pGlitch && pGlitch->IsInPieces() ) {
+							m_pColiseumMiniGame->PortSetCorrosiveWinner(n);
+							m_pColiseumMiniGame->m_State = STATE_END_CUTSCENE;
+							m_pColiseumMiniGame->m_fCutSceneTime = 0.0f;
+							break;
+						}
+					}
+				} else
+#endif
+				{
 				CBotGlitch *pGlitch = (CBotGlitch *)m_pColiseumMiniGame->m_pFriendly[0];
 				if (pGlitch)
 				{
@@ -2759,6 +2950,7 @@ void CColiseumMiniGame::HutDestroyedCallback(u32 nUserData)
 						m_pColiseumMiniGame->m_State = STATE_END_CUTSCENE;
 						m_pColiseumMiniGame->m_fCutSceneTime = 0.0f;
 					}
+				}
 				}
 			}
 
@@ -2865,6 +3057,18 @@ void CColiseumMiniGame::CheckTripWireEvents(s32 nWhichEvent, u32 uUserData, u32 
 			//The hut has already been destroyed, move along.
 			return;
 		}
+
+#if FANG_WINGC
+		if( m_pColiseumMiniGame->m_nLevelID == 3 && MultiplayerMgr.IsLocalCoop() &&
+			pBot->m_nPossessionPlayerIndex < CPlayer::m_nPlayerCount ) {
+			const u32 nPlayerBit = 1U << pBot->m_nPossessionPlayerIndex;
+			if( uEventData1 == 0 ) _aPortHutPlayers[i] |= nPlayerBit;
+			else if( uEventData1 == 1 ) {
+				_aPortHutPlayers[i] &= ~nPlayerBit;
+				if( _aPortHutPlayers[i] ) return;
+			}
+		}
+#endif
 
 		// The tripwire that was triggered is one of the tripwires we are interested in,
 		// so lets do some further processing on it.
@@ -3000,7 +3204,14 @@ BOOL CColiseumMiniGame::MainGame()
 	if (m_pColiseumMiniGame->m_nLevelID >= 2)
 	{
 		CGroundCombat *pCombat = CCorrosiveCombat::GetGroundCombatPtr();
-		pCombat->m_uAttackFlags |= CGroundCombat::FLAG_DISABLE_ENEMY_RELATED_EXIT_CONDITIONS;
+		if( pCombat ) {
+			pCombat->m_uAttackFlags |= CGroundCombat::FLAG_DISABLE_ENEMY_RELATED_EXIT_CONDITIONS;
+#if FANG_WINGC
+			// The retail script starts one persistent attack against P1. Keep it alive
+			// against a surviving partner after P1 dies, without changing other bosses.
+			if( m_nLevelID == 3 && MultiplayerMgr.IsLocalCoop() ) _PortRetargetCorrosive(m_pEnemies[0], pCombat);
+#endif
+		}
 	}
 
 	
@@ -3242,6 +3453,12 @@ BOOL CColiseumMiniGame::MainGame()
 			CCorrosiveCombat::SetAggressiveness(fAggressive);
 		}
 
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() ) {
+			if( PortCheckCorrosivePlayers(pCorrosive) ) return TRUE;
+		} else
+#endif
+		{
 		//Check for game completion
 		CBotGlitch *pGlitch = (CBotGlitch *)m_pFriendly[0];
 		//Is Glitch in pieces?
@@ -3300,6 +3517,7 @@ BOOL CColiseumMiniGame::MainGame()
 					m_bHitWhole = FALSE;
 				}
 			}
+		}
 		}
 	}
 
@@ -3499,7 +3717,11 @@ BOOL CColiseumMiniGame::MainGame()
 		}
 	}
 
-	if ( _IS_BOT_DEAD(m_pFriendly[0]) || m_pFriendly[0]->IsDying() )
+	if ( (_IS_BOT_DEAD(m_pFriendly[0]) || m_pFriendly[0]->IsDying())
+#if FANG_WINGC
+		&& !(m_nLevelID == 3 && MultiplayerMgr.IsLocalCoop() && _PortAnyArenaPlayerAlive())
+#endif
+		)
 	{
 		m_fTimeSinceLastDamage = 0.0f;
 		m_nExcitedLevel = 100;
@@ -3547,27 +3769,81 @@ BOOL CColiseumMiniGame::MainGame()
 	return bRet;
 }
 
+#if FANG_WINGC
+void CColiseumMiniGame::PortSetCorrosiveWinner( s32 nPlayer ) {
+	_nPortCorrosiveWinner = nPlayer;
+	m_pFriendly[0] = _PortAliveArenaGlitch(nPlayer);
+	m_nScore = 4;
+	DEVPRINTF("Co-op: player %d completes Corrosive's wrench escape.\n", nPlayer + 1);
+}
+
+BOOL CColiseumMiniGame::PortCheckCorrosivePlayers( CBotCorrosive *pCorrosive ) {
+	if( !pCorrosive ) return FALSE;
+	const BOOL bSwat = pCorrosive->IsInMiddleOfSwat();
+	BOOL bHitWhole = FALSE;
+	CBotGlitch *pTarget = NULL;
+	CGroundCombat *pCombat = CCorrosiveCombat::GetGroundCombatPtr();
+	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+		CBotGlitch *pGlitch = _PortAliveArenaGlitch(n);
+		if( !pGlitch ) continue;
+		if( pCombat && pCombat->m_pEnemy == pGlitch ) pTarget = pGlitch;
+		if( pGlitch->IsInPieces() ) {
+			pGlitch->SetArmorModifier(bSwat ? 0.99f : 0.0f);
+			if( bSwat && pCorrosive->IsEntityHit(pGlitch) && !m_bHitWhole ) {
+				PortSetCorrosiveWinner(n);
+				return TRUE;
+			}
+			if( !bSwat ) pGlitch->SetTargetable(TRUE);
+		} else {
+			pGlitch->SetArmorModifier(0.0f);
+			if( bSwat && pCorrosive->IsEntityHit(pGlitch) ) bHitWhole = TRUE;
+		}
+	}
+	// Wait until every player's win check has seen this swing before clearing its hits.
+	if( bHitWhole ) pCorrosive->ClearEntityHitList();
+	else m_bHitWhole = FALSE;
+	if( pTarget && pTarget->IsInPieces() ) {
+		pCorrosive->SetSwatDamageRadiusMul(2.0f);
+		if( !bSwat ) CCorrosiveCombat::SetPreferredMeleeAttack(CCorrosiveCombat::PREFERED_MELEE_STOMP);
+	} else {
+		pCorrosive->SetSwatDamageRadiusMul();
+		CCorrosiveCombat::SetPreferredMeleeAttack(CCorrosiveCombat::PREFERED_MELEE_SWIPE);
+	}
+	return FALSE;
+}
+#endif
+
 BOOL CColiseumMiniGame::HandleEndCutscene()
 {
 	BOOL bRet = FALSE;
+	s32 nScenePlayer = 0;
+#if FANG_WINGC
+	if( MultiplayerMgr.IsLocalCoop() ) nScenePlayer = _nPortCorrosiveWinner;
+#endif
+	CPlayer *pScenePlayer = &Player_aPlayer[nScenePlayer];
 		
 	if (m_fCutSceneTime == 0.0f) //Init the cutscene
 	{
 		//Turn off collisions with Glitch in peices to avoid being destroyed.
 		//CBotGlitch::EnableCollisionWithPieces(FALSE);
-		FASSERT( Player_aPlayer[0].m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT );
-		((CBot*)Player_aPlayer[0].m_pEntityCurrent)->EnableCollisionWithPieces( FALSE );
+		FASSERT( pScenePlayer->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT );
+		((CBot*)pScenePlayer->m_pEntityCurrent)->EnableCollisionWithPieces( FALSE );
 
 		((CBotGlitch *)m_pFriendly[0])->SetArmorModifier(1.0f);
 		//Override Glitch's time in pieces to avoid him getting up in the middle of the cutscene.
 		CBotGlitch *pGlitch = (CBotGlitch *)m_pFriendly[0];
 		pGlitch->OverrideTimeInPieces(-1.0f);
 		//go into letterbox mode... (same code as game begin cutscene)
-		CPlayer::m_pCurrent->DisableEntityControl();
-		CAIBrain* pBrain = Player_aPlayer[0].m_pEntityCurrent->AIBrain();
-		if (Player_aPlayer[0].m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT)
+		pScenePlayer->DisableEntityControl();
+#if FANG_WINGC
+		if( MultiplayerMgr.IsLocalCoop() ) {
+			for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) Player_aPlayer[n].DisableEntityControl();
+		}
+#endif
+		CAIBrain* pBrain = pScenePlayer->m_pEntityCurrent->AIBrain();
+		if (pScenePlayer->m_pEntityCurrent->TypeBits() & ENTITY_BIT_BOT)
 		{
-			((CBot*)Player_aPlayer[0].m_pEntityCurrent)->HeadStopLook();
+			((CBot*)pScenePlayer->m_pEntityCurrent)->HeadStopLook();
 		}
 		aibrainman_Activate(pBrain);
 		ai_NotifyCutSceneBegin();
@@ -3705,7 +3981,10 @@ void CColiseumMiniGame::EndGame()
 
 		//restore players inventory, so that at the end of all Coliseums the player has his/her original inventory items/weapons.
 		CPlayer::SetSaveInventory(&m_InvCopy);
-		
+#if FANG_WINGC
+		_PortRestorePartners();
+#endif
+
 		//continue to next level
 	#if _USE_SCRIPT_EVENT
 		s32 nEventID = CFScriptSystem::GetEventNumFromName("movie");

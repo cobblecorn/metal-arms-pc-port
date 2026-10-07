@@ -58,6 +58,9 @@ u32  FVid_nFrameCounter;		// Increments each time fvid_Begin() is called
 u32  FVid_nSwapCounter;
 BOOL FVid_bPrintHiFreqErrMsg;	// Set to TRUE for one frame every few seconds. Can be used to limit the number of error messages printed.
 BOOL fdx8vid_bResetting;		// TRUE: The device is being reset: only ->Release() can be used
+#if FANG_WINGC
+BOOL FDX8Vid_bPortBorderless = FALSE;	// a windowed mode drawn as a captionless window at the desktop origin
+#endif
 
 // These are valid only when FVid_bOnline is TRUE:
 FVidDev_t  FVid_Dev;			// Current device
@@ -1719,6 +1722,9 @@ static void _Enumerate( void )
 			{
 				FASSERT( !FANG_PLATFORM_XB );
 				nD3DMaxModes = nValidWindowResCount;
+#if FANG_WINGC
+				nD3DMaxModes++;	// plus the desktop's own size (a borderless window covering it)
+#endif
 			}
 
 			for( nD3DModeIndex=0; nD3DModeIndex<nD3DMaxModes; nD3DModeIndex++ ) 
@@ -1745,6 +1751,14 @@ static void _Enumerate( void )
 				{
 					FASSERT( !FANG_PLATFORM_XB );
 
+#if FANG_WINGC
+					if( nD3DModeIndex == nValidWindowResCount ) {
+						DisplayMode.Width  = OrigDisplayMode.Width;
+						DisplayMode.Height = OrigDisplayMode.Height;
+						DisplayMode.Format = OrigDisplayMode.Format;
+						DisplayMode.RefreshRate = 1;	// Note: we cheat and use RefreshRate as bWindowed
+					}
+#endif
 					j = 0;
 					for( i=0; i<nWindowResTableCount; i++ ) 
 					{
@@ -2389,6 +2403,11 @@ static BOOL _CreateWindow( void )
 		if( FVid_Mode.nFlags & FVID_MODEFLAG_WINDOWED ) 
 		{
 			nWindowStyle = WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU;
+#if FANG_WINGC
+			if( FDX8Vid_bPortBorderless ) {
+				nWindowStyle = WS_POPUP | WS_VISIBLE;
+			}
+#endif
 		} 
 		else 
 		{
@@ -2397,14 +2416,31 @@ static BOOL _CreateWindow( void )
 
 		SetRect( &Rect, 0, 0, FVid_Mode.nPixelsAcross, FVid_Mode.nPixelsDown );
 		AdjustWindowRect( &Rect, nWindowStyle, FALSE );
+#if FANG_WINGC
+		// Borderless: a captionless window over the whole primary display, at its origin.
+		int nWindowX = CW_USEDEFAULT, nWindowY = CW_USEDEFAULT;
+		if( (FVid_Mode.nFlags & FVID_MODEFLAG_WINDOWED) && FDX8Vid_bPortBorderless ) {
+			nWindowX = 0;
+			nWindowY = 0;
+		} else if( FVid_Mode.nFlags & FVID_MODEFLAG_WINDOWED ) {
+			// Center a normal window on the desktop's work area.
+			RECT Work;
+			if( SystemParametersInfo( SPI_GETWORKAREA, 0, &Work, 0 ) ) {
+				nWindowX = Work.left + FMATH_MAX( 0, ((Work.right - Work.left) - (Rect.right - Rect.left)) / 2 );
+				nWindowY = Work.top + FMATH_MAX( 0, ((Work.bottom - Work.top) - (Rect.bottom - Rect.top)) / 2 );
+			}
+		}
+#else
+		const int nWindowX = CW_USEDEFAULT, nWindowY = CW_USEDEFAULT;
+#endif
 
 #ifdef _UNICODE
 		static TCHAR wszTitle[MAX_PATH];
 		MultiByteToWideChar( CP_THREAD_ACP, MB_PRECOMPOSED, FVid_Win.szWindowTitle, strlen( FVid_Win.szWindowTitle ), wszTitle, sizeof( wszTitle ) );
-		_hWnd = CreateWindow( _WINDOW_CLASS_NAME, wszTitle, nWindowStyle, CW_USEDEFAULT, CW_USEDEFAULT,
+		_hWnd = CreateWindow( _WINDOW_CLASS_NAME, wszTitle, nWindowStyle, nWindowX, nWindowY,
 							  (Rect.right-Rect.left), (Rect.bottom-Rect.top), 0L, NULL, FVid_Win.hInstance, 0L );
 #else
-		_hWnd = CreateWindow( _WINDOW_CLASS_NAME, FVid_Win.szWindowTitle, nWindowStyle, CW_USEDEFAULT, CW_USEDEFAULT,
+		_hWnd = CreateWindow( _WINDOW_CLASS_NAME, FVid_Win.szWindowTitle, nWindowStyle, nWindowX, nWindowY,
 							  (Rect.right-Rect.left), (Rect.bottom-Rect.top), 0L, NULL, FVid_Win.hInstance, 0L );
 #endif
 	} 

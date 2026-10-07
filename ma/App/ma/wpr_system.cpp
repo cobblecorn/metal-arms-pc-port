@@ -58,6 +58,7 @@
 #if defined(MA_PC_INPUT)
 #include "fvid.h"
 #include "pc_input.h"
+#include "pc_display.h"
 #include "discord_rpc.h"
 #endif
 
@@ -352,8 +353,11 @@ typedef enum {
 	_MENU_ITEMS_AS_DPAD_COMBO,
 	_MENU_ITEMS_AS_ASSISTED_TARGETING,
 #if defined(MA_PC_INPUT)
+	_MENU_ITEMS_AS_DISPLAY_MODE,	// display rows: settings.ini [Display], for the whole PC (pc_display)
+	_MENU_ITEMS_AS_RESOLUTION,
+	_MENU_ITEMS_AS_FOV,
 	_MENU_ITEMS_AS_PROMPTS,
-	_MENU_ITEMS_AS_MOUSE_SENSITIVITY,
+	_MENU_ITEMS_AS_MOUSE_SENSITIVITY,	// last: hidden for a controller-only player
 #endif
 	_MENU_ITEMS_AS_COUNT,
 
@@ -599,6 +603,9 @@ typedef struct {
 	PcPromptStyle nASPromptStyle;
 	PcPromptStyle nASPromptStyleOrig;
 	f32 fASMouseSensitivityOrig;
+	s32 nASDisplayModeOrig;		// display settings when the screen opened, for Cancel
+	int nASWidthOrig, nASHeightOrig;
+	s32 nASFovOrig;
 #endif
 	u8 nASIndexOfFFBMesh;
 	f32 fASForceFeedbackOrigIntensity;
@@ -731,6 +738,8 @@ static GameInitInfo_t _GameInitInfo;// filled in when we go to actually start a 
 
 #if defined(MA_PC_INPUT)
 static BOOL _bPcInputOptionsAdded;
+#define _PC_AS_ROW_COUNT		5		// PC rows appended to Advanced Settings: display mode .. mouse sensitivity
+#define _PC_AS_LAST_ROW_Y		0.60f	// lowest row position (ftext units) that clears the screen's buttons
 //===================================
 // mouse pointer (PC port)
 //
@@ -849,6 +858,9 @@ static Wpr_DataTypes_NavCode_e _PcSettingsBackKeeps( Wpr_DataTypes_NavCode_e nNa
 		// Launch overrides are intentionally not persisted. Try both independent preferences.
 		const BOOL bPromptsSaved = pcinput_PromptStyleIsCommandLineOverride() || pcinput_SavePromptStyleSetting();
 		const BOOL bMouseSaved = pcinput_MouseSensitivityIsOverride() || pcinput_SaveMouseSensitivity();
+		if( !pcdisplay_Save() ) {
+			DEVPRINTF( "PC settings: could not save the display settings.\n" );
+		}
 		if( !bPromptsSaved || !bMouseSaved ) {
 			DEVPRINTF( "PC settings: could not save %s%s; current session values retained.\n",
 				bPromptsSaved ? "" : "button prompts ", bMouseSaved ? "" : "mouse sensitivity" );
@@ -3091,26 +3103,35 @@ static BOOL _Init( void ) {
 	// navigation, selection arrows and mouse hit-testing without modifying retail data.
 	pScreen = &Wpr_DataTypes_paScreenData[WPR_DATATYPES_SCREENS_ADVANCED_SETTINGS];
 	_bPcInputOptionsAdded = FALSE;
-	if( pScreen->nNumTextElements == _MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_COUNT - 2 ) {
+	if( pScreen->nNumTextElements == _MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_COUNT - _PC_AS_ROW_COUNT ) {
 		const u32 nOldCount = pScreen->nNumTextElements;
-		Wpr_DataTypes_TextLayout_t *pExpanded = (Wpr_DataTypes_TextLayout_t *)fres_Alloc( sizeof( Wpr_DataTypes_TextLayout_t ) * (nOldCount + 2) );
+		Wpr_DataTypes_TextLayout_t *pExpanded = (Wpr_DataTypes_TextLayout_t *)fres_Alloc( sizeof( Wpr_DataTypes_TextLayout_t ) * (nOldCount + _PC_AS_ROW_COUNT) );
 		if( pExpanded ) {
+			static cwchar *apwszRows[_PC_AS_ROW_COUNT] = { L"Display Mode", L"Resolution", L"Field of View", L"Button Prompts", L"Mouse Sensitivity" };
 			for( u32 nText = 0; nText < nOldCount; nText++ ) {
 				pExpanded[nText] = pScreen->pText[nText];
 			}
-			Wpr_DataTypes_TextLayout_t *pPrevious = &pExpanded[nOldCount - 2];
-			Wpr_DataTypes_TextLayout_t *pLast = &pExpanded[nOldCount - 1];
-			Wpr_DataTypes_TextLayout_t *pPrompt = &pExpanded[nOldCount];
-			*pPrompt = *pLast;
-			pPrompt->pwszText = _pStringTable->AddString( L"Button Prompts" );
-			pPrompt->fUnitY = pLast->fUnitY + (pLast->fUnitY - pPrevious->fUnitY);
-			Wpr_DataTypes_TextLayout_t *pMouse = &pExpanded[nOldCount + 1];
-			*pMouse = *pLast;
-			pMouse->pwszText = _pStringTable->AddString( L"Mouse Sensitivity" );
-			pMouse->fUnitY = pPrompt->fUnitY + (pLast->fUnitY - pPrevious->fUnitY);
+			// The PC rows follow the retail ones at the same spacing; all the rows close up only as
+			// far as needed to stay above _PC_AS_LAST_ROW_Y.
+			const f32 fFirstY = pExpanded[_MENU_ITEMS_AS_START_OFFSET].fUnitY;
+			const Wpr_DataTypes_TextLayout_t *pLast = &pExpanded[nOldCount - 1];
+			f32 fSpacing = pLast->fUnitY - pExpanded[nOldCount - 2].fUnitY;
+			if( pLast->fUnitY + fSpacing * _PC_AS_ROW_COUNT > _PC_AS_LAST_ROW_Y ) {
+				fSpacing = (_PC_AS_LAST_ROW_Y - fFirstY) / (f32)(nOldCount - 1 - _MENU_ITEMS_AS_START_OFFSET + _PC_AS_ROW_COUNT);
+				for( u32 nText = _MENU_ITEMS_AS_START_OFFSET + 1; nText < nOldCount; nText++ ) {
+					pExpanded[nText].fUnitY = fFirstY + fSpacing * (f32)(nText - _MENU_ITEMS_AS_START_OFFSET);
+				}
+			}
+			for( u32 nRow = 0; nRow < _PC_AS_ROW_COUNT; nRow++ ) {
+				Wpr_DataTypes_TextLayout_t *pRow = &pExpanded[nOldCount + nRow];
+				*pRow = *pLast;
+				pRow->pwszText = _pStringTable->AddString( apwszRows[nRow] );
+				pRow->fUnitY = pLast->fUnitY + fSpacing * (f32)(nRow + 1);
+			}
 			pScreen->pText = pExpanded;
-			pScreen->nNumTextElements = (u16)(nOldCount + 2);
-			_bPcInputOptionsAdded = TRUE;
+			pScreen->nNumTextElements = (u16)(nOldCount + _PC_AS_ROW_COUNT);
+			DEVPRINTF( "PC settings: Advanced Settings rows %u..%u at y %.3f..%.3f, spacing %.3f\n", _MENU_ITEMS_AS_START_OFFSET, nOldCount + _PC_AS_ROW_COUNT - 1,
+				fFirstY, pExpanded[nOldCount + _PC_AS_ROW_COUNT - 1].fUnitY, fSpacing );			_bPcInputOptionsAdded = TRUE;
 		} else {
 			DEVPRINTF( "wpr_system::_Init() : Could not allocate the PC input option rows.\n" );
 		}
@@ -3787,6 +3808,9 @@ void wpr_system_IG_SelectScreen( Wpr_DataTypes_Screens_e nScreenIndex ) {
 		_MenuState.nASPromptStyle = pcinput_PromptStyleSetting();
 		_MenuState.nASPromptStyleOrig = _MenuState.nASPromptStyle;
 		_MenuState.fASMouseSensitivityOrig = pcinput_MouseSensitivity();
+		_MenuState.nASDisplayModeOrig = (s32)pcdisplay_Mode();
+		pcdisplay_Resolution( &_MenuState.nASWidthOrig, &_MenuState.nASHeightOrig );
+		_MenuState.nASFovOrig = pcdisplay_FovOffset();
 		_bPcSettingsSaveWarningShown = FALSE;
 #endif
 		_MenuState.bASForceFeedbackON = FALSE;
@@ -3871,6 +3895,9 @@ BOOL wpr_system_IG_Work( void ) {
 				_MenuState.nASPromptStyle = _MenuState.nASPromptStyleOrig;
 				pcinput_SetPromptStyleSetting( _MenuState.nASPromptStyleOrig );
 				pcinput_SetMouseSensitivity( _MenuState.fASMouseSensitivityOrig );
+				pcdisplay_SetMode( (PcDisplayMode)_MenuState.nASDisplayModeOrig );
+				pcdisplay_SetResolution( _MenuState.nASWidthOrig, _MenuState.nASHeightOrig );
+				pcdisplay_SetFovOffset( _MenuState.nASFovOrig );
 				game_PcPromptWork();
 #endif
 				fforce_SetMasterIntensity( _MenuState.nControllerIndex, _MenuState.fASForceFeedbackOrigIntensity );
@@ -5695,6 +5722,55 @@ static void _DeleteProfile_SP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) 
 /////////////////////////////////
 
 #if defined(MA_PC_INPUT)
+// The resolution this PC starts in: the saved choice, else what this run is using.
+static void _AdvSettings_Resolution( int *pnWidth, int *pnHeight ) {
+	pcdisplay_Resolution( pnWidth, pnHeight );
+	if( !*pnWidth || !*pnHeight ) {
+		*pnWidth = (int)FVid_Mode.nPixelsAcross;
+		*pnHeight = (int)FVid_Mode.nPixelsDown;
+	}
+}
+
+// Its place in the offered list (the nearest when it is not offered).
+static s32 _AdvSettings_ResolutionIndex( void ) {
+	int nWidth, nHeight;
+	_AdvSettings_Resolution( &nWidth, &nHeight );
+	s32 nBest = 0, nBestScore = 0x7fffffff;
+	for( s32 i = 0; i < pcdisplay_AvailableResolutionCount(); i++ ) {
+		int nW, nH;
+		pcdisplay_AvailableResolution( i, &nW, &nH );
+		const s32 nScore = abs( nW - nWidth ) + abs( nH - nHeight );
+		if( nScore < nBestScore ) {
+			nBestScore = nScore;
+			nBest = i;
+		}
+	}
+	return nBest;
+}
+
+static void _AdvSettings_DisplayText( s32 nItem, wchar *pwszText, u32 nChars ) {
+	static cwchar *apwszModes[PCDISPLAY_MODE_COUNT] = { L"Windowed", L"Fullscreen", L"Borderless" };
+	if( nItem == _MENU_ITEMS_AS_DISPLAY_MODE ) {
+		_snwprintf( pwszText, nChars, L"%ls", apwszModes[pcdisplay_Mode()] );
+	} else if( nItem == _MENU_ITEMS_AS_RESOLUTION ) {
+		if( pcdisplay_Mode() == PCDISPLAY_BORDERLESS ) {
+			_snwprintf( pwszText, nChars, L"Desktop" );
+		} else {
+			int nWidth, nHeight;
+			_AdvSettings_Resolution( &nWidth, &nHeight );
+			_snwprintf( pwszText, nChars, L"%dx%d", nWidth, nHeight );
+		}
+	} else {
+		const s32 nOffset = pcdisplay_FovOffset();
+		if( nOffset ) {
+			_snwprintf( pwszText, nChars, L"%+d", nOffset );
+		} else {
+			_snwprintf( pwszText, nChars, L"Normal" );
+		}
+	}
+	pwszText[nChars - 1] = 0;
+}
+
 static cwchar *_AdvSettings_PromptStyleText() {
 	static cwchar *apwszStyles[] = { L"Auto", L"Keyboard", L"Xbox", L"PlayStation" };
 	static cwchar *apwszForcedStyles[] = { L"Auto [locked]", L"Keyboard [locked]", L"Xbox [locked]", L"PlayStation [locked]" };
@@ -5737,7 +5813,7 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 	s32 nCache = _MenuState.nCurItemIndex;
 	s32 nASItemCount = _MENU_ITEMS_AS_COUNT;
 #if defined(MA_PC_INPUT)
-	if( !_bPcInputOptionsAdded ) nASItemCount -= 2;
+	if( !_bPcInputOptionsAdded ) nASItemCount -= _PC_AS_ROW_COUNT;
 	else if( _MenuState.nControllerIndex != (s32)pcinput_KeyboardPort() ) nASItemCount -= 1;	// no mouse row
 #endif
 
@@ -5840,6 +5916,35 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 				break;
 
 #if defined(MA_PC_INPUT)
+			case _MENU_ITEMS_AS_DISPLAY_MODE:
+				pcdisplay_SetMode( (PcDisplayMode)(((s32)pcdisplay_Mode() + nLeftRight + PCDISPLAY_MODE_COUNT) % PCDISPLAY_MODE_COUNT) );
+				fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
+				break;
+			case _MENU_ITEMS_AS_RESOLUTION:
+				{
+					const s32 nCount = pcdisplay_AvailableResolutionCount();
+					if( nCount > 0 && pcdisplay_Mode() != PCDISPLAY_BORDERLESS ) {
+						s32 nIndex = _AdvSettings_ResolutionIndex() + nLeftRight;
+						FMATH_CLAMP( nIndex, 0, nCount - 1 );
+						int nWidth, nHeight, nOldWidth, nOldHeight;
+						pcdisplay_AvailableResolution( nIndex, &nWidth, &nHeight );
+						_AdvSettings_Resolution( &nOldWidth, &nOldHeight );
+						if( nWidth != nOldWidth || nHeight != nOldHeight ) {
+							pcdisplay_SetResolution( nWidth, nHeight );
+							fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
+						}
+					}
+				}
+				break;
+			case _MENU_ITEMS_AS_FOV:
+				{
+					const s32 nBefore = pcdisplay_FovOffset();
+					pcdisplay_SetFovOffset( nBefore + PCDISPLAY_FOV_STEP * nLeftRight );
+					if( pcdisplay_FovOffset() != nBefore ) {
+						fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
+					}
+				}
+				break;
 			case _MENU_ITEMS_AS_MOUSE_SENSITIVITY:
 				{
 					const f32 fBefore = pcinput_MouseSensitivity();
@@ -6021,9 +6126,19 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 				break;
 
 #if defined(MA_PC_INPUT)
+			case _MENU_ITEMS_AS_DISPLAY_MODE:
+			case _MENU_ITEMS_AS_RESOLUTION:
+			case _MENU_ITEMS_AS_FOV:
 			case _MENU_ITEMS_AS_MOUSE_SENSITIVITY:
 			case _MENU_ITEMS_AS_PROMPTS:
-				if( nItem == _MENU_ITEMS_AS_MOUSE_SENSITIVITY ) {
+				if( nItem == _MENU_ITEMS_AS_DISPLAY_MODE || nItem == _MENU_ITEMS_AS_RESOLUTION || nItem == _MENU_ITEMS_AS_FOV ) {
+					wchar wszValue[32];
+					_AdvSettings_DisplayText( nItem, wszValue, 32 );
+					ftext_Printf( fOptionsX, pScreen->pText[i].fUnitY,
+						L"~f1~C%ls~w0~aC~s%.2f%ls",
+						bSelected ? WprDataTypes_pwszWhiteTextColor : WprDataTypes_pwszGrayTextColor,
+						pScreen->pText[i].fScale, wszValue );
+				} else if( nItem == _MENU_ITEMS_AS_MOUSE_SENSITIVITY ) {
 					ftext_Printf( fOptionsX, pScreen->pText[i].fUnitY,
 						L"~f1~C%ls~w0~aC~s%.2f%.2fx%ls",
 						bSelected ? WprDataTypes_pwszWhiteTextColor : WprDataTypes_pwszGrayTextColor,
@@ -6051,6 +6166,13 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 			}
 		}
 	}	
+#if defined(MA_PC_INPUT)
+	if( _bPcInputOptionsAdded && pcdisplay_RestartNeeded() ) {
+		const Wpr_DataTypes_TextLayout_t *pModeRow = &pScreen->pText[_MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_DISPLAY_MODE];
+		ftext_Printf( 0.5f, _PC_AS_LAST_ROW_Y + 0.045f, L"~f1~C%ls~w0~aC~s%.2fDisplay mode and resolution apply when the game is restarted",
+			WprDataTypes_pwszGrayTextColor, pModeRow->fScale * 0.75f );
+	}
+#endif
 }
 
 static void _AdvSettings_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalfYRes ) {

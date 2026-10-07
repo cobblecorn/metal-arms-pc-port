@@ -4339,12 +4339,15 @@ void CEntity::_CheckMovedEntityAgainstTripwires( const CFVec3A *pPrevPos_WS, con
 // elevator start, a buddy's "follow me", a script beat) wait for every standing player, in any order; a
 // player who is down is not waited for. Arrival is sticky, so a thin trigger the players cross one
 // at a time still releases. Collectables and kill volumes are never held; an attached door still
-// opens for whoever arrives first.
+// opens for whoever arrives first. Audited one-shot encounters also accept a
+// nearby group after one real crossing; transport and unlisted events stay strict.
 #define _COOP_MAX_HELD_TRIPWIRES	16
 
 typedef struct {
 	CEntity *pTripwireEntity;
 	u32 nArrivedMask;		// players (bit per player index) who have been inside
+	CEntity *pEncounterAnchor;	// most recent real crossing, never inferred from proximity
+	CFVec3A vEncounterAnchorPos;
 } _CoopHeldTripwire_t;
 
 static _CoopHeldTripwire_t _aCoopHeldTripwires[_COOP_MAX_HELD_TRIPWIRES];
@@ -4462,6 +4465,103 @@ static s32 _CoopPlayerOfEntity( const CEntity *pEntity ) {
 	return -1;
 }
 
+// Exact retail branches audited in docs/coop-encounter-trigger-list-20261006.json.
+// Names such as "bridge" can mean either an ambush or transport; never use
+// a name prefix or expand a volume to guess which policy is safe.
+static BOOL _CoopNearbyEncounterTripwire( const CEntity *pTripwire, const CTripwire *pData ) {
+	if( !pTripwire || !pTripwire->IsTripwire() || !pTripwire->Name() ||
+		Level_nLoadedIndex < 0 || Level_nLoadedIndex >= Level_nCount ||
+		Level_aInfo[Level_nLoadedIndex].nLevel < 0 ||
+		Level_aInfo[Level_nLoadedIndex].nLevel >= LEVEL_SINGLE_PLAYER_COUNT ||
+		pData->m_nTripwireTriggerMode != CEntity::TRIPWIRE_TRIGGER_MODE_ONCE ||
+		pData->m_pszTripwireFilterEntityName ||
+		pData->m_eKillMode != CTripwire::TRIPWIRE_KILLMODE_NONE ) return FALSE;
+	static const struct { cchar *pszWorld; cchar *pszTrigger; } aEvents[] = {
+		{ "WEDMmines01", "seetrig1" },
+		{ "WEDMmines02", "trigger_stopmusic1" },
+		{ "WEDMmines03", "bridgetrigger" },
+		{ "WEDMmines03", "snarqtrigger" },
+		{ "WEWJjourn01", "trig_pipe" },
+		{ "WEWJjourn02", "trig_plank" },
+		{ "WEWJjourn02", "trig_snipe" },
+		{ "WEWJjourn02", "trig_zip" },
+		{ "WEWCcomm_01", "trig_titan" },
+		{ "WEWCcomm_01", "trig_hole" },
+		{ "WEWRresrch4", "trigger_spews" },
+		{ "WERMmorbot1", "btrip01" },
+		{ "WERMmorbot1", "trig_leech" },
+		{ "WERMmorbot1", "trig_flames" },
+		{ "WERMmorbot1", "trig_pred" },
+		{ "WEMCcity_01", "startgrunttrigger" },
+		{ "WEMCcity_03", "gruntgate_trigger" },
+		{ "WEMCcity_03", "backalley_trigger" },
+		{ "WEMCcity_03", "gentitan_trigger02" },
+		{ "WEMCcity_05", "musicstarttrigger01" },
+		{ "WEMCcity_05", "titan1trigger" },
+		{ "WEMCcity_05", "titan2trigger" },
+		{ "WEMCcity_05", "hutgrunt1trigger" },
+		{ "WEMCcity_05", "hutgrunt2trigger" },
+		{ "WEMCcity_05", "bgrunt1trigger" },
+		{ "WEMCcity_05", "powertrigger" },
+		{ "WEMCcity_05", "MainStreetTrigger" },
+		{ "WEMCcity_05", "tunneltrigger" },
+		{ "WECRruins01", "addsomegrunts_trigger" },
+		{ "WECRruins01", "trippie" },
+		{ "WECRruins01", "jump" },
+		{ "WECRruins01", "bridge_trig" },
+		{ "WECRruins01", "pill_backup" },
+		{ "WESSstatn01", "trig_jumper" },
+		{ "WESSstatn01", "trig_jumper2" },
+		{ "WESSstatn01", "trig_sting" },
+		{ "WESSstatn02", "trig_jump2" },
+	};
+	cchar *pszWorld = Level_aInfo[Level_nLoadedIndex].pszWorldResName;
+	for( u32 i=0; i < sizeof(aEvents)/sizeof(aEvents[0]); ++i ) {
+		if( !fclib_stricmp(pszWorld,aEvents[i].pszWorld) &&
+			!fclib_stricmp(pTripwire->Name(),aEvents[i].pszTrigger) ) return TRUE;
+	}
+	return FALSE;
+}
+
+// A teleport that intersects an earlier gate must not anchor that gate at
+// its distant endpoint. Inside endpoints and short tracked crossings are real
+// anchors; the caller has already confirmed this tripwire's enter/crossing.
+static BOOL _CoopEncounterCrossingAnchor( CEntity *pTripwire, CEntity *pPlayer ) {
+	const s32 nPlayer = _CoopPlayerOfEntity(pPlayer);
+	if( nPlayer < 0 || Player_aPlayer[nPlayer].m_pEntityOrig != pPlayer ) return FALSE;
+	const CFVec3A &vPos = pPlayer->MtxToWorld()->m_vPos;
+	return pTripwire->TripwireContainsPoint(vPos) ||
+		(_apCoopPreviousPlayers[nPlayer] == pPlayer &&
+		 _avCoopPreviousPositions[nPlayer].DistSq(vPos) <= 100.0f);
+}
+
+// Whole-group diameter, rather than a chain of nearby partners. Twelve world
+// units allows a few bot lengths; four vertically avoids adjacent storeys.
+// This supplies readiness only: no fabricated crossings or partner teleports.
+static BOOL _CoopEncounterGroupNearby( CEntity *pTripwire, u32 nStanding,
+	const _CoopHeldTripwire_t *pHeld, CEntity *pCrossingPlayer=NULL ) {
+	if( !nStanding || CBot::m_bCutscenePlaying ) return FALSE;
+	BOOL bAtTrigger = FALSE;
+	for( s32 i=0; i < CPlayer::m_nPlayerCount; ++i ) {
+		if( !(nStanding & (1 << i)) ) continue;
+		CEntity *pPlayer = Player_aPlayer[i].m_pEntityCurrent;
+		// Remote possession must not make the pilot's group look assembled.
+		if( pPlayer != Player_aPlayer[i].m_pEntityOrig ) return FALSE;
+		const CFVec3A &vPos = pPlayer->MtxToWorld()->m_vPos;
+		if( (pPlayer == pCrossingPlayer && _CoopEncounterCrossingAnchor(pTripwire,pPlayer)) ||
+			pTripwire->TripwireContainsPoint(vPos) ||
+			(pHeld && pHeld->pEncounterAnchor == pPlayer && vPos.DistSq(pHeld->vEncounterAnchorPos) <= 16.0f) ) {
+			bAtTrigger = TRUE;
+		}
+		for( s32 j=i+1; j < CPlayer::m_nPlayerCount; ++j ) {
+			if( !(nStanding & (1 << j)) ) continue;
+			const CFVec3A &vOther = Player_aPlayer[j].m_pEntityCurrent->MtxToWorld()->m_vPos;
+			if( vPos.DistSq(vOther) > 144.0f || fmath_Abs(vPos.y-vOther.y) > 4.0f ) return FALSE;
+		}
+	}
+	return bAtTrigger;
+}
+
 // The retail scripts were written for player 1 as the tripper; use them when they are up.
 static CEntity *_CoopReleaseTripper( CEntity *pFallback ) {
 	if( _CoopStandingPlayerMask() & 1 ) {
@@ -4551,8 +4651,11 @@ BOOL CEntity::_CoopHoldTripwireEnter( CEntity *pTripper ) {
 		return TRUE;
 	}
 	u32 nArrived = (1 << nPlayer) | _CoopPlayersInsideMask() | (pHeld ? pHeld->nArrivedMask : 0);
-	if( (nArrived & nStanding) == nStanding ) {
-		// Everyone has arrived (or this player is the only one up).
+	const BOOL bNearbyEncounter = _CoopNearbyEncounterTripwire(this,m_pTripwire) &&
+		_CoopEncounterGroupNearby(this,nStanding,pHeld,pTripper);
+	if( (nArrived & nStanding) == nStanding || bNearbyEncounter ) {
+		// Everyone crossed, or this audited encounter has a nearby living group.
+		if( bNearbyEncounter ) DEVPRINTF("Co-op: encounter '%s' released for nearby group.\n",Name());
 		if( pHeld ) {
 			*pHeld = _aCoopHeldTripwires[--_nCoopHeldTripwires];
 		}
@@ -4565,12 +4668,15 @@ BOOL CEntity::_CoopHoldTripwireEnter( CEntity *pTripper ) {
 		}
 		pHeld = &_aCoopHeldTripwires[_nCoopHeldTripwires++];
 		pHeld->pTripwireEntity = this;
+		pHeld->pEncounterAnchor = NULL;
 		DEVPRINTF( "Co-op: tripwire '%s' waits for every player (player %d arrived first).\n", Name() ? Name() : "unknown", nPlayer + 1 );
 		if( m_pTripwire->m_pDoorToOpen ) {
 			m_pTripwire->m_pDoorToOpen->GotoPos( 1, CDoorEntity::GOTOREASON_DESTINATION );
 		}
 	}
 	pHeld->nArrivedMask = nArrived;
+	pHeld->pEncounterAnchor = _CoopEncounterCrossingAnchor(this,pTripper) ? pTripper : NULL;
+	pHeld->vEncounterAnchorPos = pTripper->MtxToWorld()->m_vPos;
 	return TRUE;
 }
 
@@ -4593,7 +4699,20 @@ void CEntity::CoopTripwireWork( void ) {
 			DEVPRINTF( "Co-op: tripwire '%s' recovered player arrival mask 0x%x from position/crossing.\n", pTripwireEntity->Name() ? pTripwireEntity->Name() : "unknown", nRecovered );
 		}
 		pHeld->nArrivedMask |= nReached;
-		if( nStanding && ((pHeld->nArrivedMask & nStanding) == nStanding) ) {
+		if( nReached && _CoopNearbyEncounterTripwire(pTripwireEntity,pTripwireEntity->m_pTripwire) ) {
+			for( s32 nPlayer=0; nPlayer < CPlayer::m_nPlayerCount; ++nPlayer ) {
+				CEntity *pPlayer = Player_aPlayer[nPlayer].m_pEntityCurrent;
+				if( (nReached & (1 << nPlayer)) && _CoopEncounterCrossingAnchor(pTripwireEntity,pPlayer) ) {
+					pHeld->pEncounterAnchor = pPlayer;
+					pHeld->vEncounterAnchorPos = pPlayer->MtxToWorld()->m_vPos;
+					break;
+				}
+			}
+		}
+		const BOOL bNearbyEncounter = _CoopNearbyEncounterTripwire(pTripwireEntity,pTripwireEntity->m_pTripwire) &&
+			_CoopEncounterGroupNearby(pTripwireEntity,nStanding,pHeld);
+		if( nStanding && (((pHeld->nArrivedMask & nStanding) == nStanding) || bNearbyEncounter) ) {
+			if( bNearbyEncounter ) DEVPRINTF("Co-op: held encounter '%s' released for nearby group.\n",pTripwireEntity->Name());
 			CEntity *pTripper = NULL;
 			for( s32 nPlayer=0; nPlayer < CPlayer::m_nPlayerCount && !pTripper; nPlayer++ ) {
 				if( nStanding & (1 << nPlayer) ) {

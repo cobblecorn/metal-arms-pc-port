@@ -395,6 +395,8 @@ static bool PromptSettingsPath(char *path, size_t capacity) {
 	return true;
 }
 
+bool pcinput_SettingsPath(char *path, size_t capacity) { return PromptSettingsPath(path, capacity); }
+
 static PcPromptStyle LoadPromptStyleSetting() {
 	char path[MAX_PATH + 64], value[32];
 	PcPromptStyle style = PCINPUT_PROMPT_STYLE_AUTO;

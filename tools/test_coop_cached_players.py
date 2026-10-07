@@ -21,6 +21,7 @@ bool CBot::m_bCutscenePlaying=false;
 struct CPlayer{static int m_nPlayerCount;CEntity* m_pEntityOrig;CEntity* m_pEntityCurrent;};
 int CPlayer::m_nPlayerCount=2;CPlayer Player_aPlayer[4];int _nCoopStoryPlayer=-1;
 struct{bool coop=true;bool IsLocalCoop(){return coop;}}MultiplayerMgr;
+struct CSpyVsSpy{static bool IsFactoryActive(){return false;}};
 struct CFScript{char m_szScriptFileName[32];unsigned m_uDataAreaSize;};
 struct CFScriptInst{bool m_bIsInitialized=true;AMX m_oAMX{};CFScript* m_pScript;void* m_pDataArea;};
 struct CFScriptSystem{static CFScriptInst* m_pCurScriptInst;};CFScriptInst* CFScriptSystem::m_pCurScriptInst=nullptr;

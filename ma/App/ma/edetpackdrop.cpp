@@ -18,6 +18,7 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "EDetPackDrop.h"
+#include "player.h"
 #include "ItemInst.h"
 #include "bot.h"
 #include "fclib.h"
@@ -479,6 +480,7 @@ void CEDetPackDrop::_SetState(DetState_e eNewState)
 	}
 	else if (m_eCurState == DETDROP_EXPLODED)  
 	{
+		_ClearHudTimer();
 		FExplosion_SpawnerHandle_t hSpawner = CExplosion2::GetExplosionSpawner();
 
 		if( hSpawner != FEXPLOSION_INVALID_HANDLE ) 
@@ -502,6 +504,19 @@ void CEDetPackDrop::_SetState(DetState_e eNewState)
 }
 
 // =============================================================================================================
+
+void CEDetPackDrop::_ClearHudTimer( void )
+{
+#if FANG_WINGC
+	if( this != m_pMasterDetPack ) return;
+	// Possession can move the planter away from the HUD that received this
+	// countdown. Clear only this pack's pointer on every possible owner.
+	for( s32 n=0; n<CPlayer::m_nPlayerCount; ++n ) {
+		CHud2::GetHudForPlayer(n)->ClearIconTimerDrawIfOwned(
+			CHud2::ICON_TIMER_TYPE_DETPACK, &m_fDetonateTimeLeft );
+	}
+#endif
+}
 
 void CEDetPackDrop::_StateWork()
 {
@@ -599,11 +614,13 @@ void CEDetPackDrop::_StateWork()
 			}
 			else
 			{
+#if !FANG_WINGC
 				if (m_pActionBot->m_nPossessionPlayerIndex >= 0)
 				{
 					CHud2* pHud = CHud2::GetHudForPlayer(m_pActionBot->m_nPossessionPlayerIndex);
 					pHud->SetIconTimerDraw( CHud2::ICON_TIMER_TYPE_DETPACK, TRUE, NULL );
 				}
+#endif
 			}
 		}
 		else
@@ -719,6 +736,7 @@ BOOL CEDetPackDrop::CheckpointSave( void )
 
 void CEDetPackDrop::CheckpointRestore( void )
 {
+	_ClearHudTimer();
 	// Load parent class data...
 	CMeshEntity::CheckpointRestore();
 	
@@ -743,7 +761,9 @@ void CEDetPackDrop::ClassHierarchyAddToWorld( void )
 
 void CEDetPackDrop::ClassHierarchyRemoveFromWorld( void )
 {
+	_ClearHudTimer();
 	CMeshEntity::ClassHierarchyRemoveFromWorld();
+#if !FANG_WINGC
 	if (this==m_pMasterDetPack)
 	{
 		if (m_pActionBot && m_pActionBot->m_nPossessionPlayerIndex >= 0)
@@ -752,6 +772,7 @@ void CEDetPackDrop::ClassHierarchyRemoveFromWorld( void )
 			pHud->SetIconTimerDraw( CHud2::ICON_TIMER_TYPE_DETPACK, FALSE );
 		}
 	}
+#endif
 }
 
 void CEDetPackDrop::ClassHierarchyRelocated( void *pIdentifier ) 

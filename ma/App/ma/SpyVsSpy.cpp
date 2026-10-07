@@ -5978,6 +5978,9 @@ void CProgramStage::Work( void ) {
 				}
 				if(CSpyVsSpy::CoopPackingWaiting() && lead->GetParent()!=m_pCrate && !lead->IsInAir()) {
 					CSpyVsSpy::CoopSyncStage(NULL,NULL,TRUE);
+					// Empty weapons suppressed reticles during packing; release that override
+					// after safe breakout so newly equipped weapons can draw crosshairs.
+					CSpyVsSpy::TurnOffHUD(FALSE);
 					DEVPRINTF("Factory packing: partner wait ended after box exit.\n");
 				}
 			}
@@ -6651,7 +6654,7 @@ BOOL CSpyVsSpy::PortTestDance( u32 nTest ) {
 BOOL CSpyVsSpy::PortTestStage( u32 nStage ) {
 	char mode[32];
 	GetEnvironmentVariableA( "MA_PORT_TEST_COOP_POLISH", mode, sizeof(mode) );
-	if( (fclib_stricmp(mode,"spy-party") && fclib_stricmp(mode,"spy-escort") && fclib_stricmp(mode,"spy-packing") && fclib_stricmp(mode,"spy-resume") && fclib_stricmp(mode,"spy-inspection")) || !IsFactoryActive() ) return FALSE;
+	if( (fclib_stricmp(mode,"spy-party") && fclib_stricmp(mode,"spy-escort") && fclib_stricmp(mode,"spy-packing") && fclib_stricmp(mode,"spy-resume") && fclib_stricmp(mode,"spy-inspection") && fclib_stricmp(mode,"spy-box-resume")) || !IsFactoryActive() ) return FALSE;
 	if( nStage == 0 ) { m_pGame->m_eCurrentStage = STAGE_DANCE; m_pGame->m_pCurrentStage = m_pGame->m_pDanceStage; }
 	else if( nStage == 1 ) { m_pGame->m_eCurrentStage = STAGE_BATTLE; m_pGame->m_pCurrentStage = m_pGame->m_pBattleStage; }
 	else if(nStage==2) {m_pGame->m_eCurrentStage=STAGE_SEARCH;m_pGame->m_pCurrentStage=m_pGame->m_pSearchStage;}

@@ -168,7 +168,10 @@ private:
 
 	static BOOL m_bSystemInitialized;
 	static CInventory *m_pInvSave;
-	
+#if FANG_WINGC
+	static CInventory *m_apPortInvSave[MAX_PLAYERS];	// PortSetSaveInventory, per player
+#endif
+
 	static f32 m_fStartOfLevelMusicVol;
 	static f32 m_fStartOfLevelSfxVol;
 
@@ -221,6 +224,10 @@ public:
 	static s32 GetTeamScores(s32* pnKills, u32* pnDeaths);
 
 	FINLINE static void SetSaveInventory(CInventory *pInv) { m_pInvSave = pInv; }
+#if FANG_WINGC
+	// Local co-op (PC): like SetSaveInventory (which covers player 1), for player nPlayer.
+	FINLINE static void PortSetSaveInventory( s32 nPlayer, CInventory *pInv ) { m_apPortInvSave[nPlayer] = pInv; }
+#endif
 
 	void Work( void );
 	void HandleTogglingOfOnscreenText( void );

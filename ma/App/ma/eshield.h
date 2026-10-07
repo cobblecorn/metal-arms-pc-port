@@ -135,6 +135,7 @@ public:
 
 
 	void EnablePushOutBots( BOOL bEnable )		{ FASSERT( IsCreated() ); m_bPushOutBots = bEnable; };
+	BOOL IsPushOutBotsEnabled( void ) const		{ return m_bPushOutBots; };
 	void SetShieldHealth( f32 fUnitHealth );																	// directly sets the health & state without any visible effect
 	void RechargeNow( void )					{ FASSERT( IsCreated() ); m_fShieldRechargeTimer = -1.0f; };	// tell the shield to immediately recharge
 

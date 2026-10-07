@@ -236,6 +236,7 @@ public:
 	static void DrawText( CBotGlitch *pBotGlitch );
 
 	BOOL InOperationArea( CBotGlitch *pBotGlitch );
+	static void ReleaseOperatorForStoryScene( CBotGlitch *pBotGlitch );
 	FINLINE BOOL IsIdle( void ) const { FASSERT( IsCreated() ); return m_nConsoleState == CONSOLE_STATE_IDLE; };
 	FINLINE u32 NumInsertedChips( void ) const { FASSERT( IsCreated() ); return m_nInsertedChipCount; };
 	FINLINE u32 NumSockets( void ) const { FASSERT( IsCreated() ); return m_nSocketCount; };

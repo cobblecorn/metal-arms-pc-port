@@ -430,6 +430,7 @@ public:
 	BOOL OverrideWeaponBox( BOOL bOverride, u32 uSide, CItem *pItem, BOOL bReverse=FALSE );
 
 	BOOL SetIconTimerDraw( IconTimerType_t nTimer, BOOL bDraw, f32* pTimer=NULL );
+	void ClearIconTimerDrawIfOwned( IconTimerType_t nTimer, const f32 *pTimer );
 
 	//void SetPlayerBot(CBot *poPlayerBot);
 	void SetDrawEnabled(BOOL bDrawEnabled);			// Note that 

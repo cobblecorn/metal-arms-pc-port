@@ -1352,6 +1352,19 @@ void CEConsole::_Work_ControllingBot( void ) {
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
+void CEConsole::ReleaseOperatorForStoryScene( CBotGlitch *pBotGlitch ) {
+	CEConsole *pConsole = NULL;
+	while( (pConsole = (CEConsole *)flinklist_GetNext(&m_ConsoleRoot,pConsole)) ) {
+		if( pConsole->m_pGlitchBot == pBotGlitch &&
+			pConsole->m_nConsoleState == CONSOLE_STATE_CONTROLLING_BOT &&
+			pConsole->m_pControlBot && pConsole->m_pControlBot->m_nPossessionPlayerIndex < 0 ) {
+			// Run the normal shield/joystick/collision release before a script
+			// relocates the operator; later console work must not pull him back.
+			pConsole->_Work_ControllingBot();
+		}
+	}
+}
+
 void CEConsole::_Work_CheckpointRestore( void ) {
 	u32 nIndex;
 

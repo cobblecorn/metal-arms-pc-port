@@ -3551,6 +3551,12 @@ BOOL CHud2::SetIconTimerDraw( IconTimerType_t nTimer, BOOL bDraw, f32* pTimer )
 			return TRUE;
 		}
 
+#if FANG_WINGC
+		if( Fang_bPortDiag && pTimer && m_aIconTimerData[nTimer].m_pfDrawFloat != pTimer ) {
+			DEVPRINTF("PORT-HUD countdown registered: HUD=%p type=%d timer=%p remaining=%.3f.\n",
+				this,(s32)nTimer,pTimer,*pTimer);
+		}
+#endif
 		m_uDrawFlags |= CHud2::DRAW_ICON_TIMER;
 		m_aIconTimerData[ nTimer ].m_pfDrawFloat = pTimer;
 		m_nCurrentIconTimer = nTimer;
@@ -3564,6 +3570,17 @@ BOOL CHud2::SetIconTimerDraw( IconTimerType_t nTimer, BOOL bDraw, f32* pTimer )
 }
 
 // =============================================================================================================
+
+void CHud2::ClearIconTimerDrawIfOwned( IconTimerType_t nTimer, const f32 *pTimer )
+{
+	if( nTimer < 0 || nTimer >= NUM_ICON_TIMERS || !pTimer ||
+		m_aIconTimerData[nTimer].m_pfDrawFloat != pTimer ) return;
+#if FANG_WINGC
+	if( Fang_bPortDiag ) DEVPRINTF("PORT-HUD countdown cleared: HUD=%p type=%d timer=%p.\n",this,(s32)nTimer,pTimer);
+#endif
+	m_aIconTimerData[nTimer].m_pfDrawFloat = NULL;
+	if( m_nCurrentIconTimer == nTimer ) m_uDrawFlags &= ~CHud2::DRAW_ICON_TIMER;
+}
 
 BOOL CHud2::IsDrawEnabled()
 {

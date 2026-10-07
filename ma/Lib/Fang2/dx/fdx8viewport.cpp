@@ -603,6 +603,22 @@ static void _InitViewport( FViewport_t *pViewport, FViewportType_e nType, f32 fH
 	if( fHalfFOVX ) {
 		// Perspective...
 
+#if FANG_WINGC
+		// The game's horizontal fields of view were chosen for a 4:3 screen. On a wider screen keep
+		// the 4:3 vertical view and see more at the sides (rather than cropping the top and bottom).
+		// Render targets and views given an explicit vertical FOV keep theirs.
+		if( !fHalfFOVY && !pTexDef && FVid_Mode.nPixelsDown ) {
+			const f32 fWiden = ( (f32)FVid_Mode.nPixelsAcross / (f32)FVid_Mode.nPixelsDown ) * 0.75f;
+			if( fWiden > 1.001f ) {
+				f32 fSin, fCos;
+				fmath_SinCos( fHalfFOVX, &fSin, &fCos );
+				fHalfFOVX = fmath_Atan( fSin * fWiden, fCos );
+				FMATH_CLAMPMAX( fHalfFOVX, FMATH_DEG2RAD( 85.0f ) );
+				pViewport->fHalfFOVX = fHalfFOVX;
+				pViewport->fFullFOVX = 2.0f * fHalfFOVX;
+			}
+		}
+#endif
 		fmath_SinCos( fHalfFOVX, &fSinAcross, &fCosAcross );
 		pViewport->fTanHalfFOVX = fSinAcross / fCosAcross;
 

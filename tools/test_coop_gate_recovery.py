@@ -86,6 +86,7 @@ public:
  unsigned TypeBits()const{return m_pTripwire?0:ENTITY_BIT_BOT;}
  void RemoveFromWorld(){inWorld=false;}
  virtual u32 TripwireCollisionTest(const CFVec3A*,const CFVec3A*){return 0;}
+ bool TripwireContainsPoint(const CFVec3A& p){return IsTripwire() && (TripwireCollisionTest(&p,&p)&TRIPWIRE_COLLFLAG_NEWPOS_INSIDE);}
  BOOL _CoopHoldTripwireEnter(CEntity*);
  void _CoopFireTripwireEnter(CEntity*);
  u32 _CoopPlayersInsideMask(BOOL=FALSE);
@@ -102,8 +103,9 @@ int CPlayer::m_nPlayerCount=2; CPlayer Player_aPlayer[4];
 struct {bool single=true;bool IsSinglePlayer(){return single;}} MultiplayerMgr;
 int game_GetStoryPlayerIndex(){return 0;}
 constexpr int LEVEL_SINGLE_PLAYER_COUNT=42;
+int Level_nCount=64;
 int Level_nLoadedIndex=0;
-struct LevelInfo {const char* pszWorldResName="WERMmorbot1";}Level_aInfo[LEVEL_SINGLE_PLAYER_COUNT];
+struct LevelInfo {const char* pszWorldResName="WERMmorbot1"; int nLevel=0;}Level_aInfo[64];
 class CEBox:public CEntity {
 public:
  Matrix m_MtxToWorld;
@@ -127,6 +129,131 @@ void reset(int count=2,const char* name="trigger_btr01") {
   Player_aPlayer[i].m_pEntityCurrent=Player_aPlayer[i].m_pEntityOrig=&bodies[i];}
 }
 int main() {
+ // Verified encounters: any original player may cross with nearby non-crossing partners.
+ struct Encounter {const char* world;const char* trigger;} encounters[] = {
+  {"WEDMmines01","seetrig1"},
+  {"WEDMmines02","trigger_stopmusic1"},
+  {"WEDMmines03","bridgetrigger"},
+  {"WEDMmines03","snarqtrigger"},
+  {"WEWJjourn01","trig_pipe"},
+  {"WEWJjourn02","trig_plank"},
+  {"WEWJjourn02","trig_snipe"},
+  {"WEWJjourn02","trig_zip"},
+  {"WEWCcomm_01","trig_titan"},
+  {"WEWCcomm_01","trig_hole"},
+  {"WEWRresrch4","trigger_spews"},
+  {"WERMmorbot1","btrip01"},
+  {"WERMmorbot1","trig_leech"},
+  {"WERMmorbot1","trig_flames"},
+  {"WERMmorbot1","trig_pred"},
+  {"WEMCcity_01","startgrunttrigger"},
+  {"WEMCcity_03","gruntgate_trigger"},
+  {"WEMCcity_03","backalley_trigger"},
+  {"WEMCcity_03","gentitan_trigger02"},
+  {"WEMCcity_05","musicstarttrigger01"},
+  {"WEMCcity_05","titan1trigger"},
+  {"WEMCcity_05","titan2trigger"},
+  {"WEMCcity_05","hutgrunt1trigger"},
+  {"WEMCcity_05","hutgrunt2trigger"},
+  {"WEMCcity_05","bgrunt1trigger"},
+  {"WEMCcity_05","powertrigger"},
+  {"WEMCcity_05","MainStreetTrigger"},
+  {"WEMCcity_05","tunneltrigger"},
+  {"WECRruins01","addsomegrunts_trigger"},
+  {"WECRruins01","trippie"},
+  {"WECRruins01","jump"},
+  {"WECRruins01","bridge_trig"},
+  {"WECRruins01","pill_backup"},
+  {"WESSstatn01","trig_jumper"},
+  {"WESSstatn01","trig_jumper2"},
+  {"WESSstatn01","trig_sting"},
+  {"WESSstatn02","trig_jump2"},
+ };
+ for(const auto& e:encounters)for(int n=2;n<=4;++n)for(int first=0;first<n;++first) {
+  reset(n,e.trigger);Level_aInfo[0].pszWorldResName=e.world;
+  for(int i=0;i<n;i++)bodies[i].matrix.m_vPos={float(3+i*2),0,-3};
+  bodies[first].matrix.m_vPos={0,0,0};
+  require(gate._CoopHoldTripwireEnter(&bodies[first]) && gate.fired==1,
+          "real crossing releases audited encounter with nearby partners still outside");
+  require(gate.lastTripper==&bodies[0] && !_nCoopHeldTripwires,
+          "nearby encounter retains retail story actor and clears its hold");
+  CEntity::CoopTripwireWork();require(gate.fired==1,"one-shot encounter does not spawn twice on later work");
+ }
+ for(const char* name:{"levelend","endlevel","elv_trig1","elevup","buddygo1","circtrig1_extra","unknown_enemy_spawn"}) {
+  reset(4,name);Level_aInfo[0].pszWorldResName="WEMCcity_05";
+  bodies[0].matrix.m_vPos={0,0,0};
+  gate._CoopHoldTripwireEnter(&bodies[0]);require(!gate.fired,"proximity never relaxes progression or unlisted events");
+ }
+ reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="other_mission";
+ bodies[0].matrix.m_vPos={0,0,0};gate._CoopHoldTripwireEnter(&bodies[0]);
+ require(!gate.fired,"same trigger name in a different mission keeps team gathering");
+ // A group alone cannot activate any event; the real trigger must be reached first.
+ reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+ CEntity::CoopTripwireWork();require(!gate.fired&&!_nCoopHeldTripwires,"no synthetic event for a nearby group without crossing");
+ for(int n=2;n<=4;++n) {
+  reset(n,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+  for(int i=1;i<n;++i)bodies[i].matrix.m_vPos={30.0f+i,0,-3};
+  bodies[0].matrix.m_vPos={0,0,0};gate._CoopHoldTripwireEnter(&bodies[0]);
+  require(!gate.fired,"encounter initially waits for distant partners");
+  require(_aCoopHeldTripwires[0].nArrivedMask==1,"proximity never fabricates arrival bits");
+  for(int i=1;i<n;++i)bodies[i].matrix.m_vPos={float(3+i*2),0,-3};
+  CEntity::CoopTripwireWork();require(gate.fired==1&&!_nCoopHeldTripwires,"approaching partners release an anchored held encounter");
+ }
+ reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+ CEntity::CoopTripwireWork();bodies[0].matrix.m_vPos={0,0,60};bodies[1].matrix.m_vPos={3,0,60};
+ gate._CoopHoldTripwireEnter(&bodies[0]);
+ require(!gate.fired && !_aCoopHeldTripwires[0].pEncounterAnchor,"a long warp through a trigger cannot release it from a distant endpoint");
+ CEntity::CoopTripwireWork();require(!gate.fired,"a warp's distant group cannot release its old held trigger later");
+ reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+ CEntity::CoopTripwireWork();bodies[0].matrix.m_vPos={0,0,3};bodies[1].matrix.m_vPos={3,0,-3};
+ gate._CoopHoldTripwireEnter(&bodies[0]);require(gate.fired==1,"a genuine short thin-volume crossing supports nearby partners");
+ reset(4,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+ bodies[0].matrix.m_vPos={0,0,0};bodies[1].matrix.m_vPos={8,0,-3};
+ bodies[2].matrix.m_vPos={16,0,-3};bodies[3].matrix.m_vPos={24,0,-3};
+ gate._CoopHoldTripwireEnter(&bodies[0]);require(!gate.fired,"a chain of nearby players cannot stretch group range");
+ reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+ bodies[0].matrix.m_vPos={0,0,0};bodies[1].matrix.m_vPos={0,5,-3};
+ gate._CoopHoldTripwireEnter(&bodies[0]);require(!gate.fired,"another storey does not count as nearby");
+ for(int reason=0;reason<6;++reason) {
+  reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+  bodies[0].matrix.m_vPos={0,0,0};
+  CBot possessed;possessed.matrix.m_vPos={3,0,-3};
+  if(reason==0)tripwire.m_nTripwireTriggerMode=0;
+  if(reason==1)tripwire.m_pszTripwireFilterEntityName="specific_actor";
+  if(reason==2)tripwire.m_eKillMode=CTripwire::TRIPWIRE_KILLMODE_VOLUME;
+  if(reason==3)Player_aPlayer[1].m_pEntityCurrent=&possessed;
+  if(reason==4){MultiplayerMgr.single=false;}
+  if(reason==5){CPlayer::m_nPlayerCount=1;}
+  const bool handled=gate._CoopHoldTripwireEnter(&bodies[0]);
+  require(!gate.fired && (reason!=4 && reason!=5 || !handled),"repeatable, actor-specific, kill, possession, PvP and solo paths stay unchanged");
+ }
+ reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+ bodies[0].matrix.m_vPos={0,0,0};bodies[1].matrix.m_vPos={0,0,30};
+ gate._CoopHoldTripwireEnter(&bodies[0]);
+ bodies[0].matrix.m_vPos={0,0,100};bodies[1].matrix.m_vPos={3,0,100};
+ CEntity::CoopTripwireWork();require(!gate.fired,"gathering far away never drains an old encounter hold");
+ bodies[0].matrix.m_vPos={0,0,3};bodies[1].matrix.m_vPos={3,0,-3};
+ CEntity::CoopTripwireWork();require(gate.fired==1,"thin crossing anchor permits a small step beyond the volume");
+ reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+ bodies[0].matrix.m_vPos={0,0,0};bodies[1].matrix.m_vPos={0,0,30};gate._CoopHoldTripwireEnter(&bodies[0]);
+ CEntity::CoopTripwireReset();bodies[0].matrix.m_vPos={0,0,3};bodies[1].matrix.m_vPos={3,0,-3};
+ CEntity::CoopTripwireWork();require(!gate.fired&&!_nCoopHeldTripwires,"checkpoint restore clears encounter anchors as well as arrivals");
+ reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";
+ bodies[0].matrix.m_vPos={0,0,0};bodies[1].matrix.m_vPos={0,0,30};gate._CoopHoldTripwireEnter(&bodies[0]);
+ bodies[1].matrix.m_vPos={3,0,-3};CBot::m_bCutscenePlaying=true;
+ CEntity::CoopTripwireWork();require(!gate.fired,"other cinematic cannot proximity-release pending encounters");
+ reset(2,"titan1trigger");Level_nLoadedIndex=44;Level_aInfo[44].pszWorldResName="WEMCcity_05";Level_aInfo[44].nLevel=27;
+ bodies[0].matrix.m_vPos={0,0,0};gate._CoopHoldTripwireEnter(&bodies[0]);
+ require(gate.fired==1,"late campaign table indices use level IDs rather than a 42-entry bound");
+ for(int index:{-1,64}) {
+  reset(2,"titan1trigger");Level_nLoadedIndex=index;
+  require(!_CoopNearbyEncounterTripwire(&gate,&tripwire),"out-of-range table indices reject proximity policy");
+ }
+ for(int id:{-1,42}) {
+  reset(2,"titan1trigger");Level_aInfo[0].pszWorldResName="WEMCcity_05";Level_aInfo[0].nLevel=id;
+  require(!_CoopNearbyEncounterTripwire(&gate,&tripwire),"development and PvP level IDs reject proximity policy");
+ }
+ Level_aInfo[0].nLevel=0;
  const char* reactor1[]={"door1_triga","door1_trigb","door2_triga","door2_trigb",
   "door3_triga","door3_trigb","door4_triga","bridge1_triga","orb_trig1","orb_trig2"};
  const char* reactor2[]={"door1_triga","door1_trigb","door2_triga","door2_trigb","bridge1_triga","orb_trig1"};

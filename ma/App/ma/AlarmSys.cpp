@@ -862,6 +862,14 @@ void CAlarmNet::Work(void)
 								if (!aiutils_IsFriendly(m_papAutoBotPool[i], m_pIntruder) &&
 									!ai_IsAttacking(m_papAutoBotPool[i]->AIBrain()) )
 								{
+									// A freshly fabricated bot must clear the machine before
+									// the alarm replaces its release movement with combat.
+									BOOL bExiting = FALSE;
+									for( CBotDispenser *pDispenser = (CBotDispenser *)flinklist_GetHead(&m_DispenserList);
+										pDispenser; pDispenser = (CBotDispenser *)flinklist_GetNext(&m_DispenserList,pDispenser) ) {
+										if( pDispenser->IsBotExiting(m_papAutoBotPool[i]) ) { bExiting = TRUE; break; }
+									}
+									if( bExiting ) continue;
 									ai_AssignGoal_Attack(m_papAutoBotPool[i]->AIBrain(), m_pIntruder->Guid(), 0);
 								}
 								else

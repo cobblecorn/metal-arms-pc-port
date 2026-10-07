@@ -1,0 +1,402 @@
+[
+  {
+    "world": "WEDMmines01",
+    "trigger": "seetrig1",
+    "script": "xedm_batt2.sma",
+    "line": 89,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "event_DevPrintStr"
+    ]
+  },
+  {
+    "world": "WEDMmines02",
+    "trigger": "trigger_stopmusic1",
+    "script": "xedm_strt.sma",
+    "line": 257,
+    "calls": [
+      "Music_Stop"
+    ]
+  },
+  {
+    "world": "WEDMmines03",
+    "trigger": "bridgetrigger",
+    "script": "xedm_brid1.sma",
+    "line": 74,
+    "calls": [
+      "event_DevPrintStr",
+      "Bot_GotoE",
+      "Bot_GotoE",
+      "Bot_GotoE",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WEDMmines03",
+    "trigger": "snarqtrigger",
+    "script": "xedm_snq1.sma",
+    "line": 49,
+    "calls": [
+      "Music_PlayEx",
+      "Bot_GotoE",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WEWJjourn01",
+    "trigger": "trig_pipe",
+    "script": "xewj_wastes.sma",
+    "line": 220,
+    "calls": [
+      "event_DevPrintStr",
+      "E_AddToWorld",
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEWJjourn02",
+    "trigger": "trig_plank",
+    "script": "xewj_goo.sma",
+    "line": 212,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WEWJjourn02",
+    "trigger": "trig_snipe",
+    "script": "xewj_goo.sma",
+    "line": 220,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WEWJjourn02",
+    "trigger": "trig_zip",
+    "script": "xewj_goo.sma",
+    "line": 229,
+    "calls": [
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEWCcomm_01",
+    "trigger": "trig_titan",
+    "script": "xecc_crater.sma",
+    "line": 231,
+    "calls": [
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WEWCcomm_01",
+    "trigger": "trig_hole",
+    "script": "xecc_crater.sma",
+    "line": 254,
+    "calls": [
+      "Music_Stop",
+      "E_AddToWorld",
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEWRresrch4",
+    "trigger": "trigger_spews",
+    "script": "xewr4crline.sma",
+    "line": 284,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WERMmorbot1",
+    "trigger": "btrip01",
+    "script": "xemo_mbot.sma",
+    "line": 183,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WERMmorbot1",
+    "trigger": "trig_leech",
+    "script": "xemo_mbot.sma",
+    "line": 213,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WERMmorbot1",
+    "trigger": "trig_flames",
+    "script": "xemo_mbot.sma",
+    "line": 225,
+    "calls": [
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WERMmorbot1",
+    "trigger": "trig_pred",
+    "script": "xemo_mbot.sma",
+    "line": 246,
+    "calls": [
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_01",
+    "trigger": "startgrunttrigger",
+    "script": "xemc_crabt.sma",
+    "line": 176,
+    "calls": [
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WEMCcity_03",
+    "trigger": "gruntgate_trigger",
+    "script": "xemc_grgos.sma",
+    "line": 83,
+    "calls": [
+      "event_DevPrintStr",
+      "Music_PlayEx",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WEMCcity_03",
+    "trigger": "backalley_trigger",
+    "script": "xemc_grgos.sma",
+    "line": 95,
+    "calls": [
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_03",
+    "trigger": "gentitan_trigger02",
+    "script": "xemc_titgn.sma",
+    "line": 62,
+    "calls": [
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "musicstarttrigger01",
+    "script": "xemc_addem.sma",
+    "line": 93,
+    "calls": [
+      "Music_PlayEx"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "titan1trigger",
+    "script": "xemc_addem.sma",
+    "line": 97,
+    "calls": [
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "titan2trigger",
+    "script": "xemc_addem.sma",
+    "line": 101,
+    "calls": [
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "hutgrunt1trigger",
+    "script": "xemc_addem.sma",
+    "line": 105,
+    "calls": [
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "hutgrunt2trigger",
+    "script": "xemc_addem.sma",
+    "line": 109,
+    "calls": [
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "bgrunt1trigger",
+    "script": "xemc_addem.sma",
+    "line": 113,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "powertrigger",
+    "script": "xemc_addem.sma",
+    "line": 118,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "MainStreetTrigger",
+    "script": "xemc_addem.sma",
+    "line": 124,
+    "calls": [
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WEMCcity_05",
+    "trigger": "tunneltrigger",
+    "script": "xemc_addem.sma",
+    "line": 128,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "Bot_GotoE",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WECRruins01",
+    "trigger": "addsomegrunts_trigger",
+    "script": "xecr_adsom.sma",
+    "line": 37,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "event_StopNotify"
+    ]
+  },
+  {
+    "world": "WECRruins01",
+    "trigger": "trippie",
+    "script": "xecr_ruins.sma",
+    "line": 279,
+    "calls": [
+      "event_DevPrintStr",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WECRruins01",
+    "trigger": "jump",
+    "script": "xecr_ruins.sma",
+    "line": 286,
+    "calls": [
+      "event_DevPrintStr",
+      "E_AddToWorld",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WECRruins01",
+    "trigger": "bridge_trig",
+    "script": "xecr_ruins.sma",
+    "line": 344,
+    "calls": [
+      "event_DevPrintStr",
+      "E_AddToWorld",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WECRruins01",
+    "trigger": "pill_backup",
+    "script": "xecr_ruins.sma",
+    "line": 360,
+    "calls": [
+      "event_DevPrintStr",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "Bot_GotoE",
+      "Bot_GotoE",
+      "Bot_GotoE",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WESSstatn01",
+    "trigger": "trig_jumper",
+    "script": "xess_end.sma",
+    "line": 91,
+    "calls": [
+      "event_DevPrintStr",
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  },
+  {
+    "world": "WESSstatn01",
+    "trigger": "trig_jumper2",
+    "script": "xess_end.sma",
+    "line": 99,
+    "calls": [
+      "event_DevPrintStr",
+      "E_AddToWorld",
+      "E_AddToWorld"
+    ]
+  },
+  {
+    "world": "WESSstatn01",
+    "trigger": "trig_sting",
+    "script": "xess_end.sma",
+    "line": 118,
+    "calls": [
+      "event_DevPrintStr",
+      "Music_Play"
+    ]
+  },
+  {
+    "world": "WESSstatn02",
+    "trigger": "trig_jump2",
+    "script": "xess_ext.sma",
+    "line": 208,
+    "calls": [
+      "E_AddToWorld",
+      "E_AddToWorld",
+      "Bot_GotoE",
+      "Bot_GotoE"
+    ]
+  }
+]

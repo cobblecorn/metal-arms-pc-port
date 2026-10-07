@@ -384,12 +384,8 @@ BOOL CBotDispenser::IsWatchedBotIsDead() {
 	return FALSE;
 }
 
-BOOL CBotDispenser::HasWatchedBotExitedTheDispenser() {
-
-	if( m_pWatchedBot == NULL ) {
-		return TRUE;
-	}
-
+BOOL CBotDispenser::IsWatchedBotInsideDispenser() const {
+	if( !m_pWatchedBot ) return FALSE;
 	// grab the maxtrix palette
 	CFMtx43A **ppMtxPalette = m_pDispenserEntity->GetMeshInst()->GetBoneMtxPalette();
 	
@@ -404,7 +400,11 @@ BOOL CBotDispenser::HasWatchedBotExitedTheDispenser() {
 	CFSphere AreaToClear;
 	AreaToClear.Set( Vec.v3, fRadius );
 
-	if( !AreaToClear.IsIntersecting( m_pWatchedBot->m_pWorldMesh->GetBoundingSphere() ) ) {
+	return AreaToClear.IsIntersecting( m_pWatchedBot->m_pWorldMesh->GetBoundingSphere() );
+}
+
+BOOL CBotDispenser::HasWatchedBotExitedTheDispenser() {
+	if( !IsWatchedBotInsideDispenser() ) {
 		// the bounding spheres aren't intersecting anymore
 		m_pWatchedBot = NULL;
 		m_nBotGUID = 0;
@@ -1096,6 +1096,17 @@ void CBotDispenser::EndArmAnimation() {
 	}
 }
 
+BOOL CBotDispenser::IsBotExiting( const CBot *pBot ) const {
+	if( MultiplayerMgr.IsMultiplayer() || pBot != m_pWatchedBot ||
+		!pBot || pBot->Guid() != m_nBotGUID || !pBot->IsInWorld() ||
+		pBot->IsDeadOrDying() || pBot->IsPossessed() || !pBot->AIBrain() ) return FALSE;
+
+	// Use the same clearance volume as the dispenser's next-spawn check.
+	// Once the whole bot is outside, normal alarm behavior resumes.
+	if( !IsWatchedBotInsideDispenser() ) return FALSE;
+	return !pBot->Power_IsPoweredUp() || pBot->AIBrain()->GetCurThought() == CAIBrain::TT_GOTO;
+}
+
 void CBotDispenser::ConfigureAI( CBot *pBot, f32 fFeetToWalkInZDir ) {
 	//dispensers act a little different in multi-player
 	if (MultiplayerMgr.IsMultiplayer())
@@ -1107,7 +1118,9 @@ void CBotDispenser::ConfigureAI( CBot *pBot, f32 fFeetToWalkInZDir ) {
 		CFVec3A Goto;
 		f32 fNewY;
 		
-		u16 uGotoFlags = GOTOFLAG_BLIND_OK | GOTOFLAG_USE_JOB_REACT_RULES;
+		// This short release move must finish before the bot reacts to enemies.
+		// Otherwise it can settle into combat behind the fabricator's shield.
+		u16 uGotoFlags = GOTOFLAG_BLIND_OK;
 		Goto.Set( pBot->MtxToWorld()->m_vFront );
 		Goto.Mul( fFeetToWalkInZDir );
 		Goto.Add( pBot->MtxToWorld()->m_vPos );
@@ -1115,7 +1128,6 @@ void CBotDispenser::ConfigureAI( CBot *pBot, f32 fFeetToWalkInZDir ) {
 		fNewY = 0.0f;
 		if( aiutils_FloorElevationAt( Goto, &fNewY ) ) {
 			Goto.y = fNewY;
-			uGotoFlags |= GOTOFLAG_RETURN_FIRE_OK;
 		}
 		//aimain_pAIGraph->FindClosestLOSVert2D_AdjustWithinRange( &Goto, fFeetToWalkInZDir );
 

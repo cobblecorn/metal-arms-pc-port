@@ -249,6 +249,11 @@ void CFLiquidVolume::SetupVolume(CFVec3A& vExt, CFMtx43A& vOrient)
 		//
 
 		// init our trackers...
+#if FANG_WINGC
+		// SetupVolume runs every frame while a liquid rises or drains; reuse the tracker instead of
+		// leaking one into the world per call, which ran the intersect pool dry (unseen weapons).
+		if( !m_pTracker[0] )
+#endif
 		m_pTracker[0] = fnew CFWorldTracker( FWORLD_TRACKERTYPE_USER );
 		//m_pTracker[0]->AddToWorld();
 		if( !m_pTracker[0] ) 
@@ -261,6 +266,9 @@ void CFLiquidVolume::SetupVolume(CFVec3A& vExt, CFMtx43A& vOrient)
 			m_pTracker[0]->MoveTracker( _Sphere[0] );
 		}
 
+#if FANG_WINGC
+		if( !m_pTracker[1] )
+#endif
 		m_pTracker[1] = fnew CFWorldTracker( FWORLD_TRACKERTYPE_USER );
 		//m_pTracker[1]->AddToWorld();
 		if( !m_pTracker[1] ) 
@@ -273,6 +281,9 @@ void CFLiquidVolume::SetupVolume(CFVec3A& vExt, CFMtx43A& vOrient)
 			m_pTracker[1]->MoveTracker( _Sphere[1] );
 		}
 
+#if FANG_WINGC
+		if( !m_pTracker[2] )
+#endif
 		m_pTracker[2] = fnew CFWorldTracker( FWORLD_TRACKERTYPE_USER );
 		//m_pTracker[2]->AddToWorld();
 		if( !m_pTracker[2] ) 
@@ -351,6 +362,13 @@ void CFLiquidVolume::ReleaseTracker( void )
 		fdelete( m_pTracker[1] );
 		m_pTracker[1] = NULL;
 	}
+#if FANG_WINGC
+	if( m_pTracker[2] )
+	{
+		fdelete( m_pTracker[2] );
+		m_pTracker[2] = NULL;
+	}
+#endif
 }
 
 
@@ -1347,6 +1365,13 @@ void CFLiquidSystem::ReleaseLiquidVolumeData( void )
 			fdelete( m_LiquidVolumes[i]->m_pTracker[1] );
 			m_LiquidVolumes[i]->m_pTracker[1] = NULL;
 		}
+#if FANG_WINGC
+		if( m_LiquidVolumes[i] && m_LiquidVolumes[i]->m_pTracker[2] != NULL ) 
+		{
+			fdelete( m_LiquidVolumes[i]->m_pTracker[2] );
+			m_LiquidVolumes[i]->m_pTracker[2] = NULL;
+		}
+#endif
 	}
 }
 

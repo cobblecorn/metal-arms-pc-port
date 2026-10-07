@@ -29,6 +29,9 @@
 #include "MeshTypes.h"
 #include "SplitScreen.h"
 #include "MultiplayerMgr.h"
+#if FANG_WINGC
+#include "pc_display.h"
+#endif
 
 //====================
 // private definitions
@@ -124,12 +127,19 @@ BOOL CCamBot::Init( CBot *pBot, const CamBotInfo_t *pInfo ) {
 	// If this is multiplayer, we modify our position and fov
 	if ( MultiplayerMgr.IsMultiplayer() ) {
 		m_DesiredLookAtToPos_MS.v3 = (pInfo->Pos_MS * pInfo->fPosScale_MP) - pInfo->TargetPos_MS;
+#if !FANG_WINGC
 		m_pCamera->SetFOV( splitscreen_RemapFOV( m_pCamera->GetID(), pInfo->fHalfFOV_MP ) );
+#endif
 	}
 	else {
 		m_DesiredLookAtToPos_MS.v3 = pInfo->Pos_MS - pInfo->TargetPos_MS;
+#if !FANG_WINGC
 		m_pCamera->SetFOV( splitscreen_RemapFOV( m_pCamera->GetID(), pInfo->fHalfFOV ) );
+#endif
 	}
+#if FANG_WINGC
+	_PortApplyFov();
+#endif
 
 	// see if this level has specified near/far planes in the data file
 	if( Level_hLevelDataFile != FGAMEDATA_INVALID_FILE_HANDLE ) {
@@ -185,6 +195,10 @@ void CCamBot::Reset() {
 	m_DesiredPos_WS.Zero();
 	m_fLastCenterRayUnitDist = 1.0f;
 	m_fLastDeltaZoom = 0.0f;
+#if FANG_WINGC
+	m_nPortFovVersion = 0;
+	m_fPortHalfFov = 0.0f;
+#endif
 	m_fPitch = 0.0f;
 	m_DesiredLookAtToPos_MS.Zero();
 
@@ -210,11 +224,33 @@ void CCamBot::Reset() {
 // m_VelocityXZ_WS
 // m_Velocity_WS
 // AppendTrackerSkipList
+#if FANG_WINGC
+// The retail FOV plus the player's Field of View setting (pc_display).
+void CCamBot::_PortApplyFov( void ) {
+	const f32 fRetail = MultiplayerMgr.IsMultiplayer() ? m_pCamInfo->fHalfFOV_MP : m_pCamInfo->fHalfFOV;
+	m_fPortHalfFov = splitscreen_RemapFOV( m_pCamera->GetID(), pcdisplay_AdjustHalfFov( fRetail ) );
+	m_nPortFovVersion = pcdisplay_FovVersion();
+	m_pCamera->SetFOV( m_fPortHalfFov );
+}
+#endif
+
 void CCamBot::Work() {
 	
 	if( !m_pBot || !m_pCamInfo ) {
 		return;
 	}
+
+#if FANG_WINGC
+	// The setting changed (in the pause menu): re-apply it, unless something else (a scope's zoom,
+	// a console or tether view) has the camera's FOV just now.
+	if( m_nPortFovVersion != pcdisplay_FovVersion() ) {
+		f32 fCurrent;
+		m_pCamera->GetFOV( &fCurrent );
+		if( FMATH_FABS( fCurrent - m_fPortHalfFov ) < 0.0001f ) {
+			_PortApplyFov();
+		}
+	}
+#endif
 
 	if( m_bFreezeShot ) {
 		// don't do anything...we are frozen

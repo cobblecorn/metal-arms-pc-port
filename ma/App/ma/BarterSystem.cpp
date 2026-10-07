@@ -51,6 +51,7 @@
 #if defined(MA_PC_INPUT)
 	#include "pc_input.h"
 	#include "wpr_drawutils.h"
+	#include "wpr_datatypes.h"
 #endif
 //====================
 // private definitions
@@ -947,8 +948,14 @@ void _DrawUserInterface(void)
 		return;
 
 	fviewport_SetActive( CPlayer::m_pCurrent->m_pViewportSafeOrtho3D );
-	_textPurchase.PrintString(Game_apwszPhrases[ GAMEPHRASE_PURCHASE]);
-	_textNoThanks.PrintString(Game_apwszPhrases[ GAMEPHRASE_NO_THANKS]);
+#if defined(MA_PC_INPUT)
+	// Keyboard prompts print their labels beside the key caps instead (see below).
+	if( !pcinput_UseKeyboardPromptsForPort( CPlayer::m_pCurrent->m_nControllerIndex ) )
+#endif
+	{
+		_textPurchase.PrintString(Game_apwszPhrases[ GAMEPHRASE_PURCHASE]);
+		_textNoThanks.PrintString(Game_apwszPhrases[ GAMEPHRASE_NO_THANKS]);
+	}
 	for(u32 m_nDrawDir = 0; m_nDrawDir < 4; ++m_nDrawDir)
 	{
 		for(u32 uCurIdx = 0; uCurIdx < 4; ++uCurIdx)
@@ -978,8 +985,24 @@ void _DrawUserInterface(void)
 		const f32 fRadius = 0.5f * FMATH_FABS( apButtons[nButton][0].Pos_MS.y - apButtons[nButton][2].Pos_MS.y ) /
 			pViewport->Res.y;
 		if( pcinput_UseKeyboardPromptsForPort( nPromptPort ) ) {
-			wpr_drawutils_DrawKeyCapCentered( apwszKeyLabels[nButton], fCenterXFrac, fCenterYFrac,
-				L'C', 1.50f, 0.0f, pViewport->HalfRes.x, pViewport->HalfRes.y, NULL, NULL, NULL, NULL );
+			// Key cap and its label together, in whole-screen pixels (where ftext prints), at the top
+			// left of this player's safe area; a key name like Space is wider than the pad button art.
+			static cwchar *apwszKeyText[2] = { NULL, NULL };
+			apwszKeyText[0] = Game_apwszPhrases[ GAMEPHRASE_PURCHASE ];
+			apwszKeyText[1] = Game_apwszPhrases[ GAMEPHRASE_NO_THANKS ];
+			const FViewport_t *pScreen = FViewport_pDefaultOrtho;
+			const f32 fLeft = pViewport->ScreenCorners.UpperLeft.x * pScreen->OORes.x + 0.01f;
+			const f32 fRowY = (pViewport->ScreenCorners.UpperLeft.y + pViewport->Res.y * (0.13f + 0.08f * (f32)nButton)) * pScreen->OORes.y;
+			f32 fScale = pViewport->Res.y * pScreen->OORes.y;	// smaller in a split screen
+			FMATH_CLAMP( fScale, 0.5f, 1.0f );
+			fScale *= 0.62f;
+			fviewport_SetActive( FViewport_pDefaultOrtho );
+			f32 fCapRight = fLeft + 0.08f;
+			wpr_drawutils_DrawKeyCapCentered( apwszKeyLabels[nButton], fLeft, fRowY, L'L', fScale, 0.075f,
+				pScreen->HalfRes.x, pScreen->HalfRes.y, NULL, NULL, &fCapRight, NULL, TRUE );
+			wpr_drawutils_PrintPromptCentered( apwszKeyText[nButton], FMATH_MAX( fCapRight, fLeft + 0.075f ) + 0.012f, fRowY, L'L', fScale,
+				WprDataTypes_pwszSolidWhiteTextColor );
+			fviewport_SetActive( pViewport );
 		} else {
 			wpr_drawutils_DrawFaceButton( pcinput_UsePlayStationPromptsForPort( nPromptPort ), nButton, fCenterXFrac,
 				fCenterYFrac, fRadius, pViewport->HalfRes.x, pViewport->HalfRes.y );

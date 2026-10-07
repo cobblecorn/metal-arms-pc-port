@@ -538,8 +538,10 @@ void CEBoomer::CheckpointRestore( void ) {
 
 
 #if FANG_WINGC
+// The comm centre's front gate is Titan-cannon-only, but no Titan is available to the player there.
+// Accept any player's damage at this one gate, solo and co-op alike.
 static BOOL _CoopCanBreachEntrance( const CEntity *pGate, const CDamageData *pDamageData ) {
-	return MultiplayerMgr.IsLocalCoop() && Level_nLoadedIndex >= 0 && pGate->Name() &&
+	return Level_nLoadedIndex >= 0 && pGate->Name() &&
 		!fclib_stricmp( Level_aInfo[Level_nLoadedIndex].pszWorldResName, "WEWCcomm_02" ) &&
 		!fclib_stricmp( pGate->Name(), "frontie" ) && pDamageData->m_Damager.nDamagerPlayerIndex >= 0 &&
 		pDamageData->m_Damager.nDamagerPlayerIndex < CPlayer::m_nPlayerCount;

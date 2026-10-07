@@ -8,6 +8,7 @@ ROOT=Path(__file__).resolve().parent.parent
 def main():
  parser=argparse.ArgumentParser(description=__doc__)
  parser.add_argument('--exe',type=Path,default=ROOT/'build/Release/ma_port.exe')
+ parser.add_argument('--stage',choices=('combat','box'),default='combat')
  parser.add_argument('--coop',type=int,choices=(2,3,4),default=2)
  args=parser.parse_args()
  exe=args.exe.resolve()
@@ -15,8 +16,8 @@ def main():
  if not data.is_dir():data=ROOT/'gamedata/files'
  if not exe.is_file() or not data.is_dir():parser.error('Game EXE or retail gamedata/files is missing.')
  environment=dict(os.environ)
- environment['MA_PORT_TEST_COOP_POLISH']='spy-resume'
- process=subprocess.Popen([str(exe),'-data',str(data),'-mission','WECFfacty01','-coop',str(args.coop),'-port-diag','-log',str(exe.parent/'spy-combat-resume.log')],cwd=exe.parent,env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
- print('Started factory combat resume, PID',process.pid)
- print('This launch skips completed instruction only; ordinary launches are unchanged.')
+ environment['MA_PORT_TEST_COOP_POLISH']='spy-box-resume' if args.stage=='box' else 'spy-resume'
+ process=subprocess.Popen([str(exe),'-data',str(data),'-mission','WECFfacty01','-coop',str(args.coop),'-port-diag','-log',str(exe.parent/('spy-'+args.stage+'-resume.log'))],cwd=exe.parent,env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ print('Started factory',args.stage,'resume, PID',process.pid)
+ print('This launch skips to the requested stage; normal gameplay continues afterward.')
 if __name__=='__main__':main()

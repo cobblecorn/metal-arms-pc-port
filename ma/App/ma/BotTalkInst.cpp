@@ -249,13 +249,17 @@ void CBotTalkInst::Work() {
 	if( m_fCurTimePos >= m_pTalkData->m_fTotalTime ) {
 #if FANG_WINGC
 		// Retail dialogue timings can be shorter than the decoded voice sample
-		// (GL_13m2_130: 2.25 versus 2.71 seconds). Natural scene completion must
+		// (GL_22m_020: 3.82 versus 4.56 seconds). Natural scene completion must
 		// leave the finite clip playing; explicit termination/skip still uses End().
-		if( CBot::m_bCutscenePlaying && (m_uFlags & BOTTALKINSTFLAG_FORCE_2D_AUDIO) &&
+		if( CBot::m_bCutscenePlaying && !(m_uFlags & BOTTALKINSTFLAG_3DSOUND_PLAYING) &&
 			!(m_uFlags & BOTTALKINSTFLAG_AUDIO_DAMAGED) && m_pCurSound &&
 			m_pCurSound->GetState() == FAUDIO_EMITTER_STATE_PLAYING &&
 			m_pCurSound->GetSecondsToPlay() >= 0.0f ) {
 			return;
+		}
+		if( Fang_bPortDiag && m_pCurSound && m_pCurSound->GetSecondsToPlay() >= 0.0f ) {
+			DEVPRINTF("PORT-TALK natural completion on '%s': authored %.3f elapsed %.3f state %d.\n",
+				m_pBotTarget->Name(),m_pTalkData->m_fTotalTime,m_fCurTimePos,(s32)m_pCurSound->GetState());
 		}
 #endif
 		if( m_pTalkData->StickAtEnd() ) {

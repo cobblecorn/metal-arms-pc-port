@@ -12,6 +12,8 @@
 //   -mst <file>     master file name inside the data dir (default: mettlearms_gc.mst)
 //   -res WxH        window/screen resolution (default: 1280x960)
 //   -fullscreen     run fullscreen instead of in a window
+//   -borderless     a borderless window covering the desktop
+//   -windowed       a normal window (the default unless settings.ini [Display] says otherwise)
 //   -no-audio       skip game sound setup and mute Bink movie audio
 //   -mute           load and run all audio (so its errors are logged) but play it silently; for tests
 //   -dev-menu       boot into the development launcher (level picker) instead of the retail front end
@@ -61,6 +63,9 @@
 #include "gameloop.h"
 #include "launcher.h"
 #include "pc_input.h"
+#include "pc_display.h"
+
+extern BOOL FDX8Vid_bPortBorderless;	// Fang2/dx/fdx8vid.cpp
 
 #include <windows.h>
 #include <dbghelp.h>
@@ -97,6 +102,8 @@ static float _fTestWinLevelSecs = 0.0f;	// -test-win-level S
 static char _szTestGive[64];				// -test-give ITEM: give player 1 this weapon/throwable and select it
 static int _nReqWidth = 1280, _nReqHeight = 960;
 static bool _bFullscreen = false;
+static bool _bBorderless = false;
+static bool _bModeArg = false, _bResArg = false;	// the command line chose these; settings.ini is not used for them
 static bool _bNoAudio = false;
 static bool _bMute = false;
 extern BOOL FAudio_bPortMuteOutput;	// Fang2/dx/fdx8audio.cpp
@@ -710,7 +717,9 @@ static bool _ParseArgs( int argc, char **argv )
 		else if( !_stricmp( pszArg, "-world-only" ) && bHasValue )	strncpy( _szWorldOnly, argv[++i], sizeof(_szWorldOnly) - 1 );
 		else if( !_stricmp( pszArg, "-export-character-meshes" ) && bHasValue )	strncpy( _szCharacterMeshList, argv[++i], sizeof(_szCharacterMeshList) - 1 );
 		else if( !_stricmp( pszArg, "-instance-label" ) && bHasValue ) strncpy( _szInstanceLabel, argv[++i], sizeof(_szInstanceLabel) - 1 );
-		else if( !_stricmp( pszArg, "-fullscreen" ) )				_bFullscreen = true;
+		else if( !_stricmp( pszArg, "-fullscreen" ) )				{ _bFullscreen = true; _bBorderless = false; _bModeArg = true; }
+		else if( !_stricmp( pszArg, "-borderless" ) )				{ _bFullscreen = false; _bBorderless = true; _bModeArg = true; }
+		else if( !_stricmp( pszArg, "-windowed" ) )				{ _bFullscreen = _bBorderless = false; _bModeArg = true; }
 		else if( !_stricmp( pszArg, "-no-audio" ) )				_bNoAudio = true;
 		else if( !_stricmp( pszArg, "-mute" ) )					_bMute = true;
 		else if( !_stricmp( pszArg, "-debug-info" ) )				_bDebugInfo = true;
@@ -782,6 +791,7 @@ static bool _ParseArgs( int argc, char **argv )
 				_Log( "Bad -res value '%s' (expected e.g. 1280x960)\n", argv[i] );
 				return false;
 			}
+			_bResArg = true;
 		}
 		else
 		{
@@ -856,6 +866,10 @@ static bool _PickVideoMode( FVidWin_t *pWin )
 			const FVidMode_t *pMode = fvid_GetModeInfo( d, m );
 
 			const bool bWindowed = !!(pMode->nFlags & FVID_MODEFLAG_WINDOWED);
+			if( !bWindowed && pMode->nColorBits == 32 )
+			{
+				pcdisplay_AddAvailableResolution( (int)pMode->nPixelsAcross, (int)pMode->nPixelsDown );
+			}
 			if( bWindowed == _bFullscreen ) continue;
 			if( pMode->nColorBits != 32 || pMode->nDepthBits < 24 ) continue;
 
@@ -897,6 +911,9 @@ int main( int argc, char **argv )
 	SetUnhandledExceptionFilter( _CrashFilter );
 	_InstallCrtDiagnostics();
 	setvbuf( stdout, NULL, _IONBF, 0 );
+
+	// Render at real pixels on scaled (high-DPI) desktops instead of being stretched by Windows.
+	SetProcessDPIAware();
 
 	if( !_ParseArgs( argc, argv ) )
 	{
@@ -1038,12 +1055,49 @@ int main( int argc, char **argv )
 	_GameInitParms.bDemoLaunched = FALSE;
 	_GameInitParms.uTimeoutInterval = 0;
 
+	// Display mode and resolution come from settings.ini [Display] unless the command line chose them.
+	// Fullscreen without a saved resolution, and borderless always, use the desktop's.
+	pcdisplay_Load();
+	if( !_bModeArg )
+	{
+		_bFullscreen = pcdisplay_Mode() == PCDISPLAY_FULLSCREEN;
+		_bBorderless = pcdisplay_Mode() == PCDISPLAY_BORDERLESS;
+	}
+	const int nDesktopWidth = GetSystemMetrics( SM_CXSCREEN ), nDesktopHeight = GetSystemMetrics( SM_CYSCREEN );
+	if( _bBorderless )
+	{
+		_nReqWidth = nDesktopWidth;
+		_nReqHeight = nDesktopHeight;
+	}
+	else if( !_bResArg )
+	{
+		int nSavedWidth, nSavedHeight;
+		pcdisplay_Resolution( &nSavedWidth, &nSavedHeight );
+		if( nSavedWidth && nSavedHeight )
+		{
+			_nReqWidth = nSavedWidth;
+			_nReqHeight = nSavedHeight;
+		}
+		else if( _bFullscreen )
+		{
+			_nReqWidth = nDesktopWidth;
+			_nReqHeight = nDesktopHeight;
+		}
+	}
+
 	FVidWin_t &Win = _GameInitParms.VidWin;
 	memset( &Win, 0, sizeof(Win) );
 	if( !_PickVideoMode( &Win ) )
 	{
 		fang_Shutdown();
 		return 1;
+	}
+	FDX8Vid_bPortBorderless = _bBorderless ? TRUE : FALSE;
+	pcdisplay_SetLaunched( _bFullscreen ? PCDISPLAY_FULLSCREEN : (_bBorderless ? PCDISPLAY_BORDERLESS : PCDISPLAY_WINDOWED),
+		(int)Win.VidMode.nPixelsAcross, (int)Win.VidMode.nPixelsDown );
+	if( _bBorderless )
+	{
+		_Log( "Video: borderless window covering the %dx%d desktop\n", nDesktopWidth, nDesktopHeight );
 	}
 	Win.nSwapInterval = _bNoVsync ? 0 : 1;						// vsync unless -no-vsync
 	Win.fUnitFSAA = 0.0f;
