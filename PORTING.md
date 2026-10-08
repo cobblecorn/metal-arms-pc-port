@@ -639,7 +639,10 @@ originals are left in place. In-level checkpoints are memory-only, as on the con
 | Alt-F4 | Close the game |
 
 The user confirmed responsive mouse look and reported that some weapons appear to work.
-Traced in source (keysmelee. Q and R were swapped
+Traced in source (keys → Fang pad inputs in `port/pc_input.cpp` → the single `MAIN1` control map
+in `gamepad.cpp`, used for both the Xbox and GameCube layouts → `Hud2.cpp`): Space → `CROSS_BOTTOM` →
+jump; E → `CROSS_TOP` → action; R → `CROSS_RIGHT` → select primary (hand 0, weapons; a tap reloads);
+Q → `CROSS_LEFT` → select secondary (hand 1, throwables); F → GameCube Z → melee. Q and R were swapped
 from the adapter's first mapping at the user's request. On the desktop a weapon list opens only after
 its button is held for 0.3 s (`_WEAPONSELECT_HOLD_SECS` in `game.cpp`, pads included); a shorter tap
 uses the retail callback directly, so R reloads without entering the list. Double-tap R/Q (or the
