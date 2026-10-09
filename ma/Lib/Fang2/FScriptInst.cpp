@@ -185,6 +185,9 @@ BOOL CFScriptInst::OnEvent(u32 uWhichEvent, u32 uEventData1, u32 uEventData2, u3
 	FASSERT( m_bIsInitialized );
 
 	cell oRetVal;
+	#if FANG_PLATFORM_WIN
+	uEventData2 = PortCoopScriptKillActor( m_pScript->m_szScriptFileName, uWhichEvent, uEventData2 );
+	#endif
 
 	m_pScript->SetDataArea(m_pDataArea);
 	if(amx_Exec(&m_oAMX, &oRetVal, m_nOnEventIdx, 5, (cell)(m_pObject), uWhichEvent, uEventData1, uEventData2, uEventData3) != AMX_ERR_NONE)

@@ -53,6 +53,8 @@ public:
 	void SetBot( CBot *pBot );
 	// NOTE: Any parameters that are not used for the particular kind of powerup will be ignored.
 	void PickupPowerup( BotFxTypes_e nType, FSndFx_FxHandle_t hSndHandle, f32 fDuration, f32 fSpeedMult, f32 fJumpVelMult, f32 fGravityMult );
+	// Maintain/cancel only the requested movement effect; existing pickups stay timed.
+	void SetMovementCheat( BotFxTypes_e nType, BOOL bActive );
 	void KillAll();
 	void Work();
 	void Draw();

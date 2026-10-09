@@ -27,6 +27,34 @@
 #include "fsound.h"
 #include "sas_user.h"
 
+#if FANG_WINGC
+#include "fvid.h"
+
+// The scope works with the viewport's on-screen FOV, which on a widescreen display the viewport has
+// already widened from the camera's 4:3 value (fdx8viewport.cpp). Setting the camera to an on-screen
+// value widened it again, so every zoom out left the FOV wider than before. Convert back first.
+static f32 _PortCameraHalfFov( f32 fOnScreenHalfFOV ) {
+	if( !FVid_Mode.nPixelsDown ) {
+		return fOnScreenHalfFOV;
+	}
+	const f32 fWiden = ( (f32)FVid_Mode.nPixelsAcross / (f32)FVid_Mode.nPixelsDown ) * 0.75f;
+	if( fWiden <= 1.001f ) {
+		return fOnScreenHalfFOV;
+	}
+	f32 fSin, fCos;
+	fmath_SinCos( fOnScreenHalfFOV, &fSin, &fCos );
+	return fmath_Atan( fSin, fCos * fWiden );
+}
+#define _SCOPE_CAMERA_FOV( f )	_PortCameraHalfFov( f )
+
+// The camera's own half FOV when each player zoomed in, put back exactly on zoom out: converting the
+// on-screen value back lands a rounding error away, and the camera then no longer recognises its
+// Field of View setting's value (CamBot only re-applies the setting over a FOV it set itself).
+static f32 _afPortCameraHalfFovBeforeZoom[MAX_PLAYERS];
+#else
+#define _SCOPE_CAMERA_FOV( f )	( f )
+#endif
+
 #define _USER_PROP_FILENAME		"w_scope.csv"
 
 
@@ -424,7 +452,7 @@ void CWeaponScope::ClassHierarchyWork( void ) {
 
 						m_CamInfo.m_Quat_WS.BuildQuat( *GetOwner()->MtxToWorld() );
 						gamecam_SwitchPlayerToSimpleCamera( PLAYER_CAM(CPlayer::m_nCurrent), &m_CamInfo );
-						_GetMyCamera()->SetFOV( fZoomHalfFOV );
+						_GetMyCamera()->SetFOV( _SCOPE_CAMERA_FOV( fZoomHalfFOV ) );
 
 						FMATH_SETBITMASK( m_nScopeFlags, _SCOPEFLAG_USING_ZOOM_CAM );
 
@@ -479,7 +507,7 @@ void CWeaponScope::ClassHierarchyWork( void ) {
 			}
 		}
 
-		_GetMyCamera()->SetFOV( fZoomHalfFOV );
+		_GetMyCamera()->SetFOV( _SCOPE_CAMERA_FOV( fZoomHalfFOV ) );
 
 		// Compute magnification level...
 		f32 fSin, fCos, fOOTanHalfFOV;
@@ -522,7 +550,12 @@ void CWeaponScope::_SwitchToBotCam( f32 fNewHalfFOV ) {
 
 	// Switch back to bot's camera and update its FOV...
 	gamecam_SwitchPlayerTo3rdPersonCamera( PLAYER_CAM(nPlayerIndex), GetOwner() );
-	fcamera_GetCameraByIndex(nPlayerIndex)->SetFOV( fNewHalfFOV );
+#if FANG_WINGC
+	if( nPlayerIndex < MAX_PLAYERS && fNewHalfFOV == m_fOrigHalfFOV && _afPortCameraHalfFovBeforeZoom[nPlayerIndex] > 0.0f ) {
+		fcamera_GetCameraByIndex(nPlayerIndex)->SetFOV( _afPortCameraHalfFovBeforeZoom[nPlayerIndex] );
+	} else
+#endif
+	fcamera_GetCameraByIndex(nPlayerIndex)->SetFOV( _SCOPE_CAMERA_FOV( fNewHalfFOV ) );
 
 	// Draw the bot again...
 	if( CPlayer::m_nPlayerCount == 1 ) {
@@ -585,6 +618,11 @@ void CWeaponScope::EnterZoomMode( u32 uTargetZoomLevel/*=0*/ ) {
 		pViewport = _GetMyCamera()->GetViewport();
 		m_fOrigTanHalfFOV = pViewport->fTanHalfFOVX;
 		m_fOrigHalfFOV = pViewport->fHalfFOVX;
+#if FANG_WINGC
+		if( GetOwner() && GetOwner()->m_nPossessionPlayerIndex >= 0 && GetOwner()->m_nPossessionPlayerIndex < MAX_PLAYERS ) {
+			_GetMyCamera()->GetFOV( &_afPortCameraHalfFovBeforeZoom[GetOwner()->m_nPossessionPlayerIndex] );
+		}
+#endif
 
 		m_fUnitZoomAnim = 0.0f;
 		m_fUnitZoomAnimSpeed = m_pUserProps->fDigitalZoomSpeed;

@@ -13,6 +13,11 @@ static int s_fovOffset = 0;
 static volatile LONG s_fovVersion = 1;
 static PcDisplayMode s_launchedMode = PCDISPLAY_WINDOWED;
 static int s_launchedWidth = 0, s_launchedHeight = 0;
+static int s_antiAliasing = 0, s_launchedAntiAliasing = 0;
+
+static int ClampAntiAliasing(int samples) {
+	return samples >= 8 ? 8 : samples >= 4 ? 4 : samples >= 2 ? 2 : 0;
+}
 
 enum { MAX_RESOLUTIONS = 64 };
 static int s_resolutions[MAX_RESOLUTIONS][2];
@@ -44,6 +49,7 @@ void pcdisplay_Load() {
 		s_height = height;
 	}
 	s_fovOffset = ClampFov((int)GetPrivateProfileIntA("Display", "FieldOfView", 0, path));
+	s_antiAliasing = ClampAntiAliasing((int)GetPrivateProfileIntA("Display", "AntiAliasing", 0, path));
 }
 
 bool pcdisplay_Save() {
@@ -56,6 +62,8 @@ bool pcdisplay_Save() {
 	}
 	_snprintf(value, sizeof(value), "%d", s_fovOffset);
 	ok = WritePrivateProfileStringA("Display", "FieldOfView", value, path) != FALSE && ok;
+	_snprintf(value, sizeof(value), "%d", s_antiAliasing);
+	ok = WritePrivateProfileStringA("Display", "AntiAliasing", value, path) != FALSE && ok;
 	return ok;
 }
 
@@ -104,12 +112,28 @@ void pcdisplay_SetLaunched(PcDisplayMode mode, int width, int height) {
 	s_launchedWidth = width;
 	s_launchedHeight = height;
 }
+int pcdisplay_AntiAliasing() { return s_antiAliasing; }
+void pcdisplay_SetAntiAliasing(int samples) { s_antiAliasing = ClampAntiAliasing(samples); }
+int pcdisplay_StepAntiAliasing(int samples, int direction) {
+	static const int steps[] = { 0, 2, 4, 8 };
+	int at = 0;
+	for (int i = 0; i < 4; i++) if (steps[i] == ClampAntiAliasing(samples)) at = i;
+	at += direction > 0 ? 1 : (direction < 0 ? -1 : 0);
+	return steps[at < 0 ? 0 : (at > 3 ? 3 : at)];
+}
+void pcdisplay_SetLaunchedAntiAliasing(int samples) { s_launchedAntiAliasing = ClampAntiAliasing(samples); }
+
 bool pcdisplay_RestartNeeded() {
 	if (s_mode != s_launchedMode) return true;
+	if (s_antiAliasing != s_launchedAntiAliasing) return true;
 	// Borderless always covers the desktop; the resolution choice applies to the other modes.
 	if (s_mode == PCDISPLAY_BORDERLESS) return false;
 	return s_width && s_height && (s_width != s_launchedWidth || s_height != s_launchedHeight);
 }
+
+static bool s_relaunch = false;
+void pcdisplay_RequestRelaunch() { s_relaunch = true; }
+bool pcdisplay_RelaunchRequested() { return s_relaunch; }
 
 int pcdisplay_FovOffset() { return s_fovOffset; }
 void pcdisplay_SetFovOffset(int degrees) {

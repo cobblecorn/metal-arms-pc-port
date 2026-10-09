@@ -29,22 +29,43 @@ FIXTURE = r'''
 #include <cwchar>
 #include <algorithm>
 using BOOL=int; using u32=unsigned; using s32=int; using s16=short; using u16=unsigned short;
+using f32=float;
 using cchar=const char; using cwchar=const wchar_t;
 constexpr BOOL TRUE=1,FALSE=0;
 constexpr int MAX_PLAYERS=4, INV_INDEX_COUNT=2, ItemInst_uMaxInventoryWeapons=24, INVPOS_WASHER=0;
 constexpr unsigned ENTITY_BIT_BOT=1,ENTITY_BIT_BOTGLITCH=2, ENTITY_FLAG_INVINCIBLE=1,ENTITY_FLAG_INFINITE_ARMOR=2;
 constexpr u16 INFINITE_AMMO=65535;
+constexpr int FSNDFX_INVALID_FX_HANDLE=-1;
 #define MA_PC_INPUT 1
 #define FASSERT(x) do{if(!(x))std::abort();}while(0)
 #define FMATH_MIN(x,y) std::min(x,y)
 #define FMATH_MAX(x,y) std::max(x,y)
 class CWeapon; class CInventory;
+struct CBotPowerupFx {
+ enum BotFxTypes_e {BOT_FX_TYPES_HIJUMP, BOT_FX_TYPES_SPEEDUP};
+ int calls=0; BotFxTypes_e type=BOT_FX_TYPES_HIJUMP; int sound=0;
+ float duration=0,speed=0,jump=0,gravity=0;
+ bool speedActive=false,jumpActive=false;
+ void PickupPowerup(BotFxTypes_e t,int snd,float d,float s,float j,float g){
+  ++calls;type=t;sound=snd;duration=d;speed=s;jump=j;gravity=g;
+ }
+ void SetMovementCheat(BotFxTypes_e t,BOOL active){
+  ++calls;type=t;sound=FSNDFX_INVALID_FX_HANDLE;duration=active?25.f:0.f;
+  if(t==BOT_FX_TYPES_SPEEDUP){speedActive=active;speed=active?2.f:0.f;}
+  else{jumpActive=active;jump=active?2.f:0.f;gravity=active?1.5f:0.f;}
+ }
+};
+CBotPowerupFx powerups[4];
 struct CEntity {
  bool inWorld=true; unsigned bits=ENTITY_BIT_BOT|ENTITY_BIT_BOTGLITCH,m_nEntityFlags=0;
  int health=15; bool IsInWorld()const{return inWorld;} unsigned TypeBits()const{return bits;}
  void SetMaxHealth(){health=100;} BOOL IsInvincible()const;
 };
-struct CBot:CEntity {CInventory* m_pInventory=nullptr; bool dead=false; bool IsDeadOrDying()const{return dead;}};
+struct CBot:CEntity {
+ CInventory* m_pInventory=nullptr; CBotPowerupFx* powerup=nullptr;
+ bool dead=false; bool IsDeadOrDying()const{return dead;}
+ CBotPowerupFx* GetPowerupFx(){return powerup;}
+};
 struct CItem {unsigned m_uCurLevel=1;};
 struct CItemInst {
  CWeapon* m_pWeapon=nullptr; CInventory* m_pOwnerInventory=nullptr; CItem* m_pItemData=nullptr;
@@ -113,6 +134,7 @@ void reset(int count=4){
  for(int n=0;n<4;n++){
   original[n]=CInventory{};possessed[n]=CInventory{};bodies[n]=CBot{};posBodies[n]=CBot{};
   bodies[n].m_pInventory=&original[n];posBodies[n].m_pInventory=&possessed[n];
+  powerups[n]=CBotPowerupFx{};bodies[n].powerup=&powerups[n];
   Player_aPlayer[n].m_pEntityOrig=Player_aPlayer[n].m_pEntityCurrent=&bodies[n];
   for(int side=0;side<2;side++){
    original[n].m_auNumWeapons[side]=1;
@@ -160,10 +182,24 @@ int main(){
   original[who].wallet.m_nClipAmmo=32760;pccheats_Apply(who,PC_CHEAT_WASHERS);
   require(original[who].wallet.m_nClipAmmo==32767,"washer clamp prevents signed overflow");
   pccheats_Apply(who,PC_CHEAT_WASHERS);require(original[who].wallet.m_nClipAmmo==32767,"full wallet stays full");
+  pccheats_Apply(who,PC_CHEAT_SPEED_BOOST);
+  for(int n=0;n<count;n++)require(powerups[n].calls==(n==who?1:0),"speed targets only requested player across P1-P4");
+  require(powerups[who].type==CBotPowerupFx::BOT_FX_TYPES_SPEEDUP&&powerups[who].speed==2&&pccheats_Enabled(who,PC_CHEAT_SPEED_BOOST),"speed toggle enables retail multiplier");
+  pccheats_Apply(who,PC_CHEAT_HIGH_JUMP);
+  for(int n=0;n<count;n++)require(powerups[n].calls==(n==who?2:0),"jump targets only requested player across P1-P4");
+  require(powerups[who].type==CBotPowerupFx::BOT_FX_TYPES_HIJUMP&&powerups[who].jump==2&&powerups[who].gravity==1.5f&&pccheats_Enabled(who,PC_CHEAT_HIGH_JUMP),"jump toggle enables retail velocity and gravity");
+  require(CPlayer::m_nCurrent==-1&&powerups[who].sound==FSNDFX_INVALID_FX_HANDLE,"powerup grant preserves player context and does not start a music track");
   pccheats_Apply(who,PC_CHEAT_HEAL);require(bodies[who].health==100,"heal target");
   bodies[who].health=0;bodies[who].dead=true;pccheats_Apply(who,PC_CHEAT_HEAL);
+  pccheats_Apply(who,PC_CHEAT_SPEED_BOOST);pccheats_Apply(who,PC_CHEAT_HIGH_JUMP);
+  require(!pccheats_Enabled(who,PC_CHEAT_SPEED_BOOST)&&!pccheats_Enabled(who,PC_CHEAT_HIGH_JUMP),"movement toggles can be disabled while down");
+  int movementCalls=powerups[who].calls;
+  pccheats_Apply(who,PC_CHEAT_SPEED_BOOST);pccheats_Apply(who,PC_CHEAT_HIGH_JUMP);
+  require(powerups[who].calls==movementCalls,"movement grants reject dead actor");
   require(bodies[who].health==0&&bodies[who].dead,"heal does not resurrect unsafe body");
   bodies[who].dead=false;bodies[who].inWorld=false;pccheats_Apply(who,PC_CHEAT_HEAL);
+  pccheats_Apply(who,PC_CHEAT_SPEED_BOOST);pccheats_Apply(who,PC_CHEAT_HIGH_JUMP);
+  require(powerups[who].calls==movementCalls,"movement grants reject removed actor");
   require(bodies[who].health==0,"heal rejects removed actor");
  }
  reset();Player_aPlayer[2].m_pEntityCurrent=&posBodies[2];pccheats_Apply(2,PC_CHEAT_INFINITE_AMMO);
@@ -171,6 +207,8 @@ int main(){
  pccheats_Apply(2,PC_CHEAT_INVULNERABLE);require(posBodies[2].IsInvincible()&&bodies[2].IsInvincible(),"possession protects target's two bodies");
  pccheats_Apply(2,PC_CHEAT_WASHERS);require(original[2].wallet.m_nClipAmmo==1000&&possessed[2].wallet.m_nClipAmmo==0,"possessed grant still uses permanent wallet");
  pccheats_Apply(2,PC_CHEAT_WEAPONS);require(!grantCalls,"weapon grant waits for original Glitch");
+ pccheats_Apply(2,PC_CHEAT_SPEED_BOOST);pccheats_Apply(2,PC_CHEAT_HIGH_JUMP);
+ require(!powerups[2].calls,"movement grants do not boost dormant Glitch during possession");
  posBodies[2].health=2;pccheats_Apply(2,PC_CHEAT_HEAL);require(posBodies[2].health==100,"heal current possessed body");
  reset();pccheats_Apply(3,PC_CHEAT_WEAPONS);
  require(grantCalls==13&&grantContextOK,"missing weapon grants use P4 context and skip owned weapons");
@@ -186,11 +224,35 @@ int main(){
  reset();grantFailure=true;auto msg=pccheats_Apply(1,PC_CHEAT_WEAPONS);
  require(std::wcsstr(msg,L"some aren't loaded")&&original[1].m_auNumWeapons[0]==1,"missing assets report partial availability");
  require(CPlayer::m_nCurrent==-1&&CCollectable::m_pCollectBot==&enemy,"failed grant also restores context");
+ reset();bodies[0].powerup=nullptr;
+ require(std::wcsstr(pccheats_Apply(0,PC_CHEAT_SPEED_BOOST),L"unavailable"),"missing movement powerup reports unavailable");
+ require(std::wcsstr(pccheats_Apply(0,PC_CHEAT_HIGH_JUMP),L"unavailable"),"missing jump powerup reports unavailable");
+ reset();bodies[0].bits=ENTITY_BIT_BOT;
+ pccheats_Apply(0,PC_CHEAT_SPEED_BOOST);pccheats_Apply(0,PC_CHEAT_HIGH_JUMP);
+ require(!powerups[0].calls,"non Glitch character never reaches Glitch-only powerup code");
  reset();MultiplayerMgr.single=false;
  for(int action=0;action<PC_CHEAT_ACTION_COUNT;action++)pccheats_Apply(0,(PcCheatAction_e)action);
  require(!grantCalls&&!pccheats_Enabled(0,PC_CHEAT_INVULNERABLE)&&original[0].wallet.m_nClipAmmo==0,"competitive multiplayer rejects cheats");
+ require(!powerups[0].calls,"competitive multiplayer rejects movement boosts");
  reset();for(int target:{-1,4,32})for(int action=0;action<PC_CHEAT_ACTION_COUNT;action++)pccheats_Apply(target,(PcCheatAction_e)action);
  require(!grantCalls&&!pccheats_Enabled(0,PC_CHEAT_INFINITE_AMMO)&&original[0].wallet.m_nClipAmmo==0,"invalid player rejected without mutations");
+ require(!powerups[0].calls,"invalid player never receives movement boosts");
+ reset();pccheats_Apply(1,PC_CHEAT_SPEED_BOOST);pccheats_Apply(1,PC_CHEAT_HIGH_JUMP);
+ pccheats_Apply(3,PC_CHEAT_SPEED_BOOST);pccheats_Apply(3,PC_CHEAT_HIGH_JUMP);
+ int partnerCalls=powerups[3].calls;
+ pccheats_Apply(1,PC_CHEAT_SPEED_BOOST);
+ require(!pccheats_Enabled(1,PC_CHEAT_SPEED_BOOST)&&pccheats_Enabled(1,PC_CHEAT_HIGH_JUMP)&&!powerups[1].speedActive&&powerups[1].jumpActive,"speed off preserves own high jump");
+ require(powerups[3].calls==partnerCalls&&powerups[3].speedActive&&powerups[3].jumpActive,"movement off preserves partner effects");
+ int calls=powerups[1].calls;pccheats_Work();
+ require(powerups[1].calls==calls+1&&powerups[1].type==CBotPowerupFx::BOT_FX_TYPES_HIJUMP,"maintenance refreshes only enabled movement effect");
+ Player_aPlayer[1].m_pEntityCurrent=&posBodies[1];calls=powerups[1].calls;pccheats_Work();
+ require(powerups[1].calls==calls,"movement renewal suspended while possessing another bot");
+ pccheats_Apply(1,PC_CHEAT_HIGH_JUMP);
+ require(!pccheats_Enabled(1,PC_CHEAT_HIGH_JUMP)&&!powerups[1].jumpActive,"jump can turn off while possessing another bot");
+ Player_aPlayer[1].m_pEntityCurrent=&bodies[1];pccheats_Apply(1,PC_CHEAT_SPEED_BOOST);pccheats_Apply(1,PC_CHEAT_HIGH_JUMP);
+ bodies[1].dead=true;calls=powerups[1].calls;pccheats_Work();require(powerups[1].calls==calls,"movement renewal suspended while down");
+ bodies[1].dead=false;pccheats_Work();require(powerups[1].calls==calls+2,"living original Glitch resumes both movement toggles");
+ pccheats_Reset();calls=powerups[1].calls;pccheats_Work();require(powerups[1].calls==calls&&!pccheats_Enabled(1,PC_CHEAT_SPEED_BOOST)&&!pccheats_Enabled(1,PC_CHEAT_HIGH_JUMP),"new session clears movement toggle masks");
  reset();pccheats_Apply(1,PC_CHEAT_INFINITE_AMMO);pccheats_Apply(3,PC_CHEAT_INFINITE_AMMO);pccheats_Apply(1,PC_CHEAT_INFINITE_AMMO);
  require(!pccheats_InfiniteAmmo(&guns[1][0][0])&&pccheats_InfiniteAmmo(&guns[3][0][0]),"one player toggling off preserves partner's cheat");
  std::printf("PASS: %d offline campaign cheat checks (P1-P4); game not launched.\n",checks);

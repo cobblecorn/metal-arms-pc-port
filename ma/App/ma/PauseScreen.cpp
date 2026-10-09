@@ -511,10 +511,10 @@ BOOL CPauseScreen::InitSystem()
 		CMenuItem &item = m_aMICheats[uCurMIIdx];
 		item.m_apNext[MIDIR_UP] = uCurMIIdx ? &m_aMICheats[uCurMIIdx - 1] : NULL;
 		item.m_apNext[MIDIR_DOWN] = uCurMIIdx < PC_CHEAT_ACTION_COUNT ? &m_aMICheats[uCurMIIdx + 1] : NULL;
-		item.m_vecBorderUL.Set( -0.62f, 0.36f - 0.095f * uCurMIIdx, 0.0f );
-		item.m_vecBorderRect.Set( 1.24f, 0.065f, 0.0f );
+		item.m_vecBorderUL.Set( -0.62f, 0.36f - 0.074f * uCurMIIdx, 0.0f );
+		item.m_vecBorderRect.Set( 1.24f, 0.056f, 0.0f );
 		item.m_avecTextOfs[0].Set( 0.0f, 0.0f );
-		item.m_avecTextRect[0].Set( 1.24f, 0.065f );
+		item.m_avecTextRect[0].Set( 1.24f, 0.056f );
 		item.m_ahText[0] = ftext_Create( &oTextArea );
 		item.Init();
 		item.m_pfcnCallback = CheatsScreenCallback;
@@ -2319,6 +2319,8 @@ void CPauseScreen::RefreshCheats() {
 	m_aMICheats[PC_CHEAT_WEAPONS].SetText( 0, L"Give Available Weapons" );
 	m_aMICheats[PC_CHEAT_UPGRADES].SetText( 0, L"Max Weapon Upgrades" );
 	m_aMICheats[PC_CHEAT_HEAL].SetText( 0, L"Heal Player" );
+	m_aMICheats[PC_CHEAT_SPEED_BOOST].SetText( 0, pccheats_Enabled( m_nPlayer, PC_CHEAT_SPEED_BOOST ) ? L"Speed Boost: On" : L"Speed Boost: Off" );
+	m_aMICheats[PC_CHEAT_HIGH_JUMP].SetText( 0, pccheats_Enabled( m_nPlayer, PC_CHEAT_HIGH_JUMP ) ? L"High Jump: On" : L"High Jump: Off" );
 	m_aMICheats[PC_CHEAT_ACTION_COUNT].SetText( 0, L"Back" );
 }
 
@@ -2342,6 +2344,12 @@ void CPauseScreen::CheatsScreenCallback( MenuItemCallbackReason_e eReason, CMenu
 			BackFromCheats();
 		} else if( nAction < PC_CHEAT_ACTION_COUNT ) {
 			m_pwszCheatStatus = pccheats_Apply( m_nPlayer, (PcCheatAction_e)nAction );
+#if FANG_WINGC
+            if( nAction == PC_CHEAT_SPEED_BOOST || nAction == PC_CHEAT_HIGH_JUMP ) {
+                DEVPRINTF("Port: movement menu player=%d action=%d enabled=%d.\n",m_nPlayer+1,
+                    nAction,pccheats_Enabled(m_nPlayer,(PcCheatAction_e)nAction));
+            }
+#endif
 			RefreshCheats();
 			if( m_pInventory && Player_aPlayer[m_nPlayer].m_pEntityCurrent == Player_aPlayer[m_nPlayer].m_pEntityOrig ) RefreshSelected( m_pInventory );
 		}

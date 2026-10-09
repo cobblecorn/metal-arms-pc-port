@@ -356,6 +356,7 @@ typedef enum {
 	_MENU_ITEMS_AS_DISPLAY_MODE,	// display rows: settings.ini [Display], for the whole PC (pc_display)
 	_MENU_ITEMS_AS_RESOLUTION,
 	_MENU_ITEMS_AS_FOV,
+	_MENU_ITEMS_AS_ANTI_ALIASING,
 	_MENU_ITEMS_AS_PROMPTS,
 	_MENU_ITEMS_AS_MOUSE_SENSITIVITY,	// last: hidden for a controller-only player
 #endif
@@ -606,6 +607,7 @@ typedef struct {
 	s32 nASDisplayModeOrig;		// display settings when the screen opened, for Cancel
 	int nASWidthOrig, nASHeightOrig;
 	s32 nASFovOrig;
+	s32 nASAntiAliasingOrig;
 #endif
 	u8 nASIndexOfFFBMesh;
 	f32 fASForceFeedbackOrigIntensity;
@@ -738,8 +740,10 @@ static GameInitInfo_t _GameInitInfo;// filled in when we go to actually start a 
 
 #if defined(MA_PC_INPUT)
 static BOOL _bPcInputOptionsAdded;
-#define _PC_AS_ROW_COUNT		5		// PC rows appended to Advanced Settings: display mode .. mouse sensitivity
-#define _PC_AS_LAST_ROW_Y		0.60f	// lowest row position (ftext units) that clears the screen's buttons
+#define _PC_AS_ROW_COUNT		6		// PC rows appended to Advanced Settings: display mode .. mouse sensitivity
+#define _PC_AS_LAST_ROW_Y		0.575f	// lowest row position (ftext units) that clears the screen's buttons
+#define _PC_AS_ROW_SPACING		0.035f	// row spacing (retail's is 0.040) so the eleven rows fit below the title
+static f32 _afPcAsTickShift[2];			// bipolar shift of the Vibration and Look Sensitivity tick bars
 //===================================
 // mouse pointer (PC port)
 //
@@ -860,6 +864,11 @@ static Wpr_DataTypes_NavCode_e _PcSettingsBackKeeps( Wpr_DataTypes_NavCode_e nNa
 		const BOOL bMouseSaved = pcinput_MouseSensitivityIsOverride() || pcinput_SaveMouseSensitivity();
 		if( !pcdisplay_Save() ) {
 			DEVPRINTF( "PC settings: could not save the display settings.\n" );
+		} else if( !_bInGame && pcdisplay_RestartNeeded() ) {
+			// From the main menus nothing is lost: restart into the new display mode at once.
+			DEVPRINTF( "PC settings: restarting to apply the display mode and resolution.\n" );
+			pcdisplay_RequestRelaunch();
+			gameloop_ScheduleExit();
 		}
 		if( !bPromptsSaved || !bMouseSaved ) {
 			DEVPRINTF( "PC settings: could not save %s%s; current session values retained.\n",
@@ -3107,21 +3116,44 @@ static BOOL _Init( void ) {
 		const u32 nOldCount = pScreen->nNumTextElements;
 		Wpr_DataTypes_TextLayout_t *pExpanded = (Wpr_DataTypes_TextLayout_t *)fres_Alloc( sizeof( Wpr_DataTypes_TextLayout_t ) * (nOldCount + _PC_AS_ROW_COUNT) );
 		if( pExpanded ) {
-			static cwchar *apwszRows[_PC_AS_ROW_COUNT] = { L"Display Mode", L"Resolution", L"Field of View", L"Button Prompts", L"Mouse Sensitivity" };
+			static cwchar *apwszRows[_PC_AS_ROW_COUNT] = { L"Display Mode", L"Resolution", L"Field of View", L"Anti-Aliasing", L"Button Prompts", L"Mouse Sensitivity" };
 			for( u32 nText = 0; nText < nOldCount; nText++ ) {
 				pExpanded[nText] = pScreen->pText[nText];
 			}
-			// The PC rows follow the retail ones at the same spacing; all the rows close up only as
-			// far as needed to stay above _PC_AS_LAST_ROW_Y.
-			const f32 fFirstY = pExpanded[_MENU_ITEMS_AS_START_OFFSET].fUnitY;
-			const Wpr_DataTypes_TextLayout_t *pLast = &pExpanded[nOldCount - 1];
-			f32 fSpacing = pLast->fUnitY - pExpanded[nOldCount - 2].fUnitY;
-			if( pLast->fUnitY + fSpacing * _PC_AS_ROW_COUNT > _PC_AS_LAST_ROW_Y ) {
-				fSpacing = (_PC_AS_LAST_ROW_Y - fFirstY) / (f32)(nOldCount - 1 - _MENU_ITEMS_AS_START_OFFSET + _PC_AS_ROW_COUNT);
-				for( u32 nText = _MENU_ITEMS_AS_START_OFFSET + 1; nText < nOldCount; nText++ ) {
-					pExpanded[nText].fUnitY = fFirstY + fSpacing * (f32)(nText - _MENU_ITEMS_AS_START_OFFSET);
+			// All the rows, retail and PC, at one spacing (a little under retail's), the block raised
+			// so the last row clears the buttons. The Vibration and Look Sensitivity boxes (meshes
+			// 2 and 3) and their tick bars move with their rows: bipolar y moves 3 per text unit.
+			const u32 nRows = nOldCount - _MENU_ITEMS_AS_START_OFFSET + _PC_AS_ROW_COUNT;
+			const f32 fRetailSpacing = pExpanded[nOldCount - 1].fUnitY - pExpanded[nOldCount - 2].fUnitY;
+			f32 fSpacing = FMATH_MIN( fRetailSpacing, _PC_AS_ROW_SPACING );
+			const f32 fFirstY = _PC_AS_LAST_ROW_Y - fSpacing * (f32)(nRows - 1);
+			f32 afRowShift[2] = { 0.0f, 0.0f };	// Vibration, Look Sensitivity rows (text units)
+			for( u32 nText = _MENU_ITEMS_AS_START_OFFSET; nText < nOldCount; nText++ ) {
+				const f32 fNewY = fFirstY + fSpacing * (f32)(nText - _MENU_ITEMS_AS_START_OFFSET);
+				if( nText == _MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_VIBRATION ) afRowShift[0] = fNewY - pExpanded[nText].fUnitY;
+				if( nText == _MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_LOOK_SENSITIVITY ) afRowShift[1] = fNewY - pExpanded[nText].fUnitY;
+				pExpanded[nText].fUnitY = fNewY;
+			}
+			// The two boxes are the meshes right of center (the screen frame is centered); the
+			// higher one is Vibration's. Their indices differ between the menu and pause versions.
+			s32 anBox[2] = { -1, -1 };
+			for( s32 nMesh = 0; nMesh < (s32)pScreen->nNumMeshElements; nMesh++ ) {
+				if( pScreen->pMesh[nMesh].fBiPolarUnitX < 0.2f ) continue;
+				if( anBox[0] < 0 || pScreen->pMesh[nMesh].fBiPolarUnitY > pScreen->pMesh[anBox[0]].fBiPolarUnitY ) {
+					anBox[1] = anBox[0];
+					anBox[0] = nMesh;
+				} else if( anBox[1] < 0 || pScreen->pMesh[nMesh].fBiPolarUnitY > pScreen->pMesh[anBox[1]].fBiPolarUnitY ) {
+					anBox[1] = nMesh;
 				}
 			}
+			for( u32 nBox = 0; nBox < 2; nBox++ ) {
+				if( anBox[nBox] >= 0 ) pScreen->pMesh[anBox[nBox]].fBiPolarUnitY -= 3.0f * afRowShift[nBox];
+			}
+			DEVPRINTF( "PC settings: Advanced Settings (%s) rows from y %.3f at %.3f; boxes are meshes %d and %d\n",
+				_bInGame ? "pause" : "menu", fFirstY, fSpacing, anBox[0], anBox[1] );
+			_afPcAsTickShift[0] = -3.0f * afRowShift[0];
+			_afPcAsTickShift[1] = -3.0f * afRowShift[1];
+			const Wpr_DataTypes_TextLayout_t *pLast = &pExpanded[nOldCount - 1];
 			for( u32 nRow = 0; nRow < _PC_AS_ROW_COUNT; nRow++ ) {
 				Wpr_DataTypes_TextLayout_t *pRow = &pExpanded[nOldCount + nRow];
 				*pRow = *pLast;
@@ -3130,8 +3162,7 @@ static BOOL _Init( void ) {
 			}
 			pScreen->pText = pExpanded;
 			pScreen->nNumTextElements = (u16)(nOldCount + _PC_AS_ROW_COUNT);
-			DEVPRINTF( "PC settings: Advanced Settings rows %u..%u at y %.3f..%.3f, spacing %.3f\n", _MENU_ITEMS_AS_START_OFFSET, nOldCount + _PC_AS_ROW_COUNT - 1,
-				fFirstY, pExpanded[nOldCount + _PC_AS_ROW_COUNT - 1].fUnitY, fSpacing );			_bPcInputOptionsAdded = TRUE;
+			_bPcInputOptionsAdded = TRUE;
 		} else {
 			DEVPRINTF( "wpr_system::_Init() : Could not allocate the PC input option rows.\n" );
 		}
@@ -3811,6 +3842,7 @@ void wpr_system_IG_SelectScreen( Wpr_DataTypes_Screens_e nScreenIndex ) {
 		_MenuState.nASDisplayModeOrig = (s32)pcdisplay_Mode();
 		pcdisplay_Resolution( &_MenuState.nASWidthOrig, &_MenuState.nASHeightOrig );
 		_MenuState.nASFovOrig = pcdisplay_FovOffset();
+	_MenuState.nASAntiAliasingOrig = pcdisplay_AntiAliasing();
 		_bPcSettingsSaveWarningShown = FALSE;
 #endif
 		_MenuState.bASForceFeedbackON = FALSE;
@@ -3898,6 +3930,7 @@ BOOL wpr_system_IG_Work( void ) {
 				pcdisplay_SetMode( (PcDisplayMode)_MenuState.nASDisplayModeOrig );
 				pcdisplay_SetResolution( _MenuState.nASWidthOrig, _MenuState.nASHeightOrig );
 				pcdisplay_SetFovOffset( _MenuState.nASFovOrig );
+		pcdisplay_SetAntiAliasing( _MenuState.nASAntiAliasingOrig );
 				game_PcPromptWork();
 #endif
 				fforce_SetMasterIntensity( _MenuState.nControllerIndex, _MenuState.fASForceFeedbackOrigIntensity );
@@ -4391,17 +4424,8 @@ static BOOL _InitUnLockInfo( _MPLevelUnlockInfo_t *pUnLockInfo, FGameDataTableHa
 	FMATH_CLAMP( pUnLockInfo->nNumFreebies, 0, LEVEL_MULTIPLAYER_COUNT );
 	nNumUnlockFields = LEVEL_MULTIPLAYER_COUNT - pUnLockInfo->nNumFreebies;
 
-#if FANG_WINGC
-	// The retail game shipped 14 multiplayer levels; this source has 15 (WE13multi13 is not on the
-	// disc). The retail table has one chip count per locked level in retail order, i.e. for this
-	// source's levels up to 12 and then 14 and 15. Level 13 gets a count that can never be reached.
-	const u32 nMissingLevel = LEVEL_MULTIPLAYER_13 - LEVEL_MULTIPLAYER_1;
-	const BOOL bRetailLayout = ( nNumEntries == nNumUnlockFields ) && ( nMissingLevel >= pUnLockInfo->nNumFreebies );
-	if( nNumEntries != (nNumUnlockFields + 1) && !bRetailLayout ) {
-#else
-	// make sure that there are a proper number of elements in the table
+	// There is one threshold for each locked map, in menu order.
 	if( nNumEntries != (nNumUnlockFields + 1) ) {
-#endif
 		DEVPRINTF( "Wrappers : The table named '%s' does not have the proper number of elements.\n", pszTableName );
 		return FALSE;
 	}
@@ -4416,12 +4440,6 @@ static BOOL _InitUnLockInfo( _MPLevelUnlockInfo_t *pUnLockInfo, FGameDataTableHa
 	// read the unlock data in
 	nIndex = 1;
 	for( i=0; i < nNumUnlockFields; i++ ) {
-#if FANG_WINGC
-		if( bRetailLayout && i == nMissingLevel - pUnLockInfo->nNumFreebies ) {
-			pUnLockInfo->panChipsToUnlock[i] = 255;
-			continue;
-		}
-#endif
 		pUnLockInfo->panChipsToUnlock[i] = (u8)( *(f32 *)fgamedata_GetPtrToFieldData( hTable, nIndex, nDataType ) );
 		nIndex++;
 	}
@@ -5760,6 +5778,13 @@ static void _AdvSettings_DisplayText( s32 nItem, wchar *pwszText, u32 nChars ) {
 			_AdvSettings_Resolution( &nWidth, &nHeight );
 			_snwprintf( pwszText, nChars, L"%dx%d", nWidth, nHeight );
 		}
+	} else if( nItem == _MENU_ITEMS_AS_ANTI_ALIASING ) {
+		const s32 nSamples = pcdisplay_AntiAliasing();
+		if( nSamples ) {
+			_snwprintf( pwszText, nChars, L"%dx", nSamples );
+		} else {
+			_snwprintf( pwszText, nChars, L"Off" );
+		}
 	} else {
 		const s32 nOffset = pcdisplay_FovOffset();
 		if( nOffset ) {
@@ -5941,6 +5966,15 @@ static Wpr_DataTypes_NavCode_e _AdvSettings_Work( void ) {
 					const s32 nBefore = pcdisplay_FovOffset();
 					pcdisplay_SetFovOffset( nBefore + PCDISPLAY_FOV_STEP * nLeftRight );
 					if( pcdisplay_FovOffset() != nBefore ) {
+						fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
+					}
+				}
+				break;
+			case _MENU_ITEMS_AS_ANTI_ALIASING:
+				{
+					const s32 nBefore = pcdisplay_AntiAliasing();
+					pcdisplay_SetAntiAliasing( pcdisplay_StepAntiAliasing( nBefore, nLeftRight ) );
+					if( pcdisplay_AntiAliasing() != nBefore ) {
 						fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_CHANGE_LETTERS] );
 					}
 				}
@@ -6129,9 +6163,11 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 			case _MENU_ITEMS_AS_DISPLAY_MODE:
 			case _MENU_ITEMS_AS_RESOLUTION:
 			case _MENU_ITEMS_AS_FOV:
+			case _MENU_ITEMS_AS_ANTI_ALIASING:
 			case _MENU_ITEMS_AS_MOUSE_SENSITIVITY:
 			case _MENU_ITEMS_AS_PROMPTS:
-				if( nItem == _MENU_ITEMS_AS_DISPLAY_MODE || nItem == _MENU_ITEMS_AS_RESOLUTION || nItem == _MENU_ITEMS_AS_FOV ) {
+				if( nItem == _MENU_ITEMS_AS_DISPLAY_MODE || nItem == _MENU_ITEMS_AS_RESOLUTION || nItem == _MENU_ITEMS_AS_FOV ||
+					nItem == _MENU_ITEMS_AS_ANTI_ALIASING ) {
 					wchar wszValue[32];
 					_AdvSettings_DisplayText( nItem, wszValue, 32 );
 					ftext_Printf( fOptionsX, pScreen->pText[i].fUnitY,
@@ -6168,9 +6204,11 @@ static void _AdvSettings_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 	}	
 #if defined(MA_PC_INPUT)
 	if( _bPcInputOptionsAdded && pcdisplay_RestartNeeded() ) {
-		const Wpr_DataTypes_TextLayout_t *pModeRow = &pScreen->pText[_MENU_ITEMS_AS_START_OFFSET + _MENU_ITEMS_AS_DISPLAY_MODE];
-		ftext_Printf( 0.5f, _PC_AS_LAST_ROW_Y + 0.045f, L"~f1~C%ls~w0~aC~s%.2fDisplay mode and resolution apply when the game is restarted",
-			WprDataTypes_pwszGrayTextColor, pModeRow->fScale * 0.75f );
+		// Beside the screen's title, clear of the rows and the buttons.
+		const Wpr_DataTypes_TextLayout_t *pTitle = &pScreen->pText[_MENU_ITEMS_AS_START_OFFSET - 1];
+		ftext_Printf( 0.86f, pTitle->fUnitY + 0.012f, L"~f1~C%ls~w0~aR~s%.2f%ls",
+			WprDataTypes_pwszWhiteTextColor, pTitle->fScale * 0.55f,
+			_bInGame ? L"Applies on next launch" : L"Game restarts to apply" );
 	}
 #endif
 }
@@ -6192,7 +6230,11 @@ static void _AdvSettings_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 					(_MENU_ITEMS_AS_NUM_TICKS-1),
 					&_paTexInsts[WPR_DATATYPES_TEXTURES_TICK],
 					_ADV_SETTINGS_TICK_X,
+#if defined(MA_PC_INPUT)
+					_ADV_SETTINGS_FFB_TICK_Y + _afPcAsTickShift[0],
+#else
 					_ADV_SETTINGS_FFB_TICK_Y,
+#endif
 					_ADV_SETTINGS_TICK_HEIGHT,
 					_ADV_SETTINGS_TICK_SPACE, 
  					fScaleMultiplier,
@@ -6204,7 +6246,11 @@ static void _AdvSettings_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHa
 					(_MENU_ITEMS_AS_NUM_TICKS-1),
 					&_paTexInsts[WPR_DATATYPES_TEXTURES_TICK],
 					_ADV_SETTINGS_TICK_X,
+#if defined(MA_PC_INPUT)
+					_ADV_SETTINGS_LOOK_TICK_Y + _afPcAsTickShift[1],
+#else
 					_ADV_SETTINGS_LOOK_TICK_Y,
+#endif
 					_ADV_SETTINGS_TICK_HEIGHT,
 					_ADV_SETTINGS_TICK_SPACE,
  					fScaleMultiplier,
@@ -8665,9 +8711,9 @@ static Wpr_DataTypes_NavCode_e _MultiJoin_Work( void ) {
 	}
 
 #if defined(MA_PC_INPUT)
-	if( _bPcCoopJoin ) {
-		// Co-op colours: a player who becomes ready starts on their profile's colour (or the next
-		// one nobody ready has), then left/right on their own controls cycles through the free ones.
+	{
+		// Player colours (co-op and versus): a player who becomes ready starts on their profile's colour
+		// (or the next one nobody ready has), then left/right on their own controls cycles through the free ones.
 		for( i=0; i < MAX_PLAYERS; i++ ) {
 			_MultiJoin_SectionData_t *pSection = &_MenuState.aMJSections[i];
 			if( pSection->nState != _MULTI_JOIN_STATE_WAIT ) {
@@ -8816,15 +8862,18 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 	Wpr_DataTypes_TextLayout_t *pTextLayout;
 
 #if defined(MA_PC_INPUT)
-	// Co-op: the same screen, retitled, with a note where the retail screen is empty.
+	// Screen-fraction panels in place of the retail box meshes (which overlap when stretched); co-op is
+	// also retitled, with a note where the retail screen is empty.
 	Wpr_DataTypes_ScreenData_t CoopScreen;
 	Wpr_DataTypes_TextLayout_t aCoopText[16];
-	if( _bPcCoopJoin && pScreen->nNumTextElements > 0 && pScreen->nNumTextElements <= 16 ) {
+	if( pScreen->nNumTextElements > 0 && pScreen->nNumTextElements <= 16 ) {
 		CoopScreen = *pScreen;
 		for( i=0; i < pScreen->nNumTextElements; i++ ) {
 			aCoopText[i] = pScreen->pText[i];
 		}
-		aCoopText[0].pwszText = L"Co-op";
+		if( _bPcCoopJoin ) {
+			aCoopText[0].pwszText = L"Co-op";
+		}
 		CoopScreen.pText = aCoopText;
 		CoopScreen.nNumMeshElements = 0;
 		_PcCoopJoinPanels( fHalfXRes, fHalfYRes );
@@ -8922,8 +8971,8 @@ static void _MultiJoin_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 				_MenuState.aMJSections[i].pProfile->m_SaveInfo.wszProfileName );
 
 #if defined(MA_PC_INPUT)
-			if( _bPcCoopJoin && _anPcCoopColor[i] < GAMESAVE_MP_COLORS_COUNT ) {
-				// the co-op colour, in its colour, between the retail selection braces
+			if( _anPcCoopColor[i] < GAMESAVE_MP_COLORS_COUNT ) {
+				// the player's colour, in its colour, between the retail selection braces
 				ftext_Printf( pTextLayout->fUnitX,
 					pTextLayout->fUnitY + 0.095f,
 					L"~f1~w0~ac~s%.2f~C%ls{ ~C%ls%ls ~C%ls}",
@@ -9091,6 +9140,14 @@ static void _MultiJoin_MP_ExitDecisions( Wpr_DataTypes_NavCode_e nNavCode ) {
 		break;
 
 	case WPR_DATATYPES_NAV_CODE_FORWARD:
+#if defined(MA_PC_INPUT)
+		// the colours picked on the join screen, as the profile's Multiplayer Color setting would
+		for( u32 nPlayer = 0; nPlayer < MAX_PLAYERS; ++nPlayer ) {
+			if( (_MenuState.nMPPlayerMask & (1 << nPlayer)) && _anPcCoopColor[nPlayer] < GAMESAVE_MP_COLORS_COUNT ) {
+				_paProfiles[nPlayer].m_Data.nColorIndex = _anPcCoopColor[nPlayer];
+			}
+		}
+#endif
 		// go to the Game Type screen
 		_MenuState.nCurItemIndex = 0;
 		_MenuState.nCurrentScreen = WPR_DATATYPES_SCREENS_MULTI_TYPE;
@@ -9128,6 +9185,10 @@ static void _MJ_InitJoinInfoAndSections( _JoinInfo_t *pJoinInfo,
 		pSection->pProfile->m_nControllerIndex = i;
 		pSection->bWorkDoneThisFrame = FALSE;
         pSection->nTeamID = 0;
+#if defined(MA_PC_INPUT)
+		// a player's colour starts again from their profile's when they next become ready
+		_anPcCoopLastState[i] = _MULTI_JOIN_STATE_ENTER;
+#endif
 	}
 
 	pJoinInfo->bWaitingForOtherPlayers = TRUE;
@@ -9537,7 +9598,7 @@ static void _MultiType_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 					wchar wszBuf1[20], wszBuf2[20];
 
 					// Print the game type
-					ftext_Printf( 0.5f,
+					ftext_Printf( _MULTIPLAYER_TYPES_X,	// under the type's name
 						pScreen->pText[i].fUnitY + 0.04f,
 						L"~f8~C%ls~w0~ac~s%.2f%ls",
 						WprDataTypes_pwszInstructionTextColor,
@@ -9547,7 +9608,7 @@ static void _MultiType_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 					// Print the location
 					_SafeCopyString( wszBuf1, pProfile->m_SaveInfo.wszCardName, 20, 13 );
 					_SafeCopyString( wszBuf2, pProfile->m_SaveInfo.wszProfileName, 20, 12 );
-					ftext_Printf( 0.5f,
+					ftext_Printf( _MULTIPLAYER_TYPES_X,	// under the type's name
 						pScreen->pText[i].fUnitY + 0.08f,
 						L"~f8~C%ls~w0~ac~s%.2f%ls : ~f8~s%.2f~C%ls%ls",
 						WprDataTypes_pwszInstructionTextColor,
@@ -9558,7 +9619,7 @@ static void _MultiType_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHalf
 						wszBuf2 );
 				}
 				else {
-					ftext_Printf( 0.5f,
+					ftext_Printf( _MULTIPLAYER_TYPES_X,	// under the type's name
 						pScreen->pText[i].fUnitY + 0.04f, 
 						L"~f8~C%ls~w0~ac~s%.2f%ls",
 						WprDataTypes_pwszInstructionTextColor,
@@ -10053,7 +10114,7 @@ static void _MultiEditType_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 f
 
 				// Print the game type
 				if ( pProfile->m_Data.nMPRulesCount > 0 ) {
-					ftext_Printf( 0.5f,
+					ftext_Printf( _MULTIPLAYER_TYPES_X,	// under the type's name
 						pScreen->pText[i].fUnitY + 0.04f,
 						L"~f8~C%ls~w0~ac~s%.2f%ls",
 						WprDataTypes_pwszInstructionTextColor,

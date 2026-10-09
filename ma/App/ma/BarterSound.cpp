@@ -124,8 +124,24 @@ void CBarterSound::UpdateAttractMusic( const CFVec3A *pBarterPos_WS, f32 fRadius
 	}
 
 #if FANG_WINGC
-	if( MultiplayerMgr.IsLocalCoop() && !level_GetStreamByName( _BARTER_ATTRACT_STREAMING_FILENAME ) ) {
-		if( m_eCurMode == MODE_ATTRACT ) Stop();
+	// The attract jingle shares the speech stream with radio transmissions, so a transmission replaces
+	// it. Retail then kept "playing" a jingle that was gone (and steered the transmission's volume and
+	// pan as if it were the jingle) until the player shopped or walked away. Notice the loss and start
+	// the jingle again once the transmission is over.
+	if( !level_GetStreamByName( _BARTER_ATTRACT_STREAMING_FILENAME ) ) {
+		if( m_eCurMode == MODE_ATTRACT ) {
+			if( MultiplayerMgr.IsLocalCoop() ) {
+				Stop();
+			} else {
+				// Not Stop(): in solo it stops the speech stream, which is now the transmission.
+				if( m_bMusicPaused ) {
+					level_PauseMusic( FALSE );
+					m_bMusicPaused = FALSE;
+				}
+				m_eCurMode = MODE_NOT_PLAYING;
+				m_fUnitVolume = 0.0f;
+			}
+		}
 		// Do not restart the attract loop over a transmission that replaced it.
 		if( level_IsStreamingSpeechPlaying() ) return;
 	}
@@ -163,7 +179,7 @@ void CBarterSound::UpdateAttractMusic( const CFVec3A *pBarterPos_WS, f32 fRadius
 		// Update volume and pan...
 		CFAudioStream *pAudioStream = level_GetStreamingSpeechAudioStream();
 #if FANG_WINGC
-		if( MultiplayerMgr.IsLocalCoop() ) pAudioStream = level_GetStreamByName( _BARTER_ATTRACT_STREAMING_FILENAME );
+		pAudioStream = level_GetStreamByName( _BARTER_ATTRACT_STREAMING_FILENAME );	// never a transmission
 #endif
 		if( pAudioStream ) {
 			f32 fPan;

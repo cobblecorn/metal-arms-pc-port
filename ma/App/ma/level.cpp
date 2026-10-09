@@ -1139,6 +1139,24 @@ Level_t Level_aInfo[] = {
 /////////////////////////////////////////////////////////////////////////////////////
 // MULTIPLAYER LEVELS
 /////////////////////////////////////////////////////////////////////////////////////
+#if FANG_WINGC
+	// Retail GameCube menu IDs 43-56 use this order, not the source Xbox world order.
+	// Keep worlds, scripts, materials and the Coliseum callbacks together.
+	"1 Big E", "WE01multi01", LEVEL_MULTIPLAYER_1, "WE01multi01", "ms_mp_01", NULL, NULL, NULL, NULL,
+	"2 Mil Factory", "WE02multi02", LEVEL_MULTIPLAYER_2, "WE02multi02", "ms_mp_02", NULL, NULL, NULL, NULL,
+	"3 Tanks A Lot", "WE03multi03", LEVEL_MULTIPLAYER_3, "WE03multi03", "ms_mp_03", NULL, NULL, NULL, NULL,
+	"4 Last Minute Effort", "WE05multi05", LEVEL_MULTIPLAYER_4, "WE05multi05", "ms_mp_05", NULL, NULL, NULL, NULL,
+	"5 Mac Attack", "WE11multi11", LEVEL_MULTIPLAYER_5, "WE11multi11", "ms_mp_11", NULL, NULL, NULL, NULL,
+	"6 Old Droid Canyon", "WE15multi15", LEVEL_MULTIPLAYER_6, "WE15multi15", "ms_mp_15", NULL, NULL, NULL, NULL,
+	"7 The Trenches", "WE08multi08", LEVEL_MULTIPLAYER_7, "WE08multi08", "ms_mp_08", NULL, NULL, NULL, NULL,
+	"8 Matt Big Gun Fun", "WE12multi12", LEVEL_MULTIPLAYER_8, "WE12multi12", "ms_mp_12", NULL, NULL, NULL, NULL,
+	"9 Morbot Land", "WE14multi14", LEVEL_MULTIPLAYER_9, "WE14multi14", "ms_mp_14", NULL, NULL, NULL, NULL,
+	"10 The Reactor Factor", "WE09multi09", LEVEL_MULTIPLAYER_10, "WE09multi09", "ms_mp_09", NULL, NULL, NULL, NULL,
+	"11 DMA Death Sphere", "WE10multi10", LEVEL_MULTIPLAYER_11, "WE10multi10", "ms_mp_10", NULL, NULL, NULL, NULL,
+	"12 Ruins", "WE07multi07", LEVEL_MULTIPLAYER_12, "WE07multi07", "ms_mp_07", NULL, NULL, NULL, NULL,
+	"13 The Coliseum", "WE04multi04", LEVEL_MULTIPLAYER_13, "WE04multi04", "ms_mp_04", CColiseumMiniGame::LoadMP, CColiseumMiniGame::UnloadMP, CColiseumMiniGame::WorkMP, NULL,
+	"14 Corrosive City", "WE06multi06", LEVEL_MULTIPLAYER_14, "WE06multi06", "ms_mp_06", NULL, NULL, NULL, NULL,
+#else
 	///////////////////////////
 	// Level MP1: Multiplayer 1
 	"1 MP Level 1",					// pszTitle
@@ -1364,6 +1382,7 @@ Level_t Level_aInfo[] = {
 	0.0f,							// fProjOffs
 	1.0f,							// fProjRngAdj
 	#endif
+#endif
 	// MUST BE NULL TERMINATED
 	NULL,	
 };

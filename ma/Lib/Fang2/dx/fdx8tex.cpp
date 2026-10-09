@@ -2451,6 +2451,43 @@ CFTexInst *ftex_CreateDynamicEMBM( u32 nTexelsAcross, u32 nTexelsDown, cchar *ps
 	d3dPool = D3DPOOL_MANAGED;
 	#endif
 
+#if FANG_WINGC
+	{
+		// Liquid bump maps: X8L8V8U8 is missing on many PC GPUs (not every vendor exposes it), and
+		// without the texture water and lava surfaces are not drawn at all. Q8W8V8U8 has the same byte
+		// layout; plain ARGB keeps the surface visible on cards with neither. MA_PORT_EMBM_FORMAT=q8|argb
+		// forces a fallback for testing.
+		static const D3DFORMAT _aEmbmFormats[] = { D3DFMT_X8L8V8U8, D3DFMT_Q8W8V8U8, D3DFMT_A8R8G8B8 };
+		static const char *_apszEmbmFormats[] = { "X8L8V8U8", "Q8W8V8U8", "A8R8G8B8" };
+		static s32 _nEmbmFormat = -1;	// the first that worked, once known
+		u32 nFirst = 0;
+		char szForce[16];
+		if( GetEnvironmentVariableA( "MA_PORT_EMBM_FORMAT", szForce, sizeof( szForce ) ) ) {
+			nFirst = !_stricmp( szForce, "argb" ) ? 2 : ( !_stricmp( szForce, "q8" ) ? 1 : 0 );
+		}
+		if( _nEmbmFormat > (s32)nFirst ) {
+			nFirst = (u32)_nEmbmFormat;
+		}
+		hr = E_FAIL;
+		for( u32 i = nFirst; i < sizeof( _aEmbmFormats ) / sizeof( _aEmbmFormats[0] ); i++ ) {
+			hr = FDX8_pDev->CreateTexture( pTexData->nD3DWidth, pTexData->nD3DHeight, 1, nUsage,
+										   _aEmbmFormats[i], d3dPool, &pTexData->pD3DTexture );
+			if( SUCCEEDED( hr ) ) {
+				if( _nEmbmFormat != (s32)i ) {
+					DEVPRINTF( "ftex_CreateDynamicEMBM(): liquid bump maps use %s%s.\n", _apszEmbmFormats[i],
+							   i ? " (the GPU or driver has no X8L8V8U8)" : "" );
+					_nEmbmFormat = (s32)i;
+				}
+				pTexData->nD3DFormatColor = _aEmbmFormats[i];	// same 32-bit size as X8L8V8U8
+				break;
+			}
+			DEVPRINTF( "ftex_CreateDynamicEMBM(): the GPU refused %s for '%s' (hr=0x%08x).\n", _apszEmbmFormats[i], pszName, (u32)hr );
+		}
+		if( FAILED( hr ) ) {
+			goto _CreateEMBMFailure;
+		}
+	}
+#else
 	if( FAILED( hr = FDX8_pDev->CreateTexture(
 								pTexData->nD3DWidth,
 								pTexData->nD3DHeight,
@@ -2459,10 +2496,11 @@ CFTexInst *ftex_CreateDynamicEMBM( u32 nTexelsAcross, u32 nTexelsDown, cchar *ps
 								pTexData->nD3DFormatColor,
 								d3dPool,
 								&pTexData->pD3DTexture
-							) ) ) 
+							) ) )
 	{
 		goto _CreateEMBMFailure;
 	}
+#endif
 
 	if( phRes ) 
 	{

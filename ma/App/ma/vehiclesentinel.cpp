@@ -1021,6 +1021,23 @@ void CVehicleSentinel::_TracerKilledCallback( TracerDef_t *pTracerDef, TracerKil
 				ExplosionSpawnParams.UnitDir = pImpact->UnitFaceNormal;
 				ExplosionSpawnParams.uSurfaceType = CGColl::GetSurfaceType( pImpact );
 				ExplosionSpawnParams.pDamageProfile = NULL;
+#if FANG_WINGC
+				// The retail "Sentinel" explosion names a damage profile 'SentinelCannon' that the
+				// damage tables never define, so the shell's blast did no damage at all (only the
+				// impact's shove). Use the cannon's own profiles: player-driven or AI, versus or not.
+				{
+					static CDamageProfile *s_apCannon[4];
+					static BOOL s_bLooked = FALSE;
+					if( !s_bLooked ) {
+						static cchar *s_apszCannon[4] = { "SentinelCannonNPC", "SentinelCannonPC", "mp_SentinelCannonNPC", "mp_SentinelCannonPC" };
+						for( u32 i = 0; i < 4; ++i ) s_apCannon[i] = CDamage::FindDamageProfile( s_apszCannon[i], FALSE, TRUE );
+						s_bLooked = TRUE;
+					}
+					const u32 nProfile = (pTracerDef->Damager.nDamagerPlayerIndex >= 0 ? 1 : 0) +
+						(MultiplayerMgr.IsMultiplayer() && !MultiplayerMgr.IsLocalCoop() ? 2 : 0);
+					ExplosionSpawnParams.pDamageProfile = s_apCannon[nProfile] ? s_apCannon[nProfile] : s_apCannon[nProfile & 1];
+				}
+#endif
 				ExplosionSpawnParams.pDamager = &pTracerDef->Damager;
 
 				CExplosion2::SpawnExplosion( hSpawner, pSentinel->m_hShellExplosion, &ExplosionSpawnParams );

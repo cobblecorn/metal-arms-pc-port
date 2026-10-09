@@ -111,11 +111,14 @@ int Level_nLoadedIndex=0;struct{const char* pszWorldResName;}Level_aInfo[1]={{"W
 GATE_CHECKS = r'''
 void run(){
  CDamageProfile titan,normal;CEBoomer gate;gate.m_pDamageOnlyProfile=&titan;CDamageData damage;damage.m_pDamageProfile=&normal;
- for(int i=0;i<4;i++){damage.m_Damager.nDamagerPlayerIndex=i;int before=gate.hits;gate.InflictDamage(&damage);require(gate.hits==before+1,"each co-op player can damage the retail entrance with ordinary weapons");}
- for(int mode=0;mode<5;mode++){
+ for(int count=1;count<=4;count++){
+  CPlayer::m_nPlayerCount=count;MultiplayerMgr.coop=count>1;
+  for(int i=0;i<count;i++){damage.m_Damager.nDamagerPlayerIndex=i;int before=gate.hits;gate.InflictDamage(&damage);require(gate.hits==before+1,"solo and every co-op player can damage the retail entrance with ordinary weapons");}
+ }
+ for(int mode=0;mode<6;mode++){
   gate.name="frontie";MultiplayerMgr.coop=true;Level_aInfo[0].pszWorldResName="WEWCcomm_02";Level_nLoadedIndex=0;damage.m_Damager.nDamagerPlayerIndex=0;
-  if(mode==0)MultiplayerMgr.coop=false;if(mode==1)gate.name="other";if(mode==2)Level_aInfo[0].pszWorldResName="other";if(mode==3)Level_nLoadedIndex=-1;if(mode==4)damage.m_Damager.nDamagerPlayerIndex=-1;
-  int before=gate.hits;gate.InflictDamage(&damage);require(gate.hits==before,"fallback excludes solo/PvP, other doors/worlds, unloaded levels and NPC shots");
+  if(mode==0)gate.name="other";if(mode==1)Level_aInfo[0].pszWorldResName="other";if(mode==2)Level_aInfo[0].pszWorldResName="we01multi01";if(mode==3)Level_nLoadedIndex=-1;if(mode==4)damage.m_Damager.nDamagerPlayerIndex=-1;if(mode==5)damage.m_Damager.nDamagerPlayerIndex=CPlayer::m_nPlayerCount;
+  int before=gate.hits;gate.InflictDamage(&damage);require(gate.hits==before,"fallback excludes other doors/worlds, PvP maps, unloaded levels, NPC shots and invalid player indices");
   damage.m_pDamageProfile=&titan;gate.InflictDamage(&damage);require(gate.hits==before+1,"Titan cannon remains accepted by original profile filter");damage.m_pDamageProfile=&normal;
  }
  MultiplayerMgr.coop=true;Level_nLoadedIndex=0;Level_aInfo[0].pszWorldResName="WEWCcomm_02";gate.name="frontie";damage.m_Damager.nDamagerPlayerIndex=0;

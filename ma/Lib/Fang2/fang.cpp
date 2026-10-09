@@ -132,8 +132,9 @@ void fang_Init( void ) {
 	#if FANG_WINGC
 		// PC campaign collision queries regularly exceed the console-era 250-impact limit.
 		// A WEWRresrch3 query reached 1,046 impacts, and a WEWHchase01 one 2,077 (the chase's debris);
-		// about 0.4 MB of impact records.
-		Fang_ConfigDefs.nColl_MaxImpacts = 4096;
+		// about 0.4 MB of impact records. Later logs show the chase going past 4,096 and test runs
+		// reaching about 26,000, so allow 32,768 (about 3 MB).
+		Fang_ConfigDefs.nColl_MaxImpacts = 32768;
 	#else
 		Fang_ConfigDefs.nColl_MaxImpacts = 250;
 	#endif
@@ -235,9 +236,9 @@ void fang_Init( void ) {
 	// The consoles' budget ran out in busy fights (WEWHchase01: "No free vertices and couldn't reclaim
 	// any", so bullet marks stopped appearing), and twice it still ran out in wedmmines02. Each decal is
 	// its own small fdraw list, so the pool is not bound by fdraw's buffer: five times the console budget
-	// (about 0.5 MB of vertices).
-	Fang_ConfigDefs.nMaxDecals = 1000;
-	Fang_ConfigDefs.nMaxDecalVertices = 16000;
+	// (about 0.5 MB of vertices). WERMmorbot2 still ran out, so four times that again (about 2 MB).
+	Fang_ConfigDefs.nMaxDecals = 4000;
+	Fang_ConfigDefs.nMaxDecalVertices = 64000;
 #else
 	Fang_ConfigDefs.nMaxDecals = 200;
 	Fang_ConfigDefs.nMaxDecalVertices = 3000;
@@ -762,13 +763,43 @@ void fang_Assert( cchar *pszFile, int nLine, cchar *pszExpr ) {
 	#define __MAX_MSG_LEN 200
 	static char szMsgString[__MAX_MSG_LEN+1];
 	int nReturnValue;
-	DEVPRINTF( "*** FANG ASSERTION FAILURE *** File: %s Line: %i Expression: %s\n", pszFile, nLine, pszExpr );
-	port_LogFangAssertionStack( pszFile, nLine );
+
+	// These are the developers' checks (the retail game shipped with them compiled out). Players get no
+	// dialog: each failing check is logged with its stack the first time, then counted, and play goes
+	// on. MA_PORT_ASSERT_DIALOG=1 brings back the Ok/Cancel dialog for testing.
+	struct AssertSite_t { cchar *pszFile; int nLine; u32 nCount; };
+	static AssertSite_t _aSites[256];
+	static u32 _nSites = 0;
+	AssertSite_t *pSite = NULL;
+	for( u32 i = 0; i < _nSites; i++ ) {
+		if( _aSites[i].nLine == nLine && !strcmp( _aSites[i].pszFile, pszFile ) ) {
+			pSite = &_aSites[i];
+			break;
+		}
+	}
+	if( !pSite && _nSites < sizeof( _aSites ) / sizeof( _aSites[0] ) ) {
+		pSite = &_aSites[_nSites++];
+		pSite->pszFile = pszFile;
+		pSite->nLine = nLine;
+		pSite->nCount = 0;
+	}
+	const u32 nCount = pSite ? ++pSite->nCount : 1;
+	if( nCount == 1 ) {
+		DEVPRINTF( "*** FANG ASSERTION FAILURE *** File: %s Line: %i Expression: %s\n", pszFile, nLine, pszExpr );
+		port_LogFangAssertionStack( pszFile, nLine );
+	} else if( nCount == 10 || nCount == 100 || nCount == 1000 || nCount % 10000 == 0 ) {
+		DEVPRINTF( "*** FANG ASSERTION FAILURE *** File: %s Line: %i (%u times so far)\n", pszFile, nLine, nCount );
+	}
 	// Opt-in unattended integration tests report a failure and exit instead of leaving a modal dialog.
 	char szCoopTest[32];
 	if( GetEnvironmentVariableA( "MA_PORT_TEST_COOP_POLISH", szCoopTest, sizeof(szCoopTest) ) > 0 ) {
 		DEVPRINTF( "COOP-TEST FAIL: engine assertion; aborting unattended test.\n" );
 		ExitProcess(3); // Engine globals require level shutdown; skip atexit on an aborted frame.
+	}
+
+	char szDialog[8];
+	if( GetEnvironmentVariableA( "MA_PORT_ASSERT_DIALOG", szDialog, sizeof( szDialog ) ) == 0 || szDialog[0] != '1' ) {
+		return;
 	}
 
 	_snprintf( szMsgString, __MAX_MSG_LEN, "*** FANG ASSERTION FAILURE ***\n\nFile: %s\nLine: %i\nExpression: %s\n\nClick Ok to continue or Cancel to abort.", pszFile, nLine, pszExpr );

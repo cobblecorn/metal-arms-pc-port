@@ -44,12 +44,12 @@
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 //   -save-dir <dir> the save root: Profiles and Co-op folders and settings.ini (default: %APPDATA%\MAGITS)
 //   -start-at X,Y,Z[,YAW] test/play aid: move player 1 to this world position (yaw in degrees) once play begins
-//   -sfx-db <dB>    trim for sound effects other than dialogue; default -11, 0 = retail mix
+//   -sfx-db <dB>    trim for sound effects other than dialogue; default 0 (retail mix)
 //   -aniso <n>      anisotropic texture filtering level (default 16, capped by the GPU; 1 = off)
 //   -test-win-level <s> test aid: complete the loaded level s seconds in (reaches the results screen)
 //   -test-give <item>   test aid: give player 1 a weapon/throwable (e.g. "coring charge") and select it
 //   -coop-hold on|off  co-op tripwire events wait for every player (default on; off = test aid)
-//   -player-sfx-db <dB> further trim for the player's own 2D sounds (weapons, footsteps); default -6, 0 = retail mix
+//   -player-sfx-db <dB> further trim for the player's own 2D sounds (weapons, footsteps); default 0 (retail mix)
 //   -instance-label <name> add a short label to the window title (useful for parallel test windows)
 
 #include "res/resource.h"
@@ -82,7 +82,7 @@ extern BOOL FDX8Vid_bPortBorderless;	// Fang2/dx/fdx8vid.cpp
 #define _DEFAULT_LOG_FILE		"ma_port.log"
 #define _DEFAULT_ASSET_LOG_FILE	"ma_port_asset_log.txt"
 
-static const f32 _FANG_HEAP_MB = 128.0f;		// desktop has plenty; the original PC build used 64
+static const f32 _FANG_HEAP_MB = 1024.0f;		// far past any level's use (the GameCube had 24 MB; the original PC build used 64)
 
 static char _szDataDir[MAX_PATH];
 static char _szGameRoot[MAX_PATH + 2];
@@ -765,6 +765,7 @@ static bool _ParseArgs( int argc, char **argv )
 			SetEnvironmentVariableA( "MA_PORT_BUTTON_PROMPTS", argv[++i] );
 		}
 		else if( !_stricmp( pszArg, "-test-keys" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_TEST_KEYS", argv[++i] );	// read by pc_input.cpp
+		else if( !_stricmp( pszArg, "-aa" ) && bHasValue )			SetEnvironmentVariableA( "MA_PORT_AA", argv[++i] );		// anti-aliasing samples for this run
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );
 		else if( !_stricmp( pszArg, "-save-dir" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SAVE_DIR", argv[++i] );	// read by Fang2/dx/fdx8storage.cpp
@@ -905,6 +906,45 @@ static bool _PickVideoMode( FVidWin_t *pWin )
 // main
 // ---------------------------------------------------------------------------
 
+// Start the game again with this run's options, minus those that would undo a display change or
+// skip the menus (-res, -fullscreen/-windowed/-borderless, -mission, -level, -coop and test starts).
+static void _Relaunch( int argc, char **argv )
+{
+	static const char *s_apszSkipWithValue[] = { "-res", "-mission", "-level", "-coop", "-world-only", "-start-at",
+		"-test-win-level", "-test-give", "-export-character-meshes" };
+	static const char *s_apszSkip[] = { "-fullscreen", "-windowed", "-borderless" };
+	char szExe[MAX_PATH];
+	if( !GetModuleFileNameA( NULL, szExe, sizeof(szExe) ) ) return;
+	static char szCommand[8192];
+	int nLength = _snprintf( szCommand, sizeof(szCommand), "\"%s\"", szExe );
+	for( int i = 1; i < argc && nLength > 0 && nLength < (int)sizeof(szCommand); i++ )
+	{
+		bool bSkip = false;
+		for( size_t n = 0; n < sizeof(s_apszSkipWithValue) / sizeof(s_apszSkipWithValue[0]); n++ )
+		{
+			if( !_stricmp( argv[i], s_apszSkipWithValue[n] ) ) { bSkip = true; i++; break; }
+		}
+		for( size_t n = 0; !bSkip && n < sizeof(s_apszSkip) / sizeof(s_apszSkip[0]); n++ )
+		{
+			if( !_stricmp( argv[i], s_apszSkip[n] ) ) bSkip = true;
+		}
+		if( bSkip || i >= argc ) continue;
+		const int nAdded = _snprintf( szCommand + nLength, sizeof(szCommand) - nLength, " \"%s\"", argv[i] );
+		if( nAdded < 0 ) return;
+		nLength += nAdded;
+	}
+	char szDirectory[MAX_PATH];
+	const DWORD nDirectory = GetCurrentDirectoryA( sizeof(szDirectory), szDirectory );
+	STARTUPINFOA Startup = { sizeof(Startup) };
+	PROCESS_INFORMATION Process;
+	if( CreateProcessA( szExe, szCommand, NULL, NULL, FALSE, 0, NULL,
+		nDirectory && nDirectory < sizeof(szDirectory) ? szDirectory : NULL, &Startup, &Process ) )
+	{
+		CloseHandle( Process.hThread );
+		CloseHandle( Process.hProcess );
+	}
+}
+
 int main( int argc, char **argv )
 {
 	_nMainThreadId = GetCurrentThreadId();
@@ -968,6 +1008,22 @@ int main( int argc, char **argv )
 		}
 	}
 
+	// Keep the previous run's log (a crash or freeze is often only noticed after restarting).
+	{
+		char szPrevious[MAX_PATH + 16];
+		const char *pszDot = strrchr( _szLogFile, '.' );
+		const char *pszSlash = strrchr( _szLogFile, '\\' ) > strrchr( _szLogFile, '/' ) ? strrchr( _szLogFile, '\\' ) : strrchr( _szLogFile, '/' );
+		if( pszDot && pszDot > pszSlash )
+		{
+			_snprintf( szPrevious, sizeof(szPrevious), "%.*s.prev%s", (int)(pszDot - _szLogFile), _szLogFile, pszDot );
+		}
+		else
+		{
+			_snprintf( szPrevious, sizeof(szPrevious), "%s.prev", _szLogFile );
+		}
+		szPrevious[sizeof(szPrevious) - 1] = 0;
+		MoveFileExA( _szLogFile, szPrevious, MOVEFILE_REPLACE_EXISTING );
+	}
 	_pLog = fopen( _szLogFile, "w" );
 	_hLogThread = CreateThread( NULL, 0, _LogWriter, NULL, 0, NULL );
 	atexit( _LogFlush );	// early error returns and exit() still write the last lines
@@ -979,19 +1035,55 @@ int main( int argc, char **argv )
 	fang_Init();
 
 	Fang_ConfigDefs.pFang_FcnPrintf = _FangPrintf;
-	Fang_ConfigDefs.nRes_HeapBytes = (u32)( _FANG_HEAP_MB * 1024.0f * 1024.0f );
+	{
+		// The engine heap is one block reserved up front (not zeroed, so untouched pages cost nothing).
+		// Ask for _FANG_HEAP_MB, halving if this 32-bit process cannot find that much in one piece.
+		u32 nHeapMB = (u32)_FANG_HEAP_MB;
+		for( ; nHeapMB > 128; nHeapMB /= 2 ) {
+			void *pProbe = malloc( (size_t)nHeapMB * 1024 * 1024 );
+			if( pProbe ) {
+				free( pProbe );
+				break;
+			}
+		}
+		Fang_ConfigDefs.nRes_HeapBytes = nHeapMB * 1024 * 1024;
+		_Log( "Memory: engine heap %u MB\n", nHeapMB );
+	}
 	Fang_ConfigDefs.pszFile_GameRootPathName = _szGameRoot;
 	Fang_ConfigDefs.pszFile_MasterFilePathName = _szMasterFile;
 	Fang_ConfigDefs.pszMovie_BasePathName = _szMovieDir;
-	Fang_ConfigDefs.nAudio_MaxSoundBytes = 1024 * (36 * 1024);
+	Fang_ConfigDefs.nAudio_MaxSoundBytes = 256 * 1024 * 1024;	// loaded sound banks (the GameCube had 16 MB of sound memory)
 	Fang_ConfigDefs.nAMem_FastAuxiliaryMemoryBytes = 8192000;	// the DX maximum: two 1 MB checkpoint streams plus data streaming
-	Fang_ConfigDefs.nWorld_MaxIntersects = 3500;
 	Fang_ConfigDefs.bCheckPoint_StartupSystem = TRUE;
-	Fang_ConfigDefs.nText_MaxCharsPerFrame = 550;
-	Fang_ConfigDefs.nText_MaxCharsPerPrintf = 190;
-	Fang_ConfigDefs.nMaxParticleEmitters = 500;
-	Fang_ConfigDefs.nMaxParticles = 3000;
-	Fang_ConfigDefs.nMaxParticleEmitterSprites = 1000;
+	// The console-era pools ran out in busy levels on PC (dropped collision contacts, missing
+	// effects and bullet marks, invisible meshes). A desktop can afford far more than any level
+	// needs, so every pool is set well past the most ever seen in play (each is u32).
+	Fang_ConfigDefs.nWorld_MaxIntersects = 65536;
+	Fang_ConfigDefs.nColl_MaxImpacts = 131072;
+	Fang_ConfigDefs.nWorld_CollBufBytes = 1024 * 1024;
+	Fang_ConfigDefs.nWorld_NodeCacheBytes = 256 * 1024;
+	Fang_ConfigDefs.nWorld_MaxSortedObjectsPerNode = 4096;
+	Fang_ConfigDefs.nWorld_MaxLightsPerDraw = 8192;
+	Fang_ConfigDefs.nWorld_MaxMeshesPerDraw = 16000;	// x4 sizes a u16 display list (fRenderSort): must stay under 16384
+	Fang_ConfigDefs.nMesh_MaxActiveLights = 2048;
+	Fang_ConfigDefs.nMesh_MaxCollSpheres = 2048;
+	Fang_ConfigDefs.nXfm_MaxModelStackXfms = 64;
+	Fang_ConfigDefs.nRenderer_StackBytes = 32 * 1024;
+	Fang_ConfigDefs.nViewport_MaxViewports = 64;
+	Fang_ConfigDefs.nShadow_D3DIndexBufferCount = 16384;
+	Fang_ConfigDefs.nText_MaxCharsPerFrame = 8192;
+	Fang_ConfigDefs.nText_MaxCharsPerPrintf = 1024;
+	Fang_ConfigDefs.nFile_MaxSimultaneousFilesOpen = 128;
+	Fang_ConfigDefs.nForce_MaxActiveEnvelopes = 64;
+	Fang_ConfigDefs.nMaxParticleEmitters = 8192;
+	Fang_ConfigDefs.nMaxParticles = 131072;
+	Fang_ConfigDefs.nMaxParticleEmitterSprites = 4096;
+	Fang_ConfigDefs.nVerlet_MaxCount = 4096;
+	Fang_ConfigDefs.nVtxPool_VertexCount = 65536;
+	Fang_ConfigDefs.nLightGroup_nMaxVirtualLights = 256;
+	Fang_ConfigDefs.nLightPool_nNumLights = 1024;
+	Fang_ConfigDefs.nMaxDecals = 16384;
+	Fang_ConfigDefs.nMaxDecalVertices = 262144;
 	// fdraw streams primitives into one dynamic VB. More space means fewer DISCARD locks
 	// when 2D effects wrap it within a frame; the Fang default is only 2,048 vertices.
 	Fang_ConfigDefs.nDraw_D3DVBVertexCount = 8192;
@@ -1101,6 +1193,18 @@ int main( int argc, char **argv )
 	}
 	Win.nSwapInterval = _bNoVsync ? 0 : 1;						// vsync unless -no-vsync
 	Win.fUnitFSAA = 0.0f;
+	{
+		// Anti-aliasing (Advanced Settings, or -aa N for this run): fdx8vid picks the GPU's nearest count.
+		char szAA[8];
+		int nSamples = pcdisplay_AntiAliasing();
+		if( GetEnvironmentVariableA( "MA_PORT_AA", szAA, sizeof( szAA ) ) > 0 ) {
+			nSamples = atoi( szAA );	// this run only; the saved setting is unchanged
+		}
+		extern u32 FDX8Vid_nPortMultiSamples;	// Fang2/dx/fdx8vid.cpp
+		FDX8Vid_nPortMultiSamples = (u32)( nSamples > 0 ? nSamples : 0 );
+		pcdisplay_SetLaunchedAntiAliasing( pcdisplay_AntiAliasing() );
+		_Log( "Video: anti-aliasing %dx requested\n", nSamples );
+	}
 	Win.hInstance = GetModuleHandle( NULL );
 	Win.hWnd = 0;
 	Win.nIconIDI = IDI_MA_PORT;	// port/res/ma_port.rc
@@ -1149,5 +1253,9 @@ int main( int argc, char **argv )
 	}
 	_LogFlush();
 	if( _pLog ) fclose( _pLog );
+	if( pcdisplay_RelaunchRequested() )
+	{
+		_Relaunch( argc, argv );
+	}
 	return 0;
 }

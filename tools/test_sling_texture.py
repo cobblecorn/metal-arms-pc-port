@@ -15,6 +15,7 @@ BASE = r'''
 using u8=unsigned char;using u16=unsigned short;using u32=unsigned;using s32=int;using f32=float;using BOOL=int;
 constexpr BOOL TRUE=1,FALSE=0;
 #define MA_PC_INPUT 1
+#define FMATH_MIN(a,b) std::min(a,b)
 #define FANG_PLATFORM_WIN 1
 #define FASSERT(x) ((void)0)
 #define FSTATIC static
@@ -134,7 +135,7 @@ void run(){
 TURRET = r'''
 namespace turret {
 constexpr int BOTSUBCLASS_SITEWEAPON_RATGUN=7;
-struct{float m_fYawAdjust=0,m_fPitchAdjust=0;}Player_aPlayer[1];
+struct{float m_fYawAdjust=0,m_fPitchAdjust=0;float ComputeLookSensitivityMultiplier(){return 1.f;}}Player_aPlayer[1];
 float mouseX=0,mouseY=0;float TakeMouseLookDelta(BOOL pitch){return pitch?mouseY:mouseX;}
 CFVec3A delta(int type,float stickX,float stickY,float dt,float mx,float my){
  struct{float m_fMaxYawVelocityPossess=2,m_fMaxPitchVelocityPossess=3;}data;auto m_pData=&data;
@@ -146,7 +147,7 @@ TURRET_CHECKS = r'''
 return {fYawDelta,fPitchDelta,0};}
 void run(){for(float stick:{-1.f,0.f,1.f})for(float mouse:{-.2f,0.f,.2f}){
  auto ordinary=delta(1,stick,stick,.016f,mouse,mouse),rat=delta(7,stick,stick,.016f,mouse,mouse);
- require(std::abs(rat.y+ordinary.y)<.00001f,"RAT reverses combined stick and mouse vertical input");
+ require(std::abs(rat.y-(stick*2*.016f+mouse))<.00001f,"RAT caps pitch speed to yaw without applying inversion twice");
  require(rat.x==ordinary.x,"RAT horizontal aim unchanged");
  require(std::abs(ordinary.y-(stick*3*.016f+mouse))<.00001f,"other turret vertical input unchanged");
 }}
@@ -185,7 +186,7 @@ def main():
     code += method(render, 'void fsh_CheckVB(') + RENDER_CHECKS
     site = (ROOT / 'ma/App/ma/site_botStateFns.cpp').read_text()
     start = site.index('\t\tf32 fYawVelocity =')
-    end = site.index('#endif', start) + len('#endif')
+    end = site.index('m_pData->m_fYawWS +=', start)
     code += TURRET + site[start:end] + TURRET_CHECKS
     code += 'int main(){sling::run();texture::run();render::run();turret::run();std::printf("PASS: %d offline slingshot/texture/shader/turret checks; game not launched.\\n",checks);}\n'
     OUT.mkdir(parents=True, exist_ok=True)

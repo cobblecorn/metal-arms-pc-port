@@ -1,4 +1,4 @@
-# Factory packing recovery — 2026-10-05
+# Factory packing recovery â€” 2026-10-05
 
 The user's combat encounter had completed: all six authored fighters had zero
 health. The HUD/equipment removal was the intended handoff into PROGRAM, not

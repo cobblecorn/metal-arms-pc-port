@@ -213,7 +213,10 @@ static cwchar *_apwszKeyCapLabels[] = { L"Space", L"Esc", L"E", L"R" };
 static f32 _fPromptLineHeightPerScale = 0.041f, _fPromptLineTopPerScale = 0.0115f;
 
 static void _MeasurePromptFont( f32 fPrintY, f32 fScale, f32 fTop, f32 fBottom ) {
-	if( fScale > 0.0f && fBottom > fTop ) {
+	// One whole line only: a print clipped at the screen edge or spanning lines would throw every
+	// later prompt and key cap off its line.
+	const f32 fPerScale = fScale > 0.0f ? (fBottom - fTop) / fScale : 0.0f;
+	if( fPerScale > 0.025f && fPerScale < 0.065f && fTop >= 0.0f && fBottom <= 1.0f ) {
 		_fPromptLineHeightPerScale = (fBottom - fTop) / fScale;
 		_fPromptLineTopPerScale = (fTop - fPrintY / 0.75f) / fScale;
 	}
@@ -508,6 +511,46 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 	const f32 fAspect = fHalfYRes / fHalfXRes;	// fractions across per fraction down, for square shapes
 	f32 fRowTextY = -1.0f, fRowNextLeft = 0.0f;	// where the next prompt on the current row may start
 
+	// Each prompt's start, flowed left to right from the retail positions and, when a row would run past
+	// the panel's right edge, pulled back from the right using the widths drawn last frame (key caps
+	// and keyboard wording are wider than the pad art the retail layout was spaced for).
+	const u32 nMaxPrompts = 8;
+	static const Wpr_DataTypes_ScreenData_t *pLastScreen = NULL;
+	static f32 afLastWidth[nMaxPrompts];
+	if( pLastScreen != pScreen ) {
+		pLastScreen = pScreen;
+		for( u32 n=0; n < nMaxPrompts; n++ ) afLastWidth[n] = 0.0f;
+	}
+	f32 afStart[nMaxPrompts], afRowY[nMaxPrompts];
+	const u32 nPrompts = FMATH_MIN( pScreen->nNumButtons, nMaxPrompts );
+	for( u32 n=0; n < nPrompts; n++ ) {
+		const Wpr_DataTypes_ButtonLayout_t *pB = &pScreen->paButtons[n];
+		const f32 fH = pB->fPixelSize / (2.0f * fHalfYRes);
+		afRowY[n] = (((pB->fBiPolarUnitY - 1.0f) * -0.5f) * 0.75f) - (fH * 0.10f);
+		afStart[n] = (pB->fBiPolarUnitX - 0.5f * fH * fAspect + 1.0f) * 0.5f;
+	}
+	{
+		const f32 fRightLimit = 0.84f, fRowGap = 0.02f;
+		s32 nPrev = -1;
+		for( u32 n=0; n < nPrompts; n++ ) {
+			if( !(nDrawButtonMask & (1<<n)) ) continue;
+			if( nPrev >= 0 && FMATH_FABS( afRowY[nPrev] - afRowY[n] ) < 0.02f ) {
+				afStart[n] = FMATH_MAX( afStart[n], afStart[nPrev] + afLastWidth[nPrev] + fRowGap );
+			}
+			nPrev = (s32)n;
+		}
+		s32 nNext = -1;
+		for( s32 n=(s32)nPrompts-1; n >= 0; n-- ) {
+			if( !(nDrawButtonMask & (1<<n)) || afLastWidth[n] <= 0.0f ) continue;
+			f32 fLimit = fRightLimit;
+			if( nNext >= 0 && FMATH_FABS( afRowY[nNext] - afRowY[n] ) < 0.02f ) {
+				fLimit = afStart[nNext] - fRowGap;
+			}
+			afStart[n] = FMATH_MIN( afStart[n], fLimit - afLastWidth[n] );
+			nNext = n;
+		}
+	}
+
 	for( u32 i=0; i < pScreen->nNumButtons; i++ ) {
 		Wpr_DataTypes_ButtonLayout_t *pButton = &pScreen->paButtons[i];
 		if( !(nDrawButtonMask & (1<<i)) ) {
@@ -523,7 +566,7 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 		const f32 fIconSize = _PROMPT_ICON_SIZE * fLineHeight;
 
 		// start where the retail icon started, or after the previous prompt on this row
-		f32 fLeft = (pButton->fBiPolarUnitX - 0.5f * fUnitHeight * fAspect + 1.0f) * 0.5f;
+		f32 fLeft = i < nPrompts ? afStart[i] : (pButton->fBiPolarUnitX - 0.5f * fUnitHeight * fAspect + 1.0f) * 0.5f;
 		if( fRowTextY >= 0.0f && FMATH_FABS( fRowTextY - fTextY ) < 0.02f ) {
 			fLeft = FMATH_MAX( fLeft, fRowNextLeft );
 		}
@@ -560,9 +603,14 @@ void wpr_drawutils_DrawButtonOverlay( Wpr_DataTypes_ScreenData_t *pScreen,
 			pButton->pwszInstructions );
 		f32 fTextL = fTextX, fTextT = fLineTop, fTextR = fTextX, fTextB = fLineTop + fLineHeight;
 		if( ftext_GetLastPrintBounds( &fTextL, &fTextT, &fTextR, &fTextB ) ) {
-			_MeasurePromptFont( fTextY, fScale, fTextT, fTextB );
+			if( fTextL >= 0.0f && fTextR <= 1.0f ) {
+				_MeasurePromptFont( fTextY, fScale, fTextT, fTextB );
+			}
 			fRowTextY = fTextY;
 			fRowNextLeft = fTextR + 0.02f;
+			if( i < nPrompts ) {
+				afLastWidth[i] = fTextR - fLeft;
+			}
 		}
 
 		if( i < WPR_DRAWUTILS_BUTTON_HITS ) {
@@ -735,22 +783,22 @@ void wpr_drawutils_DrawSelectionArrows( Wpr_DataTypes_TextLayout_t *pText,
 	_RecordBox( &Wpr_DrawUtils_aLastArrows[0], Lower, Upper, fHalfXRes, fHalfYRes );
 #endif
 
-	// draw the left arrow
+	// draw the left arrow (PC: pointing out, left; retail pointed in at the text)
 	Wpr_DrawUtils_aVtx[0].Pos_MS.Set( Lower.x, Lower.y, 1.0f ); 
 	Wpr_DrawUtils_aVtx[0].ColorRGBA.Set( 0.0f, 0.47f, 0.75f, 0.90f );//0.80f, 0.80f, 0.80f, 0.90f );
-	Wpr_DrawUtils_aVtx[0].ST.Set( 1.0f, 0.0f );
+	Wpr_DrawUtils_aVtx[0].ST.Set( 0.0f, 0.0f );
 
 	Wpr_DrawUtils_aVtx[1].Pos_MS.Set( Lower.x, Upper.y, 1.0f );						
 	Wpr_DrawUtils_aVtx[1].ColorRGBA = Wpr_DrawUtils_aVtx[0].ColorRGBA;
-	Wpr_DrawUtils_aVtx[1].ST.Set( 1.0f, 1.0f );
+	Wpr_DrawUtils_aVtx[1].ST.Set( 0.0f, 1.0f );
 
 	Wpr_DrawUtils_aVtx[2].Pos_MS.Set( Upper.x, Lower.y, 1.0f );
 	Wpr_DrawUtils_aVtx[2].ColorRGBA = Wpr_DrawUtils_aVtx[0].ColorRGBA;
-	Wpr_DrawUtils_aVtx[2].ST.Set( 0.0f, 0.0f );
+	Wpr_DrawUtils_aVtx[2].ST.Set( 1.0f, 0.0f );
 
 	Wpr_DrawUtils_aVtx[3].Pos_MS.Set( Upper.x, Upper.y, 1.0f );
 	Wpr_DrawUtils_aVtx[3].ColorRGBA = Wpr_DrawUtils_aVtx[0].ColorRGBA;
-	Wpr_DrawUtils_aVtx[3].ST.Set( 0.0f, 1.0f );
+	Wpr_DrawUtils_aVtx[3].ST.Set( 1.0f, 1.0f );
 
 	fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, Wpr_DrawUtils_aVtx, 4 );
 
@@ -762,16 +810,16 @@ void wpr_drawutils_DrawSelectionArrows( Wpr_DataTypes_TextLayout_t *pText,
 #endif
 
 	Wpr_DrawUtils_aVtx[0].Pos_MS.Set( Lower.x, Lower.y, 1.0f ); 
-	Wpr_DrawUtils_aVtx[0].ST.Set( 0.0f, 0.0f );
+	Wpr_DrawUtils_aVtx[0].ST.Set( 1.0f, 0.0f );
 
 	Wpr_DrawUtils_aVtx[1].Pos_MS.Set( Lower.x, Upper.y, 1.0f );						
-	Wpr_DrawUtils_aVtx[1].ST.Set( 0.0f, 1.0f );
+	Wpr_DrawUtils_aVtx[1].ST.Set( 1.0f, 1.0f );
 
 	Wpr_DrawUtils_aVtx[2].Pos_MS.Set( Upper.x, Lower.y, 1.0f );
-	Wpr_DrawUtils_aVtx[2].ST.Set( 1.0f, 0.0f );
+	Wpr_DrawUtils_aVtx[2].ST.Set( 0.0f, 0.0f );
 
 	Wpr_DrawUtils_aVtx[3].Pos_MS.Set( Upper.x, Upper.y, 1.0f );
-	Wpr_DrawUtils_aVtx[3].ST.Set( 1.0f, 1.0f );
+	Wpr_DrawUtils_aVtx[3].ST.Set( 0.0f, 1.0f );
 
 	fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, Wpr_DrawUtils_aVtx, 4 );
 }

@@ -71,6 +71,28 @@
 #include "pc_script_goals.h"
 #endif
 
+unsigned PortCoopScriptKillActor( const char *pszScriptName, unsigned nEvent, unsigned nActor ) {
+#if FANG_WINGC
+	// Unwelcome Home requires both total enemy deaths and kills made by
+	// Bot_GetPlayer. Its authored script only knows one campaign player.
+	// Count a partner's kill toward that quota while retaining the true
+	// killer in CPlayer stats and in every other event listener.
+	if( MultiplayerMgr.IsLocalCoop() && Level_nLoadedIndex >= 0 &&
+		!fclib_stricmp( Level_aInfo[Level_nLoadedIndex].pszWorldResName, "WEDiinvas01" ) &&
+		pszScriptName && !fclib_stricmp( pszScriptName, "xedi_town.sma" ) &&
+		nEvent == (unsigned)CFScriptSystem::GetEventNumFromName( "PlayerKills" ) ) {
+		for( s32 n=0; n<CPlayer::m_nPlayerCount; ++n ) {
+			if( nActor == (unsigned)Player_aPlayer[n].m_pEntityCurrent ) {
+				CEntity *pStory = Player_aPlayer[game_GetStoryPlayerIndex()].m_pEntityCurrent;
+				if( pStory ) return (unsigned)pStory;
+				break;
+			}
+		}
+	}
+#endif
+	return nActor;
+}
+
 #if FANG_WINGC
 struct _CoopScriptPlayerBinding {
 	CFScriptInst *pInst;

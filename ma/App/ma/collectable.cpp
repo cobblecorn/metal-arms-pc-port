@@ -1659,6 +1659,24 @@ static s32 _CoopGrantRecipient( const CBot *pBot ) {
 }
 #endif
 
+#if FANG_WINGC
+BOOL CCollectable::PortFindNearest( CollectableType_e eType, const CFVec3A &From_WS, CFVec3A *pFound_WS ) {
+	f32 fBestDistSq = -1.0f;
+	for( CCollectable *pCurr = (CCollectable *)flinklist_GetHead( &m_CollectablePoolAlive ); pCurr;
+		 pCurr = (CCollectable *)flinklist_GetNext( &m_CollectablePoolAlive, pCurr ) ) {
+		if( !pCurr->m_pCollectableType || pCurr->m_pCollectableType->m_eType != eType || !pCurr->IsInWorld() ) {
+			continue;
+		}
+		const f32 fDistSq = pCurr->MtxToWorld()->m_vPos.DistSq( From_WS );
+		if( fBestDistSq < 0.0f || fDistSq < fBestDistSq ) {
+			fBestDistSq = fDistSq;
+			*pFound_WS = pCurr->MtxToWorld()->m_vPos;
+		}
+	}
+	return fBestDistSq >= 0.0f;
+}
+#endif
+
 BOOL CCollectable::GiveToPlayer( CBot *pBot, CollectableType_e eType, f32 fScale ) {
 	FASSERT( pBot );
 	FASSERT( fScale > 0.0f );
@@ -3647,6 +3665,10 @@ BOOL CCollectable::_PickupBattery( void ) {
 		++pInv->m_uNumBatteries;
 		m_pCollectBot->SetHealthContainerCount( (f32) pInv->m_uNumBatteries );
 	}
+#if FANG_WINGC
+	DEVPRINTF( "Port: battery picked up: %u batteries, %.0f health containers, health %.2f of %.2f.\n",
+			   pInv->m_uNumBatteries, m_pCollectBot->HealthContainerCount(), m_pCollectBot->NormHealth(), m_pCollectBot->HealthContainerCount() );
+#endif
 
 	if( m_pCollectBot->ComputeUnitHealth() == 1.0f ) {
 		return FALSE;

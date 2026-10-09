@@ -468,6 +468,14 @@ static BOOL8 _bEndingMoviePlayed;
 static ControlMode_e _aeControlMode[MAX_PLAYERS];
 #if defined(MA_PC_INPUT)
 static void _SetCoopLetterboxModes( ControlMode_e eFrom, ControlMode_e eFrom2, ControlMode_e eTo );
+#if FANG_WINGC
+// Cutscene skip runs the scene at 10x speed with drawing off until its script leaves the letterbox.
+// A scene that never ends that way left a frozen screen with the pause menu locked. After
+// _PORT_SKIP_TIMEOUT real seconds, show the scene again at normal speed instead (no re-skip).
+#define _PORT_SKIP_TIMEOUT	6.0f
+static f32 _fPortSkipRealSecs = 0.0f;
+static BOOL _bPortSkipAbandoned = FALSE;
+#endif
 #endif
 #if FANG_WINGC
 static void _CoopWatchCamerasWork( void );
@@ -1101,7 +1109,11 @@ void game_ControlModeWork() {
 			// We get into this mode through game_EnterLetterBox().
 			if( Gamepad_aapSample[nControlIndex][GAMEPAD_MAIN_PAUSE]->uLatches & GAMEPAD_BUTTON_1ST_PRESS_MASK ) {
 				// the start button was pressed...should we abort the cutscene?
-				if( _bAllowCutSceneSkip ) {
+				if( _bAllowCutSceneSkip
+#if FANG_WINGC
+					&& !_bPortSkipAbandoned
+#endif
+				) {
 					if( (_pszCurCutSceneName == NULL) || game_IsCurrentGameAReplay() ||
 						(_pCutSceneTable->FindString( _pszCurCutSceneName ) != NULL) ) {
 						// The cutscene name was not found in the table or none was specified, so we'll let them skip it.
@@ -1115,6 +1127,10 @@ void game_ControlModeWork() {
 						_aeControlMode[nPlayer] = CONTROLMODE_LETTERBOXFF;
 #if defined(MA_PC_INPUT)
 						_SetCoopLetterboxModes( CONTROLMODE_LETTERBOX, CONTROLMODE_LETTERBOX, CONTROLMODE_LETTERBOXFF );
+#endif
+#if FANG_WINGC
+						_fPortSkipRealSecs = 0.0f;
+						DEVPRINTF( "Port: cutscene skip started ('%s').\n", _pszCurCutSceneName ? _pszCurCutSceneName : "unnamed" );
 #endif
 
 						CHud2 *pHud2 = CHud2::GetCurrentHud();
@@ -1130,6 +1146,32 @@ void game_ControlModeWork() {
 		///////////////////////////////////////////////////////////////////////////////////////////////////	
 		case CONTROLMODE_LETTERBOXFF:
 			// We get out of this mode through game_LeaveLetterBox().
+#if FANG_WINGC
+			if( nPlayer == CPlayer::m_nCurrent || !MultiplayerMgr.IsLocalCoop() ) {
+				static f32 s_fTimeout = -1.0f;	// MA_PORT_SKIP_TIMEOUT (seconds) overrides it for tests
+				if( s_fTimeout < 0.0f ) {
+					char szValue[16];
+					s_fTimeout = _PORT_SKIP_TIMEOUT;
+					if( GetEnvironmentVariableA( "MA_PORT_SKIP_TIMEOUT", szValue, sizeof(szValue) ) > 0 ) {
+						s_fTimeout = (f32)atof( szValue );
+					}
+				}
+				_fPortSkipRealSecs += FLoop_fRealPreviousLoopSecs;
+				if( _fPortSkipRealSecs > s_fTimeout ) {
+					DEVPRINTF( "Port: cutscene skip did not finish after %.0f s ('%s'); showing the rest of the scene.\n",
+						_PORT_SKIP_TIMEOUT, _pszCurCutSceneName ? _pszCurCutSceneName : "unnamed" );
+					floop_SetTimeScale( 1.0f );
+					gameloop_SetDrawEnabled( TRUE );
+					gameloop_SetSwapEnabled( TRUE );
+					_bPortSkipAbandoned = TRUE;
+					for( s32 n = 0; n < (s32)CPlayer::m_nPlayerCount && n < MAX_PLAYERS; ++n ) {
+						if( _aeControlMode[n] == CONTROLMODE_LETTERBOXFF ) {
+							_aeControlMode[n] = CONTROLMODE_LETTERBOX;
+						}
+					}
+				}
+			}
+#endif
 			break;
 	
 		///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1800,6 +1842,10 @@ BOOL game_EnterLetterbox( cchar *pszCutSceneName/*=NULL*/, BOOL bImmediate/*=FAL
 	letterbox_SlideOn( bImmediate );
 	_pszCurCutSceneName = gstring_Main.AddString( pszCutSceneName );
 	_bAllowCutSceneSkip = bAllowMovieSkip;
+#if FANG_WINGC
+	_bPortSkipAbandoned = FALSE;
+	_fPortSkipRealSecs = 0.0f;
+#endif
 
 	_aeControlMode[CPlayer::m_nCurrent] = CONTROLMODE_LETTERBOX;
 #if defined(MA_PC_INPUT)
@@ -1810,12 +1856,30 @@ BOOL game_EnterLetterbox( cchar *pszCutSceneName/*=NULL*/, BOOL bImmediate/*=FAL
 }
 
 
+#if FANG_WINGC
+BOOL game_IsSkippingCutscene( void ) {
+	for( s32 n = 0; n < MAX_PLAYERS; ++n ) {
+		if( _aeControlMode[n] == CONTROLMODE_LETTERBOXFF ) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+#endif
+
 BOOL game_LeaveLetterbox( BOOL bImmediate ) {
 
 	if( (_aeControlMode[CPlayer::m_nCurrent] != CONTROLMODE_LETTERBOX) && (_aeControlMode[CPlayer::m_nCurrent] != CONTROLMODE_LETTERBOXFF) ) {
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	if( _aeControlMode[CPlayer::m_nCurrent] == CONTROLMODE_LETTERBOXFF ) {
+		DEVPRINTF( "Port: cutscene skip finished after %.1f s.\n", _fPortSkipRealSecs );
+	}
+	_bPortSkipAbandoned = FALSE;
+	_fPortSkipRealSecs = 0.0f;
+#endif
 	_pCutSceneTable->AddString( _pszCurCutSceneName, TRUE );
 	letterbox_SlideOff( bImmediate );
 	floop_SetTimeScale( 1.0f );
@@ -2853,7 +2917,8 @@ static u32 _PortsOnline( void ) {
 		char szTest[32] = {};
 		GetEnvironmentVariableA( "MA_PORT_TEST_COOP_POLISH", szTest, sizeof(szTest) );
 		bPickupFixture = !strcmp( szTest, "pickups" ) || !strcmp( szTest, "weapons" ) ||
-			!strcmp( szTest, "rat-chase" ) || !strncmp( szTest, "floor-pads", 10 );
+			!strcmp( szTest, "rat-chase" ) || !strncmp( szTest, "floor-pads", 10 ) ||
+			!strcmp( szTest, "movement-cheats" );
 		bTestRead = TRUE;
 	}
 	if( bPickupFixture && CPlayer::m_nPlayerCount > 2 ) return (1u << GAMEPAD_MAX_PORT_COUNT) - 1u;
@@ -3129,12 +3194,16 @@ BOOL game_InitLocalizedResources( void ) {
 	// Virtual sound instances include distant effects and wreck loops, not just
 	// audible DirectSound voices. Reactor swarm fights exhausted even 160;
 	// leave room for the whole world while the mixer keeps its own voice limits.
-	oAudioInit.uMaxEmitters       = 512;
+	oAudioInit.uMaxEmitters       = 4096;
 #else
 	oAudioInit.uMaxEmitters       = 80;
 #endif
 	oAudioInit.uMaxStreams        = 2;
+#if FANG_WINGC
+	oAudioInit.uMaxBanks          = 64;	// headroom over the 24 any level loaded
+#else
 	oAudioInit.uMaxBanks          = 24;
+#endif
 	oAudioInit.uMaxPriorityLevels = 1;
 	oAudioInit.uPriorityLimits    = 0;
 	oAudioInit.paoPriorityLimits  = NULL;

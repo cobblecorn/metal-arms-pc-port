@@ -1,7 +1,7 @@
-# P1 controller ownership and hot swap — 2026-10-05
+# P1 controller ownership and hot swap â€” 2026-10-05
 
 The local join screen previously started a four-port AUTO deal and gave connected
-pads to P2–P4 before a player accepted. A single controller opening Co-op therefore
+pads to P2â€“P4 before a player accepted. A single controller opening Co-op therefore
 moved from the main-menu/P1 port into P2's box. Normal SHARED routing also exposed
 additional controllers as independent ports outside player selection.
 

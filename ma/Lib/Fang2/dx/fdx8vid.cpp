@@ -60,6 +60,7 @@ BOOL FVid_bPrintHiFreqErrMsg;	// Set to TRUE for one frame every few seconds. Ca
 BOOL fdx8vid_bResetting;		// TRUE: The device is being reset: only ->Release() can be used
 #if FANG_WINGC
 BOOL FDX8Vid_bPortBorderless = FALSE;	// a windowed mode drawn as a captionless window at the desktop origin
+u32 FDX8Vid_nPortMultiSamples = 0;		// anti-aliasing samples asked for (pc_display); 0 = off
 #endif
 
 // These are valid only when FVid_bOnline is TRUE:
@@ -2153,10 +2154,21 @@ static D3DMULTISAMPLE_TYPE _GetMultiSampleType( const _AdapterInfo_t *pAdapterIn
 	}
 
 	nTableIndex = (u32)( *pfUnitFSAA * (float)nTableEntryCount );
-	if( nTableIndex == nTableEntryCount ) 
+	if( nTableIndex == nTableEntryCount )
 	{
 		nTableIndex--;
 	}
+#if FANG_WINGC
+	// The player's anti-aliasing setting: the most samples at or below it (D3DMULTISAMPLE_n_SAMPLES == n).
+	nTableIndex = 0;
+	for( i=1; i<nTableEntryCount; i++ )
+	{
+		if( (u32)__aMultiSampleTable[i].nD3DMultiSampleType <= FDX8Vid_nPortMultiSamples )
+		{
+			nTableIndex = i;
+		}
+	}
+#endif
 
 	for( ; !__aMultiSampleTable[nTableIndex].bSupported; nTableIndex-- );
 
@@ -2372,8 +2384,16 @@ static BOOL _CreateWindow( void )
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	// Players' reports of missing water or effects depend on the GPU and driver: name them in the log.
+	DEVPRINTF( "fdx8vid: GPU '%s', driver %u.%u.%u.%u, vendor 0x%04x device 0x%04x.\n", _AdapterID.Description,
+			   HIWORD( _AdapterID.DriverVersion.HighPart ), LOWORD( _AdapterID.DriverVersion.HighPart ),
+			   HIWORD( _AdapterID.DriverVersion.LowPart ), LOWORD( _AdapterID.DriverVersion.LowPart ),
+			   (u32)_AdapterID.VendorId, (u32)_AdapterID.DeviceId );
+#endif
+
 #if FANG_PLATFORM_WIN
-	if( FDX8_pD3D->GetAdapterDisplayMode( _CurAdapterInfo.nD3DAdapterIndex, &_OrigDisplayMode ) != D3D_OK ) 
+	if( FDX8_pD3D->GetAdapterDisplayMode( _CurAdapterInfo.nD3DAdapterIndex, &_OrigDisplayMode ) != D3D_OK )
 	{
 		// Trouble obtaining the current display mode. Skip this adapter...
 		return FALSE;
@@ -2476,6 +2496,9 @@ static BOOL _CreateWindow( void )
 #endif
 
 	FDX8Vid_nBackBufferMultisampleType = _GetMultiSampleType( &_CurAdapterInfo, &_CurVidModeInfo, &FVid_Win.fUnitFSAA );
+#if FANG_WINGC
+	DEVPRINTF( "fdx8vid: anti-aliasing %u samples (asked for %u).\n", (u32)FDX8Vid_nBackBufferMultisampleType, FDX8Vid_nPortMultiSamples );
+#endif
 
 	if ( fsysinfo_GetCapabilities() & FSYSINFO_VIDEO_PAL_60HZ )
 	{
@@ -2532,7 +2555,8 @@ static BOOL _CreateWindow( void )
 	_PresentationParms.EnableAutoDepthStencil = TRUE;
 	_PresentationParms.AutoDepthStencilFormat = _CurVidModeInfo.nDepthFormat;
 #if FANG_PLATFORM_WIN
-	_PresentationParms.Flags = D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+	// A multisampled back buffer cannot be lockable (CreateDevice fails).
+	_PresentationParms.Flags = FDX8Vid_nBackBufferMultisampleType == D3DMULTISAMPLE_NONE ? D3DPRESENTFLAG_LOCKABLE_BACKBUFFER : 0;
 #else
 	_PresentationParms.Flags = 0;
 #endif

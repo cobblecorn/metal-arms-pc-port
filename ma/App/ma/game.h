@@ -383,6 +383,9 @@ extern s32 game_GetStoryPlayerIndex( void );
 
 extern BOOL game_EnterLetterbox( cchar *pszCutSceneName=NULL, BOOL bImmediate=FALSE, BOOL bAllowMovieSkip=TRUE ); // Do we want to immediately enter letterbox (ie, no scrolling on of bars)
 extern BOOL game_LeaveLetterbox( BOOL bImmediate = FALSE); // Do we want to immediately exit letterbox? (No scrolling?)
+#if FANG_WINGC
+extern BOOL game_IsSkippingCutscene( void );	// a cutscene is being fast-forwarded (skipped)
+#endif
 
 extern BOOL game_EnterNonAmbientTalk();
 extern BOOL game_EnterBarterMode();

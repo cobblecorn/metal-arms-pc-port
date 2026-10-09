@@ -4,6 +4,10 @@
 #include "amx.h"
 #include "fclib.h"
 
+// Campaign-only compatibility implemented by the game. The original event
+// remains unchanged for stats and for every other script/listener.
+unsigned PortCoopScriptKillActor( const char *pszScriptName, unsigned nEvent, unsigned nActor );
+
 // During a native callback, cip points immediately after SYSREQ_C. Only accept
 // the compiler's direct zero-argument return-to-global sequence; local variables
 // and arbitrary entity references must not become live story-player bindings.

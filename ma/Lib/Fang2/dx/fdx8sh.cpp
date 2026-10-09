@@ -4250,7 +4250,15 @@ FSTATIC void _HandleLightingPass( void )
 			//Spot texture and TexKill texture must be clamped to work correctly.
 			ftex_SetTexAddress(s, FALSE, FALSE);
 
+#if FANG_WINGC
+			// The vertex shader writes the spotlight's projective coordinates with the divisor in w (it
+			// swaps z and w for that). The Xbox divided by w on every lookup; a PC stage does so only when
+			// flagged projected. Without it the light's texture covered a small spot near the lamp's feet
+			// instead of the cone in front of it (Glitch's helmet lamp, vehicle and bot spotlights).
+			fdx8_SetTextureState_TEXTURETRANSFORMFLAGS( s, (D3DTEXTURETRANSFORMFLAGS)(D3DTTFF_COUNT4 | D3DTTFF_PROJECTED) );
+#else
 			fdx8_SetTextureState_TEXTURETRANSFORMFLAGS( s, D3DTTFF_DISABLE);
+#endif
 			fdx8_SetTextureState_TEXTURETRANSFORMFLAGS( s+1, D3DTTFF_DISABLE);
 			ftex_SetTexAddress(s+1, FALSE, FALSE);
 

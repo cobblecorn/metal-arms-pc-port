@@ -128,6 +128,8 @@ static BOOL _PortHasArenaWeapon( s32 nPlayer ) {
 static BOOL _bPortPartnersInArena = FALSE;
 static BOOL _bPortWasCutscene = FALSE;
 static s32 _nPortCorrosiveWinner = 0;
+static f32 _fPortArenaQuietSecs = 0.0f;	// Coliseum 3: time with every arena bot dead and later waves unseen
+#define _PORT_ARENA_QUIET_SECS	60.0f
 static u32 _aPortHutPlayers[CColiseumMiniGame::MAX_TRIPWIRES];
 
 static CBotGlitch *_PortAliveArenaGlitch( s32 nPlayer ) {
@@ -143,7 +145,7 @@ static BOOL _PortAnyArenaPlayerAlive( void ) {
 }
 
 static void _PortRetargetCorrosive( CBot *pBoss, CGroundCombat *pCombat ) {
-	if( !pBoss || !pCombat ) return;
+	if( !pBoss || !pCombat || !pBoss->AIBrain() || pBoss->AIBrain()->GetCurThoughtPtr() != pCombat ) return;
 	CEntity *pEnemy = pCombat->m_pEnemy;
 	if( pEnemy && pEnemy->IsInWorld() && !pEnemy->IsMarkedForWorldRemove() &&
 		(!(pEnemy->TypeBits() & ENTITY_BIT_BOT) || !((CBot *)pEnemy)->IsDeadOrDying()) ) return;
@@ -1991,6 +1993,25 @@ void CColiseumMiniGame::InitGame()
 		CCorrosiveCombat::SetRangeNoRocketsCallback(CorrosiveRangeNoRocketsCallback);
 		CCorrosiveCombat::UseAlternateAggressionCalculations( TRUE );
 	}
+#if FANG_WINGC
+	// Coliseum 3's later waves (grunt5-8, pred1) are out of the world when the arena starts, so
+	// retail's list held only the first four and the fight was won when they died, even with the
+	// next wave arriving. Count them too; MainGame() still ends the fight if one never shows up.
+	if( m_nLevelID == 2 ) {
+		for( CEntity *pOut = CEntity::OutOfWorldList_GetHead(); pOut && m_nNumEnemies < MAX_ENEMIES; pOut = pOut->OutOfWorldList_GetNext() ) {
+			if( (pOut->LeafTypeBit()&ENTITY_BITS_ENEMYBOTS) && ((CBot *)pOut)->AIBrain() &&
+				( ((CBot *)pOut)->AIBrain()->GetRace() == AIRACE_MIL || ((CBot *)pOut)->AIBrain()->GetRace() == AIRACE_ZOMBIE ) ) {
+				m_pEnemies[m_nNumEnemies++] = (CBot *)pOut;
+			}
+		}
+	}
+	_fPortArenaQuietSecs = 0.0f;
+	DEVPRINTF( "Port: Coliseum %d start: %d enemies in the arena list:\n", m_nLevelID + 1, m_nNumEnemies );
+	for( i=0; i<m_nNumEnemies; i++ ) {
+		DEVPRINTF( "Port:   list '%s'%s\n", m_pEnemies[i] && m_pEnemies[i]->Name() ? m_pEnemies[i]->Name() : "?",
+			m_pEnemies[i] && !m_pEnemies[i]->IsInWorld() ? " (not in the world yet)" : "" );
+	}
+#endif
 }
 
 BOOL CColiseumMiniGame::Escort()
@@ -2923,9 +2944,14 @@ void CColiseumMiniGame::HutDestroyedCallback(u32 nUserData)
 			}
 
 			//Make sure that the hut that was destroyed is the hut Glitch is hiding in before clearing the m_pHutInside pointer.
-			if (m_pColiseumMiniGame->m_paHuts[nUserData] == m_pColiseumMiniGame->m_pHutInside)
+			if (m_pColiseumMiniGame->m_paHuts[nUserData] == m_pColiseumMiniGame->m_pHutInside
+#if FANG_WINGC
+				|| (MultiplayerMgr.IsLocalCoop() && _aPortHutPlayers[nUserData])
+#endif
+				)
 			{
-				m_pColiseumMiniGame->m_pHutInside = NULL;
+				if( m_pColiseumMiniGame->m_paHuts[nUserData] == m_pColiseumMiniGame->m_pHutInside )
+					m_pColiseumMiniGame->m_pHutInside = NULL;
 
 #if FANG_WINGC
 				if( MultiplayerMgr.IsLocalCoop() ) {
@@ -3526,6 +3552,9 @@ BOOL CColiseumMiniGame::MainGame()
 	{
 		BOOL bAllDead=TRUE;
 		s32 nDead=0;
+#if FANG_WINGC
+		BOOL bAnyActive = FALSE, bAnyPending = FALSE;
+#endif
 		for (i=0; i<m_nNumEnemies; i++)
 		{
 			if ( m_pEnemies[i] )
@@ -3535,6 +3564,10 @@ BOOL CColiseumMiniGame::MainGame()
 					if ( !(m_pEnemies[i]->LeafTypeBit()&ENTITY_BIT_BOTCORROSIVE) )
 					{
 						bAllDead = FALSE;
+#if FANG_WINGC
+						if( m_pEnemies[i]->IsInWorld() ) bAnyActive = TRUE;
+						else bAnyPending = TRUE;
+#endif
 					}
 				}
 				else
@@ -3547,8 +3580,37 @@ BOOL CColiseumMiniGame::MainGame()
 				bAllDead = FALSE;
 			}
 		}
+#if FANG_WINGC
+		// Every arena bot is dead and the rest have not come in for a minute: the script is not
+		// sending them, so end the fight rather than leave it running forever.
+		if( !bAllDead && !bAnyActive && bAnyPending ) {
+			_fPortArenaQuietSecs += FLoop_fRealPreviousLoopSecs;
+			if( _fPortArenaQuietSecs > _PORT_ARENA_QUIET_SECS ) {
+				DEVPRINTF( "Port: Coliseum %d: no new bots for %.0f s with all others dead; ending the fight.\n", m_nLevelID + 1, _PORT_ARENA_QUIET_SECS );
+				bAllDead = TRUE;
+			}
+		} else {
+			_fPortArenaQuietSecs = 0.0f;
+		}
+#endif
 		bRet = ( bAllDead && m_nNumEnemies>1 );
-		
+#if FANG_WINGC
+		{	// Which bots the arena counted when it called the fight (Coliseum 3 ended mid-fight).
+			static u32 s_nLastLogged = 0xffffffff;
+			if( bRet || s_nLastLogged == 0xffffffff ) {
+				DEVPRINTF( "Port: Coliseum %d enemy list (%d)%s:\n", m_nLevelID + 1, m_nNumEnemies, bRet ? " - all dead, ending the fight" : "" );
+				for( i=0; i<m_nNumEnemies; i++ ) {
+					if( m_pEnemies[i] ) {
+						DEVPRINTF( "Port:   '%s' dead=%d inworld=%d corrosive=%d\n", m_pEnemies[i]->Name() ? m_pEnemies[i]->Name() : "?",
+							(s32)_IS_BOT_DEAD(m_pEnemies[i]), (s32)m_pEnemies[i]->IsInWorld(),
+							(s32)!!(m_pEnemies[i]->LeafTypeBit()&ENTITY_BIT_BOTCORROSIVE) );
+					}
+				}
+				s_nLastLogged = (u32)m_nNumEnemies;
+			}
+		}
+#endif
+
 		//You get 1 point per enemy killed.
 		if (nDead > m_nScore)
 		{
@@ -3770,6 +3832,68 @@ BOOL CColiseumMiniGame::MainGame()
 }
 
 #if FANG_WINGC
+BOOL CColiseumMiniGame::PortTestCorrosive( s32 nStep ) {
+	CColiseumMiniGame *pGame = m_pColiseumMiniGame;
+	if( !pGame || pGame->m_nLevelID != 3 || !MultiplayerMgr.IsLocalCoop() || CPlayer::m_nPlayerCount < 2 ) return FALSE;
+	CBotGlitch *p0 = (CBotGlitch *)Player_aPlayer[0].m_pEntityOrig;
+	CBotGlitch *p1 = (CBotGlitch *)Player_aPlayer[1].m_pEntityOrig;
+	CBot *pBoss = pGame->m_pEnemies[0];
+	if( !p0 || !p1 || !pBoss || !(pBoss->TypeBits() & ENTITY_BIT_BOTCORROSIVE) ) return FALSE;
+	CGroundCombat *pCombat = CCorrosiveCombat::GetGroundCombatPtr();
+	static u32 nTestHut = 0;
+	switch( nStep ) {
+		case 0: {
+			if( pGame->m_State == STATE_INIT ) return FALSE;
+			// The fixture bypasses the escort only; production combat and puzzle callbacks run below.
+			pGame->m_State = STATE_MAIN_GAME;
+			CBot::SetCutscenePlaying(FALSE);
+			for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
+				CBot *pActor = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+				pActor->SetInvincible(TRUE);
+				CFMtx43A mtx = *pActor->MtxToWorld(); mtx.m_vPos.Set(-80.0f + 20.0f*n, 1.0f, 350.0f);
+				pActor->Relocate_RotXlatFromUnitMtx_WS(&mtx); pActor->ZeroVelocity();
+			}
+			aibrainman_Activate(pBoss->AIBrain());
+			return ai_AssignGoal_Attack(pBoss->AIBrain(), p0->Guid(), 0);
+		}
+		case 1: return pCombat && pBoss->AIBrain()->GetCurThoughtPtr() == pCombat && pCombat->m_pEnemy == p0;
+		case 2: p0->SetInvincible(FALSE); p0->Die(FALSE,FALSE); return p0->IsDeadOrDying();
+		case 3: return pCombat && pBoss->AIBrain()->GetCurThoughtPtr() == pCombat && pCombat->m_pEnemy == p1 && pGame->m_State == STATE_MAIN_GAME;
+		case 4: {
+			// Breaking a hut with an assembled surviving player must not auto-pass the puzzle.
+			nTestHut = pGame->m_nNumTripwires;
+			for( u32 n = 0; n < pGame->m_nNumTripwires; ++n ) if( pGame->m_paHuts[n] && pGame->m_paTripwireEntity[n] ) { nTestHut = n; break; }
+			if( nTestHut == pGame->m_nNumTripwires || p1->IsInPieces() ) return FALSE;
+			CheckTripWireEvents(0,0,0,(u32)pGame->m_paTripwireEntity[nTestHut],(u32)p1);
+			HutDestroyedCallback(nTestHut);
+			return pGame->m_State == STATE_MAIN_GAME && pGame->m_nScore != 4;
+		}
+		case 5: {
+			if( !CCollectable::GiveWeaponToPlayer(p1,"wrench",1) ) return FALSE;
+			CItemInst *pWrench = p1->m_pInventory->IsWeaponInInventory("wrench");
+			if( !pWrench ) return FALSE;
+			p1->m_pInventory->SetCurWeapon(INV_INDEX_SECONDARY,pWrench,FALSE,TRUE);
+			return p1->GetSecondaryWeapon() != NULL;
+		}
+		case 6:
+			if( p1->IsInPieces() ) return TRUE;
+			// Weapon selection takes frames to deploy; exercise the normal trigger
+			// once ready instead of failing on the same frame as selection.
+			if( p1->GetSecondaryWeapon() ) p1->GetSecondaryWeapon()->Throwable_TriggerWork(1);
+			return p1->IsInPieces();
+		case 7: {
+			for( u32 n = 0; n < pGame->m_nNumTripwires; ++n ) if( pGame->m_paHuts[n] && pGame->m_paTripwireEntity[n] ) { nTestHut = n; break; }
+			if( !pGame->m_paHuts[nTestHut] || !p1->IsInPieces() ) return FALSE;
+			CheckTripWireEvents(0,0,0,(u32)pGame->m_paTripwireEntity[nTestHut],(u32)p1);
+			HutDestroyedCallback(nTestHut);
+			return pGame->m_State == STATE_END_CUTSCENE && pGame->m_pFriendly[0] == p1 && _nPortCorrosiveWinner == 1;
+		}
+		case 8: return CBot::m_bCutscenePlaying && !Player_aPlayer[1].HasEntityControl();
+		case 9: return pGame->m_State == STATE_WAIT || pGame->m_State == STATE_END_GAME;
+	}
+	return FALSE;
+}
+
 void CColiseumMiniGame::PortSetCorrosiveWinner( s32 nPlayer ) {
 	_nPortCorrosiveWinner = nPlayer;
 	m_pFriendly[0] = _PortAliveArenaGlitch(nPlayer);
@@ -3783,6 +3907,7 @@ BOOL CColiseumMiniGame::PortCheckCorrosivePlayers( CBotCorrosive *pCorrosive ) {
 	BOOL bHitWhole = FALSE;
 	CBotGlitch *pTarget = NULL;
 	CGroundCombat *pCombat = CCorrosiveCombat::GetGroundCombatPtr();
+	if( !pCorrosive->AIBrain() || pCorrosive->AIBrain()->GetCurThoughtPtr() != pCombat ) pCombat = NULL;
 	for( s32 n = 0; n < CPlayer::m_nPlayerCount; ++n ) {
 		CBotGlitch *pGlitch = _PortAliveArenaGlitch(n);
 		if( !pGlitch ) continue;

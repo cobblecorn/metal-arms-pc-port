@@ -371,6 +371,29 @@ BOOL CFVerlet::CheckPointLoad( void ) {
 }
 
 
+#if FANG_WINGC
+// A restore brings back each tack's anchor (type, health, wire geo) but not its CFWire, and wires
+// are otherwise rebuilt only while the object moves or as it comes into scope. A resting object
+// already in scope (They Live's ripper bridge) was left with no wire to see or cut: a softlock.
+void CFVerlet::PortRefreshWires( void ) {
+	FASSERT( IsCreated() );
+
+	for( u32 i=0; i<m_nTackCount; i++ ) {
+		CFVerletTack *pTack = m_pTackArray + i;
+
+		if( pTack->m_pWire ) {
+			CFWire::ReturnToFreePool( pTack->m_pWire );
+			pTack->m_pWire = NULL;
+		}
+
+		if( m_nFlags & FLAG_IN_SCOPE ) {
+			pTack->_UpdateTackWire();
+		}
+	}
+}
+#endif
+
+
 void CFVerlet::EnableExplodeFunctionality( BOOL bCanExplode ) {
 	FASSERT( IsCreated() );
 

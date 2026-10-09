@@ -2830,6 +2830,13 @@ void CEntity::CheckpointRestore( void ) {
 		}
 	}
 
+#if FANG_WINGC
+	// Back in the world: rebuild anchor wires (see CFVerlet::PortRefreshWires).
+	if( m_pVerlet ) {
+		m_pVerlet->PortRefreshWires();
+	}
+#endif
+
 	//restart this ambient sound effect (if it was running)
 	if( m_nEntityFlags & ENTITY_FLAG_RESTART_AMBIENT_SOUND_ON_RESTORE ) {
 		StopAmbientSFX(); //this will destroy it

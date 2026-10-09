@@ -58,7 +58,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--players', default='1,2',
                         help='Counts 1,2,4; four players require a ready controller/join setup.')
-    parser.add_argument('--exe', type=Path, default=ROOT / 'build/encounter-candidate/Release/ma_port.exe')
+    parser.add_argument('--exe', type=Path, default=ROOT / 'build/Release/ma_port.exe')
     args = parser.parse_args()
     counts = [int(count) for count in args.players.split(',')]
     if any(count not in (1, 2, 4) for count in counts):

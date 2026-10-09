@@ -26,6 +26,7 @@
 #include "player.h"
 #include "ItemInst.h"
 #include "Hud2.h"
+#include "game.h"
 #include "bot.h"
 #include "level.h"
 #include "collectable.h"
@@ -251,7 +252,9 @@ void CBotTalkInst::Work() {
 		// Retail dialogue timings can be shorter than the decoded voice sample
 		// (GL_22m_020: 3.82 versus 4.56 seconds). Natural scene completion must
 		// leave the finite clip playing; explicit termination/skip still uses End().
-		if( CBot::m_bCutscenePlaying && !(m_uFlags & BOTTALKINSTFLAG_3DSOUND_PLAYING) &&
+		// Not while the cutscene is being skipped: the voice plays in real time, so holding every
+		// line to its clip stalled the fast-forward (the scene never ended under the frozen screen).
+		if( CBot::m_bCutscenePlaying && !game_IsSkippingCutscene() && !(m_uFlags & BOTTALKINSTFLAG_3DSOUND_PLAYING) &&
 			!(m_uFlags & BOTTALKINSTFLAG_AUDIO_DAMAGED) && m_pCurSound &&
 			m_pCurSound->GetState() == FAUDIO_EMITTER_STATE_PLAYING &&
 			m_pCurSound->GetSecondsToPlay() >= 0.0f ) {

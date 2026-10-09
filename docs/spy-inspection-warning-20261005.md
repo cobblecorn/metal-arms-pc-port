@@ -1,7 +1,7 @@
 # Factory inspection co-op softlock (2026-10-05)
 
 The live normal Release process 11016 was in SEARCH (2), inspector KILL_GLITCH
-(14), with five lockers open (9–13), four attempted lockers, chip placement
+(14), with five lockers open (9â€“13), four attempted lockers, chip placement
 already enabled, and no remaining state timeout. Native back-buffer capture:
 `build/shots/spy-battle-current-20261005/latest.png`. The imposter dialogue is
 an authored inspection failure, not random aggression or the DDR instructor.

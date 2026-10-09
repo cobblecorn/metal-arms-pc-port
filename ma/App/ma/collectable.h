@@ -356,6 +356,10 @@ public:
 
 	static BOOL PostPlayerCreationSetup( void );
 	static BOOL GiveToPlayer( CBot *pBot, CollectableType_e eType, f32 fScale );
+#if FANG_WINGC
+	// Test aid: the position of the nearest pickup of this type in the world; FALSE if there is none.
+	static BOOL PortFindNearest( CollectableType_e eType, const CFVec3A &From_WS, CFVec3A *pFound_WS );
+#endif
 	static BOOL GiveToPlayer( CBot *pBot, cchar *pszCollectableName, f32 fScale );
 	static BOOL GiveWeaponToPlayer( CBot *pBot, cchar *pszWeaponName, s32 nAmmoCount = -1 );
 

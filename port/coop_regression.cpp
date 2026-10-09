@@ -3,6 +3,7 @@
 #include "player.h"
 #include "bot.h"
 #include "botglitch.h"
+#include "botfx.h"
 #include "weapon.h"
 #include "entity.h"
 #include "collectable.h"
@@ -36,6 +37,15 @@
 #include "SpyVsSpy.h"
 #include "meshentity.h"
 #include "AlarmSys.h"
+#include "ESwitch.h"
+#include "fverlet.h"
+#include "FScriptInst.h"
+#include "damage.h"
+#include "botpart.h"
+#include "fworld.h"
+#include "ColiseumMiniGame.h"
+
+extern BOOL pausescreen_IsActive();
 
 static int Ammo(CBot *pBot, const char *pszTag = "coring charge") {
     CItemInst *pItem = pBot->m_pInventory->IsWeaponInInventory(pszTag);
@@ -80,18 +90,293 @@ void port_CoopRegressionWork() {
     const BOOL spyClaw = !strcmp(mode,"spy-claw") || spyCrane;
     const BOOL spyFixture = !strcmp(mode,"spy-control") || spyRestart || spyClaw;
     const BOOL coliseumGates = !strcmp(mode,"coliseum-gates");
-    const BOOL soloFixture = !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
-    if (!mode[0] || CPlayer::m_nPlayerCount < 1 || (CPlayer::m_nPlayerCount < 2 && !soloFixture && !coliseumGates) || step == 99) return;
+    const BOOL invasionFixture = !strcmp(mode,"invasion32");
+    const BOOL corrosiveFixture = !strcmp(mode,"corrosive36");
+    const BOOL movementCheats = !strcmp(mode,"movement-cheats");
+    const BOOL soloFixture = !strcmp(mode,"hangar-magnet") || !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
+    if (!mode[0] || CPlayer::m_nPlayerCount < 1 || (CPlayer::m_nPlayerCount < 2 && !soloFixture && !coliseumGates && !invasionFixture && !movementCheats) || step == 99) return;
     CBot *p0 = (CBot *)Player_aPlayer[0].m_pEntityOrig;
     CBot *p1 = CPlayer::m_nPlayerCount > 1 ? (CBot *)Player_aPlayer[1].m_pEntityOrig : p0;
     if (!p0 || !p1 || (!step && (!p0->IsInWorld() || !p1->IsInWorld()))) return;
     const u32 now = GetTickCount();
     if (!nStart) nStart = now;
     if (now - nStart < 1500 && strncmp(mode,"fabricator",10)) return;
-    if (!step && !spyFixture && !coliseumGates && strncmp(mode,"fabricator",10)) {
+    if (!step && !spyFixture && !coliseumGates && !invasionFixture && !corrosiveFixture && strncmp(mode,"fabricator",10)) {
         if (!Player_aPlayer[0].HasEntityControl()) { nControlReadyTime = 0; return; }
         if (!nControlReadyTime) nControlReadyTime = now;
         if (now - nControlReadyTime < 3000) return;
+    }
+    if (movementCheats) {
+        if (pausescreen_IsActive()) return;
+        static f32 elapsed = 0.0f;
+        static f32 speed[MAX_PLAYERS], jump[MAX_PLAYERS], gravity[MAX_PLAYERS];
+        const int target = CPlayer::m_nPlayerCount - 1;
+        CBot *pTarget = (CBot *)Player_aPlayer[target].m_pEntityOrig;
+        if (!step) {
+            for (int n=0; n<CPlayer::m_nPlayerCount; ++n) {
+                CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+                speed[n] = pBot->GetRunSpeed();
+                jump[n] = pBot->m_fJumpMultiplier;
+                gravity[n] = pBot->m_fGravityMultiplier;
+            }
+            // Exercise P1 first, then every partner, before the timed all-player stage.
+            for (int owner=0; owner<CPlayer::m_nPlayerCount; ++owner) {
+                pccheats_Apply(owner,PC_CHEAT_SPEED_BOOST);
+                pccheats_Apply(owner,PC_CHEAT_HIGH_JUMP);
+                BOOL isolated = TRUE;
+                for (int n=0; n<CPlayer::m_nPlayerCount; ++n) {
+                    CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityOrig;
+                    isolated &= actor->GetRunSpeed()==(n==owner ? 2.0f : speed[n]) &&
+                        actor->m_fJumpMultiplier==(n==owner ? 2.0f : jump[n]) &&
+                        pccheats_Enabled(n,PC_CHEAT_SPEED_BOOST)==(n==owner) &&
+                        pccheats_Enabled(n,PC_CHEAT_HIGH_JUMP)==(n==owner);
+                    DEVPRINTF("MOVEMENT-TEST owner=P%d actor=P%d speed=%.1f jump=%.1f speedOn=%d jumpOn=%d\n",
+                        owner+1,n+1,actor->GetRunSpeed(),actor->m_fJumpMultiplier,
+                        pccheats_Enabled(n,PC_CHEAT_SPEED_BOOST),pccheats_Enabled(n,PC_CHEAT_HIGH_JUMP));
+                }
+                Check(isolated,"each movement toggle affects only its selected player including P1");
+                pccheats_Apply(owner,PC_CHEAT_SPEED_BOOST);
+                pccheats_Apply(owner,PC_CHEAT_HIGH_JUMP);
+            }
+            pccheats_Apply(target, PC_CHEAT_SPEED_BOOST);
+            pccheats_Apply(target, PC_CHEAT_HIGH_JUMP);
+            Check(pTarget->GetRunSpeed() == 2.0f && pTarget->m_fJumpMultiplier == 2.0f &&
+                  pTarget->m_fGravityMultiplier == 1.5f, "movement cheats apply both retail effects to selected player");
+            Check(pccheats_Enabled(target,PC_CHEAT_SPEED_BOOST) && pccheats_Enabled(target,PC_CHEAT_HIGH_JUMP),
+                  "movement menu state reports both toggles enabled");
+            BOOL isolated = TRUE;
+            for (int n=0; n<target; ++n) {
+                CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+                isolated &= pBot->GetRunSpeed() == speed[n] && pBot->m_fJumpMultiplier == jump[n] &&
+                            pBot->m_fGravityMultiplier == gravity[n];
+            }
+            Check(isolated, "movement cheats leave other players unchanged");
+            elapsed = 0.0f; step = 1;
+        } else {
+            elapsed += FLoop_fPreviousLoopSecs;
+            if (step == 1 && elapsed > 5.0f) {
+                for (int n=0; n<target; ++n) {
+                    pccheats_Apply(n, PC_CHEAT_SPEED_BOOST);
+                    pccheats_Apply(n, PC_CHEAT_HIGH_JUMP);
+                }
+                BOOL active = TRUE;
+                for (int n=0; n<CPlayer::m_nPlayerCount; ++n) {
+                    CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+                    active &= pBot->GetRunSpeed() == 2.0f && pBot->m_fJumpMultiplier == 2.0f;
+                }
+                Check(active, "all players can hold speed and high jump simultaneously");
+                pccheats_Apply(target,PC_CHEAT_SPEED_BOOST);
+                Check(pTarget->GetRunSpeed()==speed[target] && pTarget->m_fJumpMultiplier==2.0f &&
+                      !pccheats_Enabled(target,PC_CHEAT_SPEED_BOOST),"speed toggle off immediately preserves high jump");
+                pccheats_Apply(target,PC_CHEAT_SPEED_BOOST);
+                pccheats_Apply(target,PC_CHEAT_HIGH_JUMP);
+                Check(pTarget->GetRunSpeed()==2.0f && pTarget->m_fJumpMultiplier==jump[target] &&
+                      pTarget->m_fGravityMultiplier==gravity[target],"jump toggle off immediately preserves speed");
+                pccheats_Apply(target,PC_CHEAT_HIGH_JUMP);
+                // Possession/actor teardown uses this same cleanup method.
+                pTarget->GetPowerupFx()->KillAll();
+                Check(pTarget->GetRunSpeed() == speed[target] && pTarget->m_fJumpMultiplier == jump[target],
+                      "ending one player's powerups restores their movement");
+                BOOL partnersActive = TRUE;
+                for (int n=0; n<target; ++n) {
+                    CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+                    partnersActive &= pBot->GetRunSpeed() == 2.0f && pBot->m_fJumpMultiplier == 2.0f;
+                }
+                Check(partnersActive, "ending one player's powerups preserves partner effects");
+                pccheats_Work();
+                Check(pTarget->GetRunSpeed()==2.0f && pTarget->m_fJumpMultiplier==2.0f,
+                      "enabled movement toggles recover after actor powerup cleanup without stacking");
+                step = 2;
+            } else if (step == 2 && elapsed > 32.0f) {
+                Check(pTarget->GetRunSpeed() == 2.0f && pTarget->m_fJumpMultiplier == 2.0f,
+                      "movement toggles remain active beyond the old 25 second limit");
+                for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                    pccheats_Apply(n,PC_CHEAT_SPEED_BOOST);
+                    pccheats_Apply(n,PC_CHEAT_HIGH_JUMP);
+                }
+                BOOL restored = TRUE;
+                for (int n=0; n<CPlayer::m_nPlayerCount; ++n) {
+                    CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+                    restored &= pBot->GetRunSpeed() == speed[n] && pBot->m_fJumpMultiplier == jump[n] &&
+                                pBot->m_fGravityMultiplier == gravity[n] && pBot->m_fCamZoomFactor == 0.0f;
+                }
+                Check(restored, "switching movement toggles off restores every player's speed jump and gravity");
+                pTarget->GetPowerupFx()->PickupPowerup(CBotPowerupFx::BOT_FX_TYPES_SPEEDUP,
+                    FSNDFX_INVALID_FX_HANDLE,2.0f,2.0f,0.0f,0.0f);
+                pTarget->GetPowerupFx()->PickupPowerup(CBotPowerupFx::BOT_FX_TYPES_HIJUMP,
+                    FSNDFX_INVALID_FX_HANDLE,2.0f,0.0f,2.0f,1.5f);
+                step=3;
+            } else if(step==3 && elapsed>36.0f) {
+                Check(pTarget->GetRunSpeed()==speed[target] && pTarget->m_fJumpMultiplier==jump[target] &&
+                      pTarget->m_fGravityMultiplier==gravity[target],"ordinary movement pickups still expire when cheats are off");
+                Check(TRUE,"movement toggle test complete");
+                step = 99;
+            }
+        }
+        return;
+    }
+    if (corrosiveFixture) {
+        if (!step && CColiseumMiniGame::PortTestCorrosive(0)) {
+            Check(TRUE,"Corrosive co-op fixture initialized");step=1;nStepTime=now;
+        } else if (step==1 && CColiseumMiniGame::PortTestCorrosive(1)) {
+            Check(TRUE,"Corrosive initially attacks P1");
+            Check(CColiseumMiniGame::PortTestCorrosive(2),"P1 is killed through the real player death path");
+            step=2;nStepTime=now;
+        } else if (step==2 && now-nStepTime>=1500 && CColiseumMiniGame::PortTestCorrosive(3)) {
+            Check(TRUE,"Corrosive retargets living P2 without laughing at a team defeat");
+            Check(CColiseumMiniGame::PortTestCorrosive(4),"assembled P2 cannot win by losing a hut");
+            Check(CColiseumMiniGame::PortTestCorrosive(5),"P2 selects the real grenade-slot wrench");
+            step=3;nStepTime=now;
+        } else if (step==3 && CColiseumMiniGame::PortTestCorrosive(6)) {
+            Check(TRUE,"P2 is disassembled by the wrench");
+            Check(CColiseumMiniGame::PortTestCorrosive(7),"disassembled P2 can win through the real hut callback");
+            step=4;nStepTime=now;
+        } else if (step==4 && now-nStepTime>=1000) {
+            Check(CColiseumMiniGame::PortTestCorrosive(8),"Corrosive end scene uses P2 as its actor");
+            step=5;nStepTime=now;
+        } else if (step==5 && now-nStepTime>=10000 && CColiseumMiniGame::PortTestCorrosive(9)) {
+            Check(TRUE,"Corrosive co-op boss test complete");step=99;
+        }
+        return;
+    }
+    if (!strcmp(mode,"hangar-magnet")) {
+        CESwitch *button=(CESwitch*)CEntity::Find("mag_switch");
+        CDoorEntity *slider=(CDoorEntity*)CEntity::Find("slide_bar1");
+        CDoorEntity *airlock=(CDoorEntity*)CEntity::Find("airlockdr");
+        CDoorEntity *dock=(CDoorEntity*)CEntity::Find("spdockdr");
+        CMeshEntity *magnet=(CMeshEntity*)CEntity::Find("magnet");
+        CEntity *post=CEntity::Find("fencepost_right");
+        CEntity *left=CEntity::Find("fencepost_left");
+        if(_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WESHhangr01") || !button || !slider || !airlock || !dock || !magnet || !post || !left) {
+            Check(FALSE,"One Small Step authored magnet puzzle exists");step=99;return;
+        }
+        if(!step) {
+            for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityOrig;
+                actor->SetInvincible(TRUE);actor->SetBotFlag_NoGravity();actor->EnableTripper(FALSE);
+                CFMtx43A at=*actor->MtxToWorld();at.m_vPos.Set(250.0f+6*n,39.0f,49.0f);
+                actor->Relocate_RotXlatFromUnitMtx_WS(&at);actor->ZeroVelocity();
+            }
+            Check(magnet->GetVerlet()!=NULL,"hanging magnet has live authored physics");
+            Check(airlock->IsLocked()&&dock->IsLocked(),"both authored doors start locked");
+            Check(button->ActionNearby(p0),"P1 activates the real magnet switch");
+            step=1;nStepTime=now;
+        } else if(step==1 && now-nStepTime>10000) {
+            const CFVec3A &pos=magnet->MtxToWorld()->m_vPos;
+            DEVPRINTF("HANGAR38 slider=%d unit=%.3f magnet=(%.2f,%.2f,%.2f) posts=%d/%d doors locked=%d/%d\n",slider->GetState(),slider->GetUnitPos(),pos.x,pos.y,pos.z,post->IsInWorld(),left->IsInWorld(),airlock->IsLocked(),dock->IsLocked());
+            Check(slider->GetUnitPos()>.99f,"switch completes the authored slider movement");
+            step=2;nStepTime=now;
+        } else if(step==2 && now-nStepTime>12000) {
+            const CFVec3A &pos=magnet->MtxToWorld()->m_vPos;
+            DEVPRINTF("HANGAR38 contact result magnet=(%.2f,%.2f,%.2f) posts=%d/%d doors locked=%d/%d unit=%.3f/%.3f\n",pos.x,pos.y,pos.z,post->IsInWorld(),left->IsInWorld(),airlock->IsLocked(),dock->IsLocked(),airlock->GetUnitPos(),dock->GetUnitPos());
+            Check(!post->IsInWorld()||!left->IsInWorld(),"moving magnet reaches an authored field-post trigger");
+            Check(!airlock->IsLocked()&&!dock->IsLocked(),"actual post-destruction script unlocks both doors");
+            Check(airlock->GetUnitPos()>.99f&&dock->GetUnitPos()>.99f,"actual post-destruction script opens both doors");
+            step=99;
+        }
+        return;
+    }
+    if (!strcmp(mode,"station40-light")) {
+        static CFWorldLight *light=NULL;
+        if(!step) {
+            Check(!_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WESSstatn02"),"Bring It Down lighting fixture loaded");
+            for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityOrig;
+                actor->SetInvincible(TRUE);actor->SetBotFlag_NoGravity();actor->EnableTripper(FALSE);
+                CFMtx43A at=*actor->MtxToWorld();at.m_vPos.Set(-170.0f+8*n,0.0f,360.0f);
+                actor->Relocate_RotXlatFromUnitMtx_WS(&at);actor->ZeroVelocity();
+            }
+            FLightInit_t init;memset(&init,0,sizeof(init));
+            init.nType=FLIGHT_TYPE_OMNI;init.nLightID=0xffff;init.nParentBoneIdx=-1;
+            init.nFlags=FLIGHT_FLAG_ENABLE|FLIGHT_FLAG_HASPOS|FLIGHT_FLAG_PER_PIXEL|FLIGHT_FLAG_ENGINE_LIGHT;
+            init.fIntensity=1.0f;init.Motif.Set(1.0f,0.2f,0.0f,1.0f);
+            init.spInfluence.m_Pos.Set(-166.0f,10.0f,420.0f);init.spInfluence.m_fRadius=180.0f;
+            light=fnew CFWorldLight;light->Init(&init);light->AddToWorld();
+            DEVPRINTF("STATION40-LIGHT orange\n");step=1;nStepTime=now;
+        } else if(step==1 && now-nStepTime>8000) {
+            light->m_Light.SetColor(0.0f,1.0f,0.0f,1.0f);
+            DEVPRINTF("STATION40-LIGHT green\n");step=2;nStepTime=now;
+        } else if(step==2 && now-nStepTime>8000) {
+            light->RemoveFromWorld();fdelete(light);light=NULL;
+            DEVPRINTF("STATION40-LIGHT off\n");step=3;nStepTime=now;
+        } else if(step==3 && now-nStepTime>6000) {
+            Check(TRUE,"Bring It Down temporary lighting cycle complete");step=99;
+        }
+        return;
+    }
+    if (invasionFixture) {
+        static CFScriptInst *town=NULL;
+        static CBot *friendly=NULL;
+        if(!town) {
+            CFScriptInst *scripts=CFScriptSystem::GetScriptInstList();
+            for(u32 i=0;i<CFScriptSystem::NumScriptInsts();++i)
+                if(scripts[i].m_pScript && !_stricmp(scripts[i].m_pScript->m_szScriptFileName,"xedi_town.sma")) town=&scripts[i];
+        }
+        if(!town || _stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WEDiinvas01")) {
+            Check(FALSE,"Unwelcome Home diagnostic and town script loaded");step=99;return;
+        }
+        cell *data=(cell*)town->m_pDataArea;
+        if(!step) {
+            // Diagnostic-only completed-wave setup. The retail town Work and
+            // event handlers still perform every after-casualties transition.
+            for(int n=0;n<CPlayer::m_nPlayerCount;++n) {
+                CBot *actor=(CBot*)Player_aPlayer[n].m_pEntityOrig;
+                actor->SetInvincible(TRUE);actor->SetBotFlag_NoGravity();actor->EnableTripper(FALSE);
+                CFMtx43A at=*actor->MtxToWorld();at.m_vPos.Set(-330.0f+12*n,8.0f,70.0f);
+                actor->Relocate_RotXlatFromUnitMtx_WS(&at);actor->ZeroVelocity();
+            }
+            for(CEntity *actor=CEntity::InWorldList_GetHead();actor;) {
+                CEntity *next=actor->InWorldList_GetNext();
+                if(actor->TypeBits()&(ENTITY_BIT_BOTGRUNT|ENTITY_BIT_BOTJUMPER|ENTITY_BIT_BOTELITEGUARD)) actor->RemoveFromWorld();
+                actor=next;
+            }
+            friendly=(CBot*)CEntity::Find("droid2");
+            if(!friendly || !friendly->IsInWorld()) { Check(FALSE,"authored friendly droid2 is present");step=99;return; }
+            DEVPRINTF("INVASION32 friendly before health=%.3f dead=%d world=%d\n",friendly->NormHealth(),friendly->IsDeadOrDying(),friendly->IsInWorld());
+            CDamageData damage;memset(&damage,0,sizeof(damage));
+            damage.m_nDamageLocale=CDamageForm::DAMAGE_LOCALE_IMPACT;
+            damage.m_pDamageProfile=&CDamage::m_DamageProfileNone;damage.m_pDamageeEntity=friendly;
+            damage.m_Damager.pBot=p0;damage.m_Damager.nDamagerPlayerIndex=0;
+            CDamageResult result;memset(&result,0,sizeof(result));result.m_pDamageData=&damage;result.m_fDeltaHitpoints=100.0f;
+            friendly->InflictDamageResult(&result);
+            Check(friendly->IsDeadOrDying(),"authored friendly accepts lethal player damage");
+            step=1;nStepTime=now;
+        } else if(step==1 && now-nStepTime>2000) {
+            DEVPRINTF("INVASION32 friendly after health=%.3f dead=%d world=%d\n",friendly->NormHealth(),friendly->IsDeadOrDying(),friendly->IsInWorld());
+            Check(!friendly->IsInWorld(),"friendly droid vanishes after death without a parts manager");
+            data[0]=0;data[1220/4]=2;
+            data[1364/4]=0;
+            CEntity *quotaTarget=(CEntity*)data[4124/4];
+            const int killer=CPlayer::m_nPlayerCount-1;
+            if(quotaTarget) {
+                if(killer>0) {
+                    // Call the unmodified VM handler directly to demonstrate
+                    // its retail single-player comparison, bypassing the
+                    // compatibility layer at CFScriptInst::OnEvent.
+                    cell ret=0;town->m_pScript->SetDataArea(data);
+                    int err=amx_Exec(&town->m_oAMX,&ret,town->m_nOnEventIdx,5,(cell)town->m_pObject,
+                        CFScriptSystem::GetEventNumFromName("PlayerKills"),-1,
+                        (cell)Player_aPlayer[killer].m_pEntityCurrent,(cell)quotaTarget);
+                    town->m_pScript->GetDataArea(data);
+                    Check(err==AMX_ERR_NONE && data[1364/4]==0,"retail town handler rejects a partner's kill");
+                }
+                Player_aPlayer[killer].CreditKill(-1,quotaTarget);
+                DEVPRINTF("INVASION32 quota queued killer=%d target=%s\n",killer+1,quotaTarget->Name());
+            } else Check(FALSE,"campaign quota enemy exists");
+            step=6;nStepTime=now;
+        } else if(step==6 && now-nStepTime>250) {
+            DEVPRINTF("INVASION32 quota dispatched credit=%d\n",data[1364/4]);
+            Check(data[1364/4]==1,"campaign player-kill quota includes the active co-op player");
+            data[1348/4]=data[1172/4];data[1364/4]=data[1188/4];
+            data[1284/4]=11;town->m_fDisabledCtdn=0;
+            DEVPRINTF("INVASION32 zone0 completed-wave setup kills=%d/%d playerkills=%d/%d\n",data[1348/4],data[1172/4],data[1364/4],data[1188/4]);
+            step=2;nStepTime=now;
+        } else if(step==2 && now-nStepTime>4000) {
+            DEVPRINTF("INVASION32 zone0 result zone=%d state=%d\n",data[0],data[1220/4]);
+            Check(data[0]==1,"first check-casualties announcement advances to the next zone");
+            DEVPRINTF("INVASION32 diagnostic complete\n");step=99;
+        }
+        return;
     }
     if (coliseumGates) {
         CDoorEntity *gate6=(CDoorEntity*)CEntity::Find("outerdoor6");
@@ -729,8 +1014,12 @@ void port_CoopRegressionWork() {
                     partner->MtxToWorld()->m_vPos.DistSq(p0->MtxToWorld()->m_vPos)>100.0f) recovered=FALSE;
             }
             if(recovered) {
-                Check(TRUE,"all active partners recover intact beside rebuilt P1 after Shhh transmission");
-                step=20;nStepTime=now;
+                Check(TRUE,CPlayer::m_nPlayerCount>1?
+                    "all active partners recover intact beside rebuilt P1 after Shhh transmission":
+                    "solo post-assembly transmission restores normal control");
+                // The following inspection disturbance verifies the co-op-only
+                // retry policy. Solo deliberately retains the retail punishment.
+                step=CPlayer::m_nPlayerCount>1?20:99;nStepTime=now;
             }
         } else if(step==20 && now-nStepTime>2000) {
             for(s32 n=1;n<CPlayer::m_nPlayerCount;++n) {

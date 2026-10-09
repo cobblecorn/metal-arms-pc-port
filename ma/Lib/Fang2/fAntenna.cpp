@@ -127,6 +127,13 @@ void CFAntenna::SetPos( void )
 	// actual work done in bone callback to get latest position
 }
 
+#if FANG_WINGC
+static BOOL _IsFiniteVec( const CFVec3A &v ) {
+	// NaN fails every comparison; infinities fail the range test.
+	return FMATH_FABS( v.x ) < 1.0e30f && FMATH_FABS( v.y ) < 1.0e30f && FMATH_FABS( v.z ) < 1.0e30f;
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // updates the antenna position, orientation and physics.  Call every frame.
 #define _MAX_ITERATIONS		( 1 )
@@ -150,6 +157,24 @@ void CFAntenna::Work( void )
 		fboxfilter_Reset_f32( m_hFramerateFilter );
 	}
 
+#if FANG_WINGC
+	// A frame with no length (the first after a streaming wait) has an infinite 1/dt, which turned
+	// the spring into NaN for good (the RAT gun's antenna, Wasteland Thunder). Skip such frames, and
+	// if the spring or its base ever goes non-finite, put the antenna back at rest.
+	if( !(FLoop_fPreviousLoopSecs > 0.0f) || !(FLoop_fPreviousLoopOOSecs < 1.0e6f) ) {
+		return;
+	}
+	if( !_IsFiniteVec( m_vSpringPos ) || !_IsFiniteVec( m_vSpringVel ) || !_IsFiniteVec( m_vBasePos ) || !_IsFiniteVec( m_vBaseVel ) ) {
+		m_vBasePos.Set( m_paBoneData[0].mOr.m_vPos );
+		m_vBaseVel.Zero();
+		m_vSpringPos.Zero();
+		m_vSpringVel.Zero();
+		fboxfilter_Reset_f32( m_hFramerateFilter );
+		if( !_IsFiniteVec( m_vBasePos ) ) {
+			m_vBasePos.Zero();
+		}
+	}
+#endif
 	fboxfilter_Add_f32( m_hFramerateFilter, FLoop_fPreviousLoopOOSecs );
 
 	// compute velocity of antenna base
@@ -287,6 +312,11 @@ BOOL CFAntenna::AnimateBone( u32 uBoneIndex, CFMtx43A &rNewMtx, const CFMtx43A &
 			f32 fFilteredPreviousLoopOOSecs;
 
 			fboxfilter_Get_f32( m_hFramerateFilter, NULL, &fFilteredPreviousLoopOOSecs, NULL, NULL );
+#if FANG_WINGC
+			if( !(fFilteredPreviousLoopOOSecs >= 0.0f && fFilteredPreviousLoopOOSecs < 1.0e6f) ) {
+				fFilteredPreviousLoopOOSecs = 60.0f;
+			}
+#endif
 			qRot.BuildQuat( vUnitAxis, fLength * (m_fMagnitude * m_fOONumBones ) * (fFilteredPreviousLoopOOSecs * 0.01666f)/*hack to reduce sway amount at low framerates*/ );
 		}
 		else

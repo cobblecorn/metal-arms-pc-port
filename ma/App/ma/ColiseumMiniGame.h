@@ -162,6 +162,10 @@ public:
 
 	static BOOL Targeting( const CFVec3A *pRayStart_WS, const CFVec3A *pRayEnd_WS, CFVec3A *TargetedPointOnTarget_WS, CFWorldMesh **pTargetedTargetWorldMesh );
 		
+#if FANG_WINGC
+	static BOOL PortTestCorrosive( s32 nStep );
+#endif
+
 private:
 #if FANG_WINGC
 	void PortSetCorrosiveWinner( s32 nPlayer );

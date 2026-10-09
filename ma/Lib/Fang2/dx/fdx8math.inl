@@ -130,10 +130,21 @@ FINLINE f32 fmath_Sqrt( f32 fVal ) {
 
 	#if FANG_PLATFORM_WIN
 	if( !(fVal >= 0.0f) ) {
-		DEVPRINTF( "*** FANG SQRT INPUT: fmath_Sqrt received %g\n", (double)fVal );
+		static u32 _nLogged = 0;
+		if( _nLogged < 5 ) {
+			++_nLogged;
+			DEVPRINTF( "*** FANG SQRT INPUT: fmath_Sqrt received %g\n", (double)fVal );
+		}
 	}
 	#endif
 	FASSERT_POS_FLOAT( fVal );
+	#if FANG_PLATFORM_WIN
+	// A slightly negative input (rounding in callers such as fmath_AcosFast's 1 - cos) gave NaN here,
+	// which then failed the result check below and spread into physics. Its root is zero.
+	if( !(fVal >= 0.0f) ) {
+		fVal = 0.0f;
+	}
+	#endif
 
 	__asm {
 		rsqrtss	xmm0, fVal

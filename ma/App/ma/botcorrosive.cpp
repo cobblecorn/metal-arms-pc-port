@@ -22,6 +22,7 @@
 #include "botcorrosive.h"
 #include "botanim.h"
 #include "fmesh.h"
+#include "fvis.h"
 #include "fresload.h"
 #include "meshtypes.h"
 #include "protrack.h"
@@ -42,6 +43,7 @@
 #include "gstring.h"
 
 #include "sas_user.h"
+
 
 #define	_BOTINFO_FILENAME				"b_corrosive"
 #define _BOTPART_FILENAME				"bp_corr"
@@ -3597,6 +3599,36 @@ void CBotCorrosive::_HandleHandAttackInflictDamageSweetRange( f32 fPrevTime, f32
 
 
 
+struct _CorrosiveHandHit_t {
+	CEntity *pEntity;
+	CFWorldMesh *pWorldMesh;
+	FCollImpact_t Impact;
+	BOOL bApplyDamage;
+};
+
+// Impact debris and damage change mesh trackers. The collision callback records
+// hits; the caller applies their effects once the world tracker walk has ended.
+enum { CORROSIVE_HAND_HIT_CAPACITY = 256 };
+static _CorrosiveHandHit_t _aCorrosiveHandHits[CORROSIVE_HAND_HIT_CAPACITY];
+static u32 _nCorrosiveHandHits = 0;
+#if FANG_WINGC
+static u32 _nPortCorrosiveHandImpactCount = 0;
+static BOOL _bPortCorrosiveHandTrackersChanged = FALSE;
+#endif
+
+static void _QueueCorrosiveHandHit( const _CorrosiveHandHit_t &Hit ) {
+	if( _nCorrosiveHandHits < CORROSIVE_HAND_HIT_CAPACITY ) {
+		_aCorrosiveHandHits[_nCorrosiveHandHits++] = Hit;
+	} else if( Hit.bApplyDamage && Hit.pEntity ) {
+		// A dense debris pile may exhaust visual impacts. Preserve every damage hit
+		// (at most HIT_ENTITY_MAX_COUNT) by replacing a visual-only entry.
+		for( u32 i = 0; i < _nCorrosiveHandHits; ++i ) if( !_aCorrosiveHandHits[i].bApplyDamage ) {
+			_aCorrosiveHandHits[i] = Hit;
+			break;
+		}
+	}
+}
+
 void CBotCorrosive::_PerformHandAttackDamageCheck( const CFVec3A *pPrevSpherePos_WS, const CFVec3A *pCurrentSpherePos_WS ) {
 	CFTrackerCollideProjSphereInfo TrackerCollideInfo;
 
@@ -3644,89 +3676,76 @@ void CBotCorrosive::_PerformHandAttackDamageCheck( const CFVec3A *pPrevSpherePos
 
 	// Now handle collision with non-world geometry
 	fcoll_Clear();
+	_nCorrosiveHandHits = 0;
 	fworld_CollideWithTrackers( &TrackerCollideInfo );
+#if FANG_WINGC
+	_nPortCorrosiveHandImpactCount = _nCorrosiveHandHits;
+	const u32 nTrackerKeyBeforeEffects = FVis_anVolumeTrackerKey[FWORLD_TRACKERTYPE_MESH];
+#endif
+	for( u32 i = 0; i < _nCorrosiveHandHits; ++i ) {
+		const _CorrosiveHandHit_t &Hit = _aCorrosiveHandHits[i];
+		_SpawnHandAttackImpactEffects( &Hit.Impact );
+		if( Hit.bApplyDamage ) _InflictHandAttackDamage( Hit.pEntity, Hit.pWorldMesh, &Hit.Impact );
+	}
+#if FANG_WINGC
+	_bPortCorrosiveHandTrackersChanged = nTrackerKeyBeforeEffects != FVis_anVolumeTrackerKey[FWORLD_TRACKERTYPE_MESH];
+#endif
+	_nCorrosiveHandHits = 0;
 }
 
+#if FANG_WINGC
+u32 CBotCorrosive::PortTestHandCollision( CEntity *pTarget ) {
+	if( !pTarget || !pTarget->IsInWorld() || !pTarget->GetMesh() ) return 0;
+	const BehaviorState_e eSavedBehavior = m_eBehaviorState;
+	m_eBehaviorState = BEHAVIOR_STATE_FIST_SMASH;
+	m_nHitEntityCount = 0;
+	FMATH_CLEARBITMASK(m_nCorrosiveFlags,CORROSIVEFLAG_SMASHHITTERRAIN);
+	CFVec3A Start, End;
+	End.v3 = pTarget->GetMesh()->GetBoundingSphere().m_Pos;
+	Start = End; Start.y += 2.0f;
+	_PerformHandAttackDamageCheck(&Start,&End);
+	m_eBehaviorState = eSavedBehavior;
+	return _nPortCorrosiveHandImpactCount;
+}
+
+BOOL CBotCorrosive::PortTestHandTrackersChanged( void ) {
+	return _bPortCorrosiveHandTrackersChanged;
+}
+#endif
 
 BOOL CBotCorrosive::_HandAttackHitTrackerCallback( CFWorldTracker *pTracker, FVisVolume_t *pVolume ) {
 	CBotCorrosive *pBotCorrosive = (CBotCorrosive *)m_pCollBot;
 	CFWorldMesh *pWorldMesh = (CFWorldMesh *)pTracker;
-
-	if( pTracker->m_nUser != MESHTYPES_ENTITY ) {
-		// Tracker is a non-entity...
-
-		// This is a collision with non-entity geometry
-		fcoll_Clear();
-
-		if( pWorldMesh->CollideWithMeshTris( &m_CollInfo ) ) {
-			// We hit a terrain triangle...
-
-			pBotCorrosive->_SpawnHandAttackImpactEffects( &FColl_aImpactBuf[0] );
-			if( !(pBotCorrosive->m_nCorrosiveFlags & CORROSIVEFLAG_SMASHHITTERRAIN) ) {
-				// Haven't hit any terrain yet...
-				pBotCorrosive->_InflictHandAttackDamage( NULL, NULL, &FColl_aImpactBuf[0] );
-				FMATH_SETBITMASK( pBotCorrosive->m_nCorrosiveFlags, CORROSIVEFLAG_SMASHHITTERRAIN );
-			}
-		}
-		return TRUE;
-	}
-
-	// This tracker is an entity...
-
-	CEntity *pEntity = (CEntity *)pTracker->m_pUser;
-
-	if( pEntity == (CEntity *)pBotCorrosive ) {
-		// We hit ourselves... How, I don't know...
-		return TRUE;
-	}
+	CEntity *pEntity = pTracker->m_nUser == MESHTYPES_ENTITY ? (CEntity *)pTracker->m_pUser : NULL;
+	if( pEntity == pBotCorrosive ) return TRUE;
 
 	fcoll_Clear();
+	if( !pWorldMesh->CollideWithMeshTris( &m_CollInfo ) ) return TRUE;
 
-	if( !pWorldMesh->CollideWithMeshTris( &m_CollInfo ) ) {
-		// We did not hit any triangles on the entity...
-		return TRUE;
-	}
-
-	// We hit a triangle on the entity...
-
-	pBotCorrosive->_SpawnHandAttackImpactEffects( &FColl_aImpactBuf[0] );
-
-	if( pBotCorrosive->m_nHitEntityCount >= HIT_ENTITY_MAX_COUNT ) {
-		// Cannot damage any more entities with this attack...
-		return TRUE;
-	}
-
-	u32 i;
-
-	for( i=0; i<pBotCorrosive->m_nHitEntityCount; ++i ) {
-		if( pBotCorrosive->m_apHitEntity[i] == pEntity ) {
-			// Already issued damage to this entity during this attack...
-			return TRUE;
+	_CorrosiveHandHit_t Hit;
+	Hit.pEntity = pEntity;
+	Hit.pWorldMesh = pWorldMesh;
+	Hit.Impact = FColl_aImpactBuf[0];
+	Hit.bApplyDamage = FALSE;
+	if( !pEntity ) {
+		Hit.bApplyDamage = !(pBotCorrosive->m_nCorrosiveFlags & CORROSIVEFLAG_SMASHHITTERRAIN);
+		if( Hit.bApplyDamage ) FMATH_SETBITMASK(pBotCorrosive->m_nCorrosiveFlags, CORROSIVEFLAG_SMASHHITTERRAIN);
+	} else if( pBotCorrosive->m_nHitEntityCount < HIT_ENTITY_MAX_COUNT ) {
+		u32 i;
+		for( i = 0; i < pBotCorrosive->m_nHitEntityCount; ++i ) {
+			if( pBotCorrosive->m_apHitEntity[i] == pEntity ) break;
 		}
-	}
-
-	//DEVPRINTF( "Damaged Entity!\n " );
-	pBotCorrosive->_InflictHandAttackDamage( pEntity, pWorldMesh, &FColl_aImpactBuf[0] );
-
-	// Now, add this entity to our hit-entity buffer to remember that we've already damaged it...
-	if( pEntity->TypeBits() & ENTITY_BIT_WEAPON ) {
-		// Entity is a CWeapon...
-
-		CWeapon *pWeapon = (CWeapon *)pEntity;
-
-		if( pWeapon->GetOwner() ) {
-			// Weapon has an owner...
-
-			if( pWeapon->GetBotDamageBoneIndex() >= 0 ) {
-				// Weapon will pass damage onto its owner...
-
-				pEntity = pWeapon->GetOwner();
+		if( i == pBotCorrosive->m_nHitEntityCount ) {
+			Hit.bApplyDamage = TRUE;
+			// Remember a weapon's owner, as in retail, without changing the damage recipient.
+			if( pEntity->TypeBits() & ENTITY_BIT_WEAPON ) {
+				CWeapon *pWeapon = (CWeapon *)pEntity;
+				if( pWeapon->GetOwner() && pWeapon->GetBotDamageBoneIndex() >= 0 ) pEntity = pWeapon->GetOwner();
 			}
+			pBotCorrosive->m_apHitEntity[pBotCorrosive->m_nHitEntityCount++] = pEntity;
 		}
 	}
-
-	pBotCorrosive->m_apHitEntity[ pBotCorrosive->m_nHitEntityCount++ ] = pEntity;
-
+	_QueueCorrosiveHandHit(Hit);
 	return TRUE;
 }
 

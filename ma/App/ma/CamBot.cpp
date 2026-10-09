@@ -246,7 +246,16 @@ void CCamBot::Work() {
 	if( m_nPortFovVersion != pcdisplay_FovVersion() ) {
 		f32 fCurrent;
 		m_pCamera->GetFOV( &fCurrent );
-		if( FMATH_FABS( fCurrent - m_fPortHalfFov ) < 0.0001f ) {
+		// Within about 0.1 degree: the FOV the setting applied, give or take a scope's rounding on the way
+		// back (a zoom, console or tether view differs by many degrees).
+		const BOOL bOurs = FMATH_FABS( fCurrent - m_fPortHalfFov ) < 0.002f;
+		static u32 _nLastLoggedVersion = 0;
+		if( _nLastLoggedVersion != pcdisplay_FovVersion() ) {
+			_nLastLoggedVersion = pcdisplay_FovVersion();
+			DEVPRINTF( "Port: FOV setting %+d: camera %u half FOV %.4f, last applied %.4f -> %s\n", pcdisplay_FovOffset(),
+					   m_pCamera->GetID(), FMATH_RAD2DEG( fCurrent ), FMATH_RAD2DEG( m_fPortHalfFov ), bOurs ? "applied" : "left (not ours)" );
+		}
+		if( bOurs ) {
 			_PortApplyFov();
 		}
 	}

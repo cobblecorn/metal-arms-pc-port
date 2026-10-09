@@ -1190,6 +1190,33 @@ static void _PortTestGiveWork( CPlayer *pPlayer ) {
 	}
 	CBot *pBot = (CBot *)pEntity;
 	_bDone = TRUE;
+	if( pBot->m_pInventory && !fclib_stricmp( pszItem, "battery" ) ) {
+		// Not a weapon: stand the player a few steps from the nearest battery in the level, facing it
+		// (or, with none placed, drop one at the player's feet as the shop does).
+		CFVec3A Battery_WS;
+		if( CCollectable::PortFindNearest( COLLECTABLE_BATTERY, pBot->MtxToWorld()->m_vPos, &Battery_WS ) ) {
+			CFMtx43A Mtx;
+			Mtx.Identity();
+			CFVec3A Away;
+			Away.Sub( pBot->MtxToWorld()->m_vPos, Battery_WS );
+			Away.y = 0.0f;
+			if( Away.MagSq() < 0.01f ) {
+				Away.Set( 0.0f, 0.0f, 1.0f );
+			}
+			Away.Unitize();
+			Mtx.m_vPos.Set( Battery_WS.x + Away.x * 6.0f, Battery_WS.y + 1.0f, Battery_WS.z + Away.z * 6.0f );
+			Mtx.m_vFront.Set( -Away.x, 0.0f, -Away.z );
+			Mtx.m_vUp.Set( 0.0f, 1.0f, 0.0f );
+			Mtx.m_vRight.Cross( Mtx.m_vUp, Mtx.m_vFront );
+			pBot->Relocate_RotXlatFromUnitMtx_WS( &Mtx );
+			DEVPRINTF( "Port: -test-give battery: moved player 1 beside the nearest battery at (%.1f, %.1f, %.1f).\n",
+					   Battery_WS.x, Battery_WS.y, Battery_WS.z );
+		} else {
+			const BOOL bGiven = CCollectable::GiveToPlayer( pBot, COLLECTABLE_BATTERY, 1.0f );
+			DEVPRINTF( "Port: -test-give battery: none in this level; %s one.\n", bGiven ? "dropped" : "could not drop" );
+		}
+		return;
+	}
 	if( !pBot->m_pInventory || !CCollectable::GiveWeaponToPlayer( pBot, pszItem, 3 ) ) {
 		DEVPRINTF( "Port: -test-give could not give '%s'.\n", pszItem );
 		return;
@@ -1307,6 +1334,25 @@ void CPlayer::Work( void ) {
 					_CoopResurrectOthers( this );
 #endif
 					if( !MultiplayerMgr.RespawnBot( (CBot*)m_pEntityCurrent ) && !gamecam_GetCameraBeingDebugged() ) {
+#if FANG_WINGC
+						// A checkpoint saved at a bad moment (Wasteland Journey 2's collapse) can kill the
+						// player again within moments of every continue. After two such deaths in a row,
+						// go back to the start of the level instead of looping.
+						static DWORD s_nLastContinueTick = 0;
+						static u32 s_nQuickDeaths = 0;
+						const DWORD nNow = GetTickCount();
+						if( s_nLastContinueTick && nNow - s_nLastContinueTick < 8000 ) {
+							++s_nQuickDeaths;
+						} else {
+							s_nQuickDeaths = 0;
+						}
+						s_nLastContinueTick = nNow;
+						if( s_nQuickDeaths >= 2 && checkpoint_Saved( 1 ) && checkpoint_Saved( 0 ) ) {
+							DEVPRINTF( "Port: died again within seconds of each of the last continues; restarting from the level start instead.\n" );
+							s_nQuickDeaths = 0;
+							checkpoint_Restore( 0, TRUE, "player:death-loop-level-start" );
+						} else
+#endif
 						if( checkpoint_Saved( 1 ) ) {
 							// player has passed a checkpoint on this level,
 							// so restore to that.

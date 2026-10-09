@@ -590,6 +590,10 @@ public:
 
 	BOOL IsFingerFlicked();
 	BOOL IsInMiddleOfSwat();
+#if FANG_WINGC
+	u32 PortTestHandCollision( CEntity *pTarget );
+	static BOOL PortTestHandTrackersChanged( void );
+#endif
 
 	BOOL IsEntityHit( CEntity *pEntity );
 	void ClearEntityHitList();

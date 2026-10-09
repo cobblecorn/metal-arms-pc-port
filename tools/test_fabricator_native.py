@@ -116,7 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--players', default='2', help='One count or comma-separated counts: 1,2,4; four players require a ready join setup.')
     parser.add_argument('--machine', choices=('lower', 'upper'), required=True)
-    parser.add_argument('--exe', type=Path, default=ROOT / 'build/encounter-candidate/Release/ma_port.exe')
+    parser.add_argument('--exe', type=Path, default=ROOT / 'build/Release/ma_port.exe')
     args = parser.parse_args()
     try:
         players = [int(count) for count in args.players.split(',')]
@@ -126,7 +126,7 @@ def main():
         parser.error('--players accepts only 1, 2, and 4.')
     exe = args.exe.resolve()
     if not exe.is_file():
-        parser.error('Build the candidate first or supply --exe.')
+        parser.error('Build Release first or supply --exe.')
     try:
         for count in dict.fromkeys(players):
             run(exe, count, args.machine)

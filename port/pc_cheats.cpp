@@ -1,6 +1,7 @@
 #include "pc_cheats.h"
 #include "player.h"
 #include "bot.h"
+#include "botfx.h"
 #include "weapon.h"
 #include "Item.h"
 #include "ItemInst.h"
@@ -9,6 +10,8 @@
 
 static u32 _nInfiniteAmmoPlayers;
 static u32 _nInvulnerablePlayers;
+static u32 _nSpeedBoostPlayers;
+static u32 _nHighJumpPlayers;
 
 static BOOL _ValidPlayer( s32 nPlayer ) {
 	return nPlayer >= 0 && nPlayer < CPlayer::m_nPlayerCount && nPlayer < MAX_PLAYERS &&
@@ -17,13 +20,16 @@ static BOOL _ValidPlayer( s32 nPlayer ) {
 
 void pccheats_Reset() {
 	_nInfiniteAmmoPlayers = _nInvulnerablePlayers = 0;
+	_nSpeedBoostPlayers = _nHighJumpPlayers = 0;
 }
 
 BOOL pccheats_Enabled( s32 nPlayer, PcCheatAction_e eAction ) {
 	if( !_ValidPlayer( nPlayer ) ) return FALSE;
 	const u32 nBit = 1u << nPlayer;
 	return (eAction == PC_CHEAT_INFINITE_AMMO && (_nInfiniteAmmoPlayers & nBit)) ||
-		(eAction == PC_CHEAT_INVULNERABLE && (_nInvulnerablePlayers & nBit));
+		(eAction == PC_CHEAT_INVULNERABLE && (_nInvulnerablePlayers & nBit)) ||
+		(eAction == PC_CHEAT_SPEED_BOOST && (_nSpeedBoostPlayers & nBit)) ||
+		(eAction == PC_CHEAT_HIGH_JUMP && (_nHighJumpPlayers & nBit));
 }
 
 BOOL pccheats_InfiniteAmmo( const CWeapon *pWeapon ) {
@@ -72,9 +78,20 @@ static void _RefillPlayer( s32 nPlayer ) {
 }
 
 void pccheats_Work() {
-	if( !_nInfiniteAmmoPlayers || !MultiplayerMgr.IsSinglePlayer() ) return;
+	if( !(_nInfiniteAmmoPlayers | _nSpeedBoostPlayers | _nHighJumpPlayers) ||
+		!MultiplayerMgr.IsSinglePlayer() ) return;
 	for( s32 n=0; n < CPlayer::m_nPlayerCount && n < MAX_PLAYERS; ++n ) {
-		if( _nInfiniteAmmoPlayers & (1u << n) ) _RefillPlayer( n );
+		const u32 nBit = 1u << n;
+		if( _nInfiniteAmmoPlayers & nBit ) _RefillPlayer( n );
+		if( !((_nSpeedBoostPlayers | _nHighJumpPlayers) & nBit) ) continue;
+		CEntity *pEntity = Player_aPlayer[n].m_pEntityOrig;
+		if( !pEntity || pEntity != Player_aPlayer[n].m_pEntityCurrent ||
+			!(pEntity->TypeBits() & ENTITY_BIT_BOTGLITCH) || !pEntity->IsInWorld() ||
+			((CBot *)pEntity)->IsDeadOrDying() ) continue;
+		CBotPowerupFx *pPowerup = ((CBot *)pEntity)->GetPowerupFx();
+		if( !pPowerup ) continue;
+		if( _nSpeedBoostPlayers & nBit ) pPowerup->SetMovementCheat( CBotPowerupFx::BOT_FX_TYPES_SPEEDUP, TRUE );
+		if( _nHighJumpPlayers & nBit ) pPowerup->SetMovementCheat( CBotPowerupFx::BOT_FX_TYPES_HIJUMP, TRUE );
 	}
 }
 
@@ -82,6 +99,20 @@ cwchar *pccheats_Apply( s32 nPlayer, PcCheatAction_e eAction ) {
 	if( !_ValidPlayer( nPlayer ) ) return L"Cheats are available in campaign play.";
 	CPlayer &player = Player_aPlayer[nPlayer];
 	const u32 nBit = 1u << nPlayer;
+	if( (eAction == PC_CHEAT_SPEED_BOOST && (_nSpeedBoostPlayers & nBit)) ||
+		(eAction == PC_CHEAT_HIGH_JUMP && (_nHighJumpPlayers & nBit)) ) {
+		// Turning a toggle off must also work while down or possessing another bot.
+		const BOOL bSpeed = eAction == PC_CHEAT_SPEED_BOOST;
+		if( bSpeed ) _nSpeedBoostPlayers &= ~nBit;
+		else _nHighJumpPlayers &= ~nBit;
+		CEntity *pOriginal = player.m_pEntityOrig;
+		if( pOriginal && (pOriginal->TypeBits() & ENTITY_BIT_BOTGLITCH) ) {
+			CBotPowerupFx *pPowerup = ((CBot *)pOriginal)->GetPowerupFx();
+			if( pPowerup ) pPowerup->SetMovementCheat( bSpeed ?
+				CBotPowerupFx::BOT_FX_TYPES_SPEEDUP : CBotPowerupFx::BOT_FX_TYPES_HIJUMP, FALSE );
+		}
+		return bSpeed ? L"Double speed disabled." : L"High jump disabled.";
+	}
 	if( eAction == PC_CHEAT_INFINITE_AMMO ) {
 		_nInfiniteAmmoPlayers ^= nBit;
 		if( _nInfiniteAmmoPlayers & nBit ) _RefillPlayer( nPlayer );
@@ -110,11 +141,24 @@ cwchar *pccheats_Apply( s32 nPlayer, PcCheatAction_e eAction ) {
 		pEntity->SetMaxHealth();
 		return L"Health restored.";
 	}
-	if( eAction != PC_CHEAT_WEAPONS && eAction != PC_CHEAT_UPGRADES ) return L"Unknown cheat.";
+	if( eAction != PC_CHEAT_WEAPONS && eAction != PC_CHEAT_UPGRADES &&
+		eAction != PC_CHEAT_SPEED_BOOST && eAction != PC_CHEAT_HIGH_JUMP ) return L"Unknown cheat.";
 	CEntity *pEntity = player.m_pEntityOrig;
 	if( !pEntity || pEntity != player.m_pEntityCurrent || !(pEntity->TypeBits() & ENTITY_BIT_BOTGLITCH) ||
 		!pEntity->IsInWorld() || ((CBot *)pEntity)->IsDeadOrDying() ) return L"Use this while controlling Glitch.";
 	CBot *pBot = (CBot *)pEntity;
+	if( eAction == PC_CHEAT_SPEED_BOOST || eAction == PC_CHEAT_HIGH_JUMP ) {
+		CBotPowerupFx *pPowerup = pBot->GetPowerupFx();
+		if( !pPowerup ) return L"Movement powerups are unavailable for this player.";
+		if( eAction == PC_CHEAT_SPEED_BOOST ) {
+			_nSpeedBoostPlayers |= nBit;
+			pPowerup->SetMovementCheat( CBotPowerupFx::BOT_FX_TYPES_SPEEDUP, TRUE );
+			return L"Double speed enabled.";
+		}
+		_nHighJumpPlayers |= nBit;
+		pPowerup->SetMovementCheat( CBotPowerupFx::BOT_FX_TYPES_HIJUMP, TRUE );
+		return L"High jump enabled.";
+	}
 	CInventory *pInventory = pBot->m_pInventory;
 	if( !pInventory ) return L"No weapon inventory is available.";
 	const s32 nPreviousPlayer = CPlayer::m_nCurrent;

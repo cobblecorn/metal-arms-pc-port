@@ -249,6 +249,22 @@ static void _WriteBackBufferShot( IDirect3DDevice9 *pDev )
 	if( FAILED( pDev->GetBackBuffer( 0, 0, D3DBACKBUFFER_TYPE_MONO, &pBack ) ) )
 		return;
 	pBack->GetDesc( &Desc );
+	if( Desc.MultiSampleType != D3DMULTISAMPLE_NONE )
+	{
+		// Anti-aliased back buffer: resolve it into a plain render target first.
+		IDirect3DSurface9 *pResolved = NULL;
+		if( SUCCEEDED( pDev->CreateRenderTarget( Desc.Width, Desc.Height, Desc.Format, D3DMULTISAMPLE_NONE, 0, FALSE, &pResolved, NULL ) ) &&
+			SUCCEEDED( pDev->StretchRect( pBack, NULL, pResolved, NULL, D3DTEXF_NONE ) ) )
+		{
+			pBack->Release();
+			pBack = pResolved;
+			pBack->GetDesc( &Desc );
+		}
+		else if( pResolved )
+		{
+			pResolved->Release();
+		}
+	}
 	if( (Desc.Format == D3DFMT_X8R8G8B8 || Desc.Format == D3DFMT_A8R8G8B8) && Desc.MultiSampleType == D3DMULTISAMPLE_NONE &&
 		SUCCEEDED( pDev->CreateOffscreenPlainSurface( Desc.Width, Desc.Height, Desc.Format, D3DPOOL_SYSTEMMEM, &pCopy, NULL ) ) &&
 		SUCCEEDED( pDev->GetRenderTargetData( pBack, pCopy ) ) )

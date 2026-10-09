@@ -295,6 +295,12 @@ MuzzleFlash_GroupHandle_t CMuzzleFlash::AllocateNewGroup(MuzzleFlashType_e nType
 {
 	CMuzzleFlashGroup *pMFG;
 
+#if FANG_WINGC
+	// The console budget (15 per flash type for a whole level) runs out in big firefights and
+	// shots then go without a flash. A PC can afford far more: eight times that.
+	uNumFlashes *= 8;
+#endif
+
 	FResFrame_t ResFrame = fres_GetFrame();
 
 	FResHandle_t hRes = fres_Create( NULL, NULL );

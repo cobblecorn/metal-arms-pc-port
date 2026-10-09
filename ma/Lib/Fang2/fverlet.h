@@ -821,6 +821,9 @@ public:
 
 	BOOL CheckPointSave( void ); //have this verlet object save itself 
 	BOOL CheckPointLoad( void ); //have this verlet object reload itself
+#if FANG_WINGC
+	void PortRefreshWires( void ); //rebuild anchor wires after a restore (owner back in the world)
+#endif
 
 
 	// Destruction:

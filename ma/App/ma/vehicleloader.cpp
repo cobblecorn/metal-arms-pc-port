@@ -1481,6 +1481,11 @@ void CVehicleLoader::_GetColSphere( u32 uID, CFSphere *pSphere, const CFMtx43A &
 	} else if( uID == COLPOINT_CLAW_CENTER ) {
 		CFVec3A vTmp;
 		f32 fDist = ClawIsClosed() ? 1.0f : m_fUnitClawAngle;
+#if FANG_WINGC
+		// The claw opens past its rest angle (_CLAW_MIN_UNIT_ANGLE is negative): the root of that was NaN
+		// on the consoles and an assertion every frame here. Wide open, the centre stays at rest.
+		FMATH_CLAMP_MIN0( fDist );
+#endif
 		vTmp.Mul( CFVec3A::m_UnitAxisZ, _CLAW_CENTER_THROW * fmath_Sqrt( fDist )/* * fDist*/ );
 		vTmp.Add( m_avCollisionPts[COLPOINT_CLAW_CENTER] );
         mtx.MulPoint( pSphere->m_Pos, vTmp.v3 );

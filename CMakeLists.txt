@@ -119,6 +119,11 @@ add_custom_command(TARGET ma_port POST_BUILD
             ${MA_ROOT}/App/ma/win/binkw32.dll $<TARGET_FILE_DIR:ma_port>
     COMMENT "Copying binkw32.dll")
 
+# Release setup tool: extracts and checks the game files from the player's own disc image.
+add_executable(ma_setup WIN32 port/setup/ma_setup.cpp port/setup/ma_setup.rc)
+target_compile_definitions(ma_setup PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+target_link_libraries(ma_setup PRIVATE comctl32 comdlg32 shell32 user32 gdi32)
+
 # Focus/deadzone/button mapping checks; no game data or controller required.
 add_executable(ma_input_tests EXCLUDE_FROM_ALL tools/test_pc_input.cpp port/pc_input.cpp)
 ma_common_settings(ma_input_tests)

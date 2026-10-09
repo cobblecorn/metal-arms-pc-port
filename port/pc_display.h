@@ -27,6 +27,9 @@ void pcdisplay_AvailableResolution(int index, int *width, int *height);
 // What this run was started with, to tell whether a change needs a restart.
 void pcdisplay_SetLaunched(PcDisplayMode mode, int width, int height);
 bool pcdisplay_RestartNeeded();
+// Ask the launcher to start the game again once it has shut down (to apply the display settings).
+void pcdisplay_RequestRelaunch();
+bool pcdisplay_RelaunchRequested();
 
 // Extra full field of view, in degrees, for the third-person and vehicle cameras.
 int pcdisplay_FovOffset();
@@ -37,3 +40,11 @@ unsigned pcdisplay_FovVersion();
 float pcdisplay_AdjustHalfFov(float halfFovRadians);
 
 enum { PCDISPLAY_FOV_MIN = -10, PCDISPLAY_FOV_MAX = 40, PCDISPLAY_FOV_STEP = 5 };
+
+// Multisample anti-aliasing: 0 (off), 2, 4 or 8 samples. Read at launch (a change needs a restart);
+// the GPU's highest supported count at or below it is used.
+int pcdisplay_AntiAliasing();
+void pcdisplay_SetAntiAliasing(int samples);
+// The next setting up or down the Off / 2x / 4x / 8x list.
+int pcdisplay_StepAntiAliasing(int samples, int direction);
+void pcdisplay_SetLaunchedAntiAliasing(int samples);

@@ -482,12 +482,60 @@ void CBotPowerupFx::PickupPowerup( BotFxTypes_e nType, FSndFx_FxHandle_t hSndHan
 }
 
 //-----------------------------------------------------------------------------
+void CBotPowerupFx::SetMovementCheat( BotFxTypes_e nType, BOOL bActive ) {
+	if( !m_pBot || (nType != BOT_FX_TYPES_HIJUMP && nType != BOT_FX_TYPES_SPEEDUP) ) return;
+	const u16 nMask = nType == BOT_FX_TYPES_HIJUMP ? BOT_FX_MASK_HIJUMP : BOT_FX_MASK_SPEEDUP;
+	if( bActive ) {
+		if( !(m_uBotFXMask & nMask) ) {
+			PickupPowerup( nType, FSNDFX_INVALID_FX_HANDLE, 25.0f,
+				nType == BOT_FX_TYPES_SPEEDUP ? 2.0f : 0.0f,
+				nType == BOT_FX_TYPES_HIJUMP ? 2.0f : 0.0f,
+				nType == BOT_FX_TYPES_HIJUMP ? 1.5f : 0.0f );
+		} else {
+			// Refresh the clock without restarting visual effects or shared sound.
+			if( nType == BOT_FX_TYPES_HIJUMP ) m_fHiJumpSecs = 25.0f;
+			else m_fSpeedUpSecs = 25.0f;
+		}
+		return;
+	}
+	if( !(m_uBotFXMask & nMask) ) return;
+	m_uBotFXMask &= ~nMask;
+	if( nType == BOT_FX_TYPES_HIJUMP ) {
+		m_fHiJumpSecs = 0.0f;
+		m_pBot->m_fGravityMultiplier = 1.0f;
+		m_pBot->m_fJumpMultiplier = 1.0f;
+		CFXStreamerEmitter::EnableStreamerEmission( m_hStreamerEmitter, FALSE );
+		if( m_pGlow ) {
+			if( m_uBotFXMask & BOT_FX_MASK_SPEEDUP ) m_pGlow->SetUnitEffectEnd( 0.0f );
+			else m_pGlow->Deactivate();
+		}
+	} else {
+		m_fSpeedUpSecs = 0.0f;
+		m_pBot->SetRunSpeed( MultiplayerMgr.GetSpeedMultiplier( m_pBot->m_nPossessionPlayerIndex ) );
+		if( m_pSpeed ) m_pSpeed->Deactivate();
+		if( m_pGlow ) {
+			if( m_uBotFXMask & BOT_FX_MASK_HIJUMP ) {
+				m_pGlow->SetUnitEffectEnd( 0.0f );
+				m_pGlow->SetColor( 1.0f, 1.0f, 0.80f, 1.0f, 1.0f );
+			} else m_pGlow->Deactivate();
+		}
+	}
+	if( !(m_uBotFXMask & (BOT_FX_MASK_HIJUMP | BOT_FX_MASK_SPEEDUP)) ) m_pBot->m_fCamZoomFactor = 0.0f;
+	_DecrementActiveCountAndUpdateSFX();
+}
+
+//-----------------------------------------------------------------------------
 void CBotPowerupFx::KillAll() {
 	
 	if( !m_pBot ) {
 		return;
 	}
 
+	// Each bot owns only the effects in its mask. A possession exit or
+	// actor cleanup must leave the other players' active pickup count intact.
+	for( u32 nEffects = m_uBotFXMask; nEffects; nEffects &= nEffects - 1 ) {
+		_DecrementActiveCountAndUpdateSFX();
+	}
 	m_uBotFXMask = BOT_FX_MASK_NONE;
 	m_pBot->m_fGravityMultiplier = 1.0f;
 	m_pBot->m_fJumpMultiplier = 1.0f;
@@ -516,7 +564,7 @@ void CBotPowerupFx::KillAll() {
 		m_pGlow = NULL;
 	}
 
-	if( s_pActiveSound ) {
+	if( s_pActiveSound && s_uActivePickupCount == 0 ) {
 		s_pActiveSound->Destroy();
 		s_pActiveSound = NULL;
 	}
@@ -528,7 +576,6 @@ void CBotPowerupFx::KillAll() {
 	
 	m_fWeaponSecs = 0.0f;
 	
-	s_uActivePickupCount = 0;
 }
 
 //-----------------------------------------------------------------------------

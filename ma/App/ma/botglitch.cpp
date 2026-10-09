@@ -1069,6 +1069,7 @@ void CBotGlitch::ClassHierarchyWork() {
 
 	CBot::ClassHierarchyWork();
 
+
 	UpdateSpotLight();
 
 	if( !IsOurWorkBitSet() ) {
@@ -4568,6 +4569,20 @@ void CBotGlitch::CheckpointRestore( void )
 
 		m_pInventory->SetCurWeapon( 0, m_WeaponInv[0].m_nWeaponInvIndex, FALSE, TRUE );
 		m_pInventory->SetCurWeapon( 1, m_WeaponInv[1].m_nWeaponInvIndex, FALSE, TRUE );
+
+#if FANG_WINGC
+		// The checkpoint brings back the health container count it saved, but the inventory (and its
+		// battery count) is not part of the checkpoint. A battery picked up after the checkpoint was then
+		// lost from health but kept in the inventory, so every later battery counted as already owned and
+		// only healed. Health containers follow the inventory, at the restored share of full health.
+		if( m_pInventory->m_uNumBatteries > 0 && HealthContainerCount() != (f32)m_pInventory->m_uNumBatteries ) {
+			const f32 fUnitHealth = ComputeUnitHealth();
+			DEVPRINTF( "Port: checkpoint restore: health containers %.0f -> %u (the inventory's batteries).\n",
+					   HealthContainerCount(), m_pInventory->m_uNumBatteries );
+			SetHealthContainerCount( (f32)m_pInventory->m_uNumBatteries );
+			SetUnitHealth( fUnitHealth );
+		}
+#endif
 	}
 	else
 	{

@@ -381,20 +381,20 @@ static s32 _GainToDSVolume( f32 fGain )
 	return nVolume;
 }
 
-// PC mix: dialogue over effects. Mission dialogue and bot chatter are bank sound effects like gunfire,
-// so they share the Sound Effects level; on PC the effects buried them (user reports, 2026-09-29: effects
-// sounded right about 11 dB down, with the player's own guns and footsteps a further 6 dB down, but
-// lowering the slider that far made mission 1's dialogue hard to hear). So effects are trimmed and
-// dialogue is not:
+// Optional PC trims of effects against dialogue. Mission dialogue and bot chatter are bank sound effects
+// like gunfire, so they share the Sound Effects level. On PC the effects once buried them (user reports,
+// 2026-09-29), which -11/-6 dB defaults here covered; the cause was the Xbox voice counts letting far more
+// effects sound at once than on the GameCube. With the GameCube's counts (faudio_Install) the default is
+// the retail mix, 0 dB. The options remain for anyone who wants dialogue further forward:
 // - Dialogue keeps the retail level: the level dialogue banks (level_NNd), barter, buddy, intro, taunt
 //   and announcer banks, bot remarks ("br..."), speaker lines ("ca_08o_010"; two letters and '_' in a
 //   level bank) and the Coliseum announcer ("..._ann").
-// - Every other effect is trimmed by -sfx-db / MA_PORT_SFX_DB (default -11 dB).
+// - Every other effect is trimmed by -sfx-db / MA_PORT_SFX_DB (default 0 dB).
 // - The player's own sounds, 2D effects named "sw" (weapons, the AA gun), "sr" (robots: footsteps,
 //   equipment, vehicles) or "sd" (weapon parts), are trimmed by -player-sfx-db / MA_PORT_PLAYER_SFX_DB
-//   more (default -6 dB). Both set to 0 is the retail mix. Streams (music, streamed speech) are untouched.
-#define _PORT_SFX_DEFAULT_DB			( -11.0f )
-#define _PORT_PLAYER_SFX_DEFAULT_DB		( -6.0f )
+//   more (default 0 dB). Both 0 is the retail mix. Streams (music, streamed speech) are untouched.
+#define _PORT_SFX_DEFAULT_DB			( 0.0f )
+#define _PORT_PLAYER_SFX_DEFAULT_DB		( 0.0f )
 
 static f32 _PortTrimGain( cchar *pszEnv, f32 fDefaultDB, cchar *pszWhat )
 {
@@ -927,9 +927,22 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 	//
 	_RealEmitter_t *poRealEmitter;
 
+#if FANG_WINGC
+	// The GameCube's voice counts (fgcaudio.cpp): 32 3D voices and 32 2D, two of the 2D per stream. With
+	// the Xbox's 188 2D and 64 3D, far more effects sounded at once than on the console the volumes and
+	// sounds come from, and their pile-up buried dialogue. When the voices run out, the quietest and
+	// lowest-priority sounds give way, as on the GameCube.
+	const u32 uRealEmitters2D = FMATH_MIN( (u32)_DSOUND_REAL_EMITTERS_MAX_2D, 32u - FMATH_MIN( 2u * poInit->uMaxStreams, 31u ) );
+	const u32 uRealEmitters3D = FMATH_MIN( (u32)_DSOUND_REAL_EMITTERS_MAX_3D, 32u );
+	DEVPRINTF( "[ FAUDIO ] GameCube voice counts: %u 2D, %u 3D.\n", uRealEmitters2D, uRealEmitters3D );
+#else
+	const u32 uRealEmitters2D = _DSOUND_REAL_EMITTERS_MAX_2D;
+	const u32 uRealEmitters3D = _DSOUND_REAL_EMITTERS_MAX_3D;
+#endif
+
 	//// 2D.
 	//
-	for( uIndex = 0; uIndex < _DSOUND_REAL_EMITTERS_MAX_2D; ++uIndex )
+	for( uIndex = 0; uIndex < uRealEmitters2D; ++uIndex )
 	{
 		poRealEmitter = &( _aoRealEmitters2D[ uIndex ] );
 
@@ -940,7 +953,7 @@ FAudio_Error_e faudio_Install( const FAudio_Init_t *poInit )
 
 	//// 3D.
 	//
-	for( uIndex = 0; uIndex < _DSOUND_REAL_EMITTERS_MAX_3D; ++uIndex )
+	for( uIndex = 0; uIndex < uRealEmitters3D; ++uIndex )
 	{
 		poRealEmitter = &( _aoRealEmitters3D[ uIndex ] );
 
