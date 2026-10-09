@@ -3707,6 +3707,12 @@ void _SetRenderStates()
 		ftex_SetTexAddress(1, TRUE, TRUE);
 		ftex_SetTexAddress(2, TRUE, TRUE);
 		ftex_SetTexAddress(3, TRUE, TRUE);
+#if FANG_WINGC
+		// the spotlight pass turned mipmapping off on its pattern stages
+		for( u32 nStage = 0; nStage < 4; nStage++ ) {
+			FDX8_pDev->SetTextureStageState( nStage, D3DTSS_MIPFILTER, D3DTEXF_LINEAR );
+		}
+#endif
 	}
 
     if (FSh_bShadowRender)
@@ -4251,6 +4257,10 @@ FSTATIC void _HandleLightingPass( void )
 			ftex_SetTexAddress(s, FALSE, FALSE);
 
 #if FANG_WINGC
+			// No mipmaps for the projected pattern: beside the lamp's own plane its coordinates change so
+			// fast that the smallest mip (the pattern's average, grey) was chosen, drawing a lit line
+			// across the floor behind the lamp. Restored with the addressing after the pass.
+			FDX8_pDev->SetTextureStageState( s, D3DTSS_MIPFILTER, D3DTEXF_NONE );
 			// The vertex shader writes the spotlight's projective coordinates with the divisor in w (it
 			// swaps z and w for that). The Xbox divided by w on every lookup; a PC stage does so only when
 			// flagged projected. Without it the light's texture covered a small spot near the lamp's feet

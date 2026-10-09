@@ -766,6 +766,7 @@ static bool _ParseArgs( int argc, char **argv )
 		}
 		else if( !_stricmp( pszArg, "-test-keys" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_TEST_KEYS", argv[++i] );	// read by pc_input.cpp
 		else if( !_stricmp( pszArg, "-aa" ) && bHasValue )			SetEnvironmentVariableA( "MA_PORT_AA", argv[++i] );		// anti-aliasing samples for this run
+		else if( !_stricmp( pszArg, "-textures" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_TEXTURES", argv[++i] );	// replacement textures folder (pc_textures.cpp)
 		else if( !_stricmp( pszArg, "-shots" ) && bHasValue )		SetEnvironmentVariableA( "MA_PORT_SHOTS", argv[++i] );	// read by compat/d3d8_compat.cpp
 		else if( !_stricmp( pszArg, "-shot-every" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SHOT_EVERY", argv[++i] );
 		else if( !_stricmp( pszArg, "-save-dir" ) && bHasValue )	SetEnvironmentVariableA( "MA_PORT_SAVE_DIR", argv[++i] );	// read by Fang2/dx/fdx8storage.cpp
@@ -911,8 +912,9 @@ static bool _PickVideoMode( FVidWin_t *pWin )
 static void _Relaunch( int argc, char **argv )
 {
 	static const char *s_apszSkipWithValue[] = { "-res", "-mission", "-level", "-coop", "-world-only", "-start-at",
-		"-test-win-level", "-test-give", "-export-character-meshes" };
+		"-test-win-level", "-test-give", "-export-character-meshes", "-aa" };
 	static const char *s_apszSkip[] = { "-fullscreen", "-windowed", "-borderless" };
+	SetEnvironmentVariableA( "MA_PORT_AA", NULL );	// the Anti-Aliasing setting just chosen applies, not -aa
 	char szExe[MAX_PATH];
 	if( !GetModuleFileNameA( NULL, szExe, sizeof(szExe) ) ) return;
 	static char szCommand[8192];

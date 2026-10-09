@@ -26,10 +26,11 @@ FILES = {
     'ma_setup.exe': RELEASE / 'ma_setup.exe',
     'binkw32.dll': RELEASE / 'binkw32.dll',
     'README.txt': ROOT / 'port' / 'setup' / 'README.txt',
+    'textures/README.txt': ROOT / 'port' / 'setup' / 'textures_README.txt',
 }
 
 RETAIL = re.compile(r'(gamedata|\.mst$|\.wvs$|\.bik$|\.tga$|\.dol$|\.iso$|\.gcm$|\.rvz$|\.gcz$|\.wia$|'
-                    r'\.ciso$|\.csv$|\.sav$|^sys/|^files/|movies/)', re.IGNORECASE)
+                    r'\.ciso$|\.csv$|\.sav$|^sys/|^files/|movies/|^textures/(?!README\.txt$))', re.IGNORECASE)
 MAX_FILE_BYTES = 32 << 20	# the program files are a few MB; retail archives are hundreds
 
 

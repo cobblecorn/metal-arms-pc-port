@@ -1,4 +1,5 @@
 #include "gcdata.h"
+#include "pc_textures.h"
 
 #include "fdata.h"
 #include "fanim.h"
@@ -1005,6 +1006,8 @@ BOOL gcdata_DecodeTga( const void *pFileData, u32 nFileBytes, FTexInfo_t *pTexIn
 	pTexInfo->nFlags = FTEX_FLAG_NONE;
 	*ppImageData = pPixels;
 	*pnImageBytes = nTotalImageBytes;
+	// A replacement image from the textures folder, if there is one (pc_textures.cpp).
+	pctextures_Apply( pTexInfo, ppImageData, pnImageBytes );
 	return TRUE;
 #else
 	pFileData; nFileBytes; pTexInfo; ppImageData; pnImageBytes;

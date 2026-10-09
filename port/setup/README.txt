@@ -22,7 +22,12 @@ Setup (once)
 Keep ma_port.exe, binkw32.dll and the gamedata folder together.
 If setup has a problem, ma_setup.log in this folder says what happened.
 
-Display, field of view, controls and the rest are in the game's own settings menus.
+Display, field of view, anti-aliasing, controls and the rest are in the game's own settings menus.
+
+Texture packs
+-------------
+Extract a texture pack into the "textures" folder here (see textures\README.txt). Images named after
+the game's textures replace them; nothing else needs setting up.
 
 About antivirus warnings
 ------------------------
