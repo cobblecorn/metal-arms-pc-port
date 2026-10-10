@@ -27,7 +27,13 @@ Display, field of view, anti-aliasing, controls and the rest are in the game's o
 Texture packs
 -------------
 Extract a texture pack into the "textures" folder here (see textures\README.txt). Images named after
-the game's textures replace them; nothing else needs setting up.
+the game's textures replace them; nothing else needs setting up. With the Mapping Project pack:
+
+    Metal Arms PC Port\
+    |-- ma_port.exe
+    `-- textures\
+        |-- dev-dump\
+        `-- dolphin-mapped\
 
 About antivirus warnings
 ------------------------

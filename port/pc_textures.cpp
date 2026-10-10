@@ -236,6 +236,13 @@ static BOOL _AnyTransparency( const u32 *pPixels, u32 nCount ) {
 	return FALSE;
 }
 
+static BOOL _AllTransparent( const u32 *pPixels, u32 nCount ) {
+	for( u32 i = 0; i < nCount; i++ ) {
+		if( pPixels[i] >> 24 ) return FALSE;
+	}
+	return TRUE;
+}
+
 BOOL pctextures_Apply( FTexInfo_t *pTexInfo, void **ppPixels, u32 *pnBytes ) {
 	if( !_bScanned ) {
 		_Scan();
@@ -290,9 +297,12 @@ BOOL pctextures_Apply( FTexInfo_t *pTexInfo, void **ppPixels, u32 *pnBytes ) {
 	}
 
 	// Alpha follows the original: none where it had none; its own where the replacement has none.
+	// A replacement with no visible pixel at all (a dump of a colour plane whose alpha the game keeps
+	// separately, such as the menu pointer's) counts as having none.
 	const u32 *pOrig = (const u32 *)*ppPixels;
 	const BOOL bOrigAlpha = _AnyTransparency( pOrig, nOrigW * nOrigH );
-	const BOOL bNewAlpha = _AnyTransparency( aTop.data(), nNewW * nNewH );
+	const BOOL bNewAlpha = _AnyTransparency( aTop.data(), nNewW * nNewH )
+		&& !( _AllTransparent( aTop.data(), nNewW * nNewH ) && !_AllTransparent( pOrig, nOrigW * nOrigH ) );
 	if( !bOrigAlpha ) {
 		for( u32 &n : aTop ) n |= 0xff000000u;
 	} else if( !bNewAlpha ) {

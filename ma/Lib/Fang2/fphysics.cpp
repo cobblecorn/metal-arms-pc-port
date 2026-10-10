@@ -23,6 +23,9 @@
 #include "floop.h"
 #include "fphysics.h"
 #include "ftext.h"
+#if FANG_WINGC
+#include <float.h>
+#endif
 
 #define _USE_MIDPOINT			( 0 )
 //#define _CHECK_FLOATS
@@ -105,6 +108,9 @@ CFPhysicsObject *_pDrivenPhysObj;
 // constructor
 CFPhysicsObject::CFPhysicsObject()
 {
+#if FANG_WINGC
+	m_bPortHaveGoodState = FALSE;
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -1052,6 +1058,18 @@ void CFPhysicsObject::Simulate( f32 fDeltaTime )
 
 	_PRINT_FLOAT_CHECK_RESULT();
 
+#if FANG_WINGC
+	if( _PortStateIsSane( m_State ) )
+	{
+		m_PortGoodState = m_State;
+		m_bPortHaveGoodState = TRUE;
+	}
+	else
+	{
+		_PortRecoverState( "before step" );
+	}
+#endif
+
 //	nMaxIterations = 2;
 	nMaxIterations = (s32)(fDeltaTime / _MAX_ITERATION_STEP_TIME);
 	FMATH_CLAMPMIN( nMaxIterations, 1 );
@@ -1193,12 +1211,82 @@ void CFPhysicsObject::Simulate( f32 fDeltaTime )
 //	ftext_Printf( 0.2f, 0.09f, "~f1~C92929299~w1~al~s0.69Linear  Mom %f", m_State.vMomentum.Mag() );
 //	ftext_Printf( 0.2f, 0.11f, "~f1~C92929299~w1~al~s0.69Angular Mom %f", m_State.vAngularMomentum.Mag() );
 
+#if FANG_WINGC
+	if( !_PortStateIsSane( m_State ) )
+	{
+		_PortRecoverState( "after step" );
+	}
+#endif
+
 #ifdef _CHECK_FLOATS
 		s32 nSize = sizeof( m_State ) / sizeof( f32 );
 		f32 *pfValues = (f32 *) &m_State;
 		for( nIndex = 0; nIndex < nSize; nIndex++ ) _CHECK_FLOAT( pfValues[nIndex], nIndex );
 #endif
 }
+
+#if FANG_WINGC
+//-----------------------------------------------------------------------------
+// A vehicle whose state turns non-finite (or absurd) leaves the world: the
+// screen goes black, the player is restored to a checkpoint, and the tank's
+// wheel animation can stall the frame. Treat such a state as a failed step.
+static BOOL _PortVecIsSane( const CFVec3A &rV, f32 fMaxMagSq )
+{
+	if( !_finite( rV.x ) || !_finite( rV.y ) || !_finite( rV.z ) )
+	{
+		return FALSE;
+	}
+	return rV.x * rV.x + rV.y * rV.y + rV.z * rV.z <= fMaxMagSq;
+}
+
+BOOL CFPhysicsObject::_PortStateIsSane( const PhysicsState_t &rState ) const
+{
+	const CFVec3A *apAxes[3] = { &rState.mOrientation.m_vX, &rState.mOrientation.m_vY, &rState.mOrientation.m_vZ };
+	for( u32 i = 0; i < 3; i++ )
+	{
+		// orientation axes are unitized every step
+		if( !_PortVecIsSane( *apAxes[i], 2.0f ) || apAxes[i]->MagSq() < 0.5f )
+		{
+			return FALSE;
+		}
+	}
+
+	return _PortVecIsSane( rState.vPosition, 1.0e12f )
+		&& _PortVecIsSane( rState.vVelocity, 1.0e8f )			// 10,000 units a second
+		&& _PortVecIsSane( rState.vAngularVelocity, 1.0e6f )	// 1,000 radians a second
+		&& _PortVecIsSane( rState.vMomentum, FMATH_MAX_FLOAT )
+		&& _PortVecIsSane( rState.vAngularMomentum, FMATH_MAX_FLOAT );
+}
+
+void CFPhysicsObject::_PortRecoverState( cchar *pszWhen )
+{
+	static u32 _nRecoveries = 0;
+	_nRecoveries++;
+	if( _nRecoveries <= 20 || ( _nRecoveries % 100 ) == 0 )
+	{
+		DEVPRINTF( "Port: physics object %p blew up %s (pos=(%.1f,%.1f,%.1f) vel=(%.1f,%.1f,%.1f)); %s (recovery %u).\n",
+			this, pszWhen, m_State.vPosition.x, m_State.vPosition.y, m_State.vPosition.z,
+			m_State.vVelocity.x, m_State.vVelocity.y, m_State.vVelocity.z,
+			m_bPortHaveGoodState ? "restored its last good state at rest" : "no good state to restore", _nRecoveries );
+	}
+	if( !m_bPortHaveGoodState )
+	{
+		return;
+	}
+
+	m_State = m_PortGoodState;
+	m_State.vMomentum.Zero();
+	m_State.vVelocity.Zero();
+	m_State.vAcceleration.Zero();
+	m_State.vAngularMomentum.Zero();
+	m_State.vAngularVelocity.Zero();
+	m_State.vAngularAcceleration.Zero();
+	m_State.vTotalForce.Zero();
+	m_State.vTotalTorque.Zero();
+	m_State.vTotalFriction.Zero();
+	m_State.vTotalFrictionTorque.Zero();
+}
+#endif
 
 //-----------------------------------------------------------------------------
 BOOL CFPhysicsObject::InitLevel( void )

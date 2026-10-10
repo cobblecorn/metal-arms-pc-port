@@ -158,6 +158,12 @@ protected:
 	f32 m_fOtherObjElasticity;		// elasticity when colliding with "pOtherObj" objects
 
 	PhysicsState_t m_State;			// state variable set
+#if FANG_WINGC
+	PhysicsState_t m_PortGoodState;	// last state that passed _PortStateIsSane(), restored if the simulation blows up
+	BOOL m_bPortHaveGoodState;
+	BOOL _PortStateIsSane( const PhysicsState_t &rState ) const;
+	void _PortRecoverState( cchar *pszWhen );
+#endif
 	CFMtx43A m_mLocalIT;			// local space inertia tensor
 	CFMtx43A m_mLocalInverseIT;		// local space inverse inertia tensor
 	CFVec3A m_vInertialSize;		// axial size of object

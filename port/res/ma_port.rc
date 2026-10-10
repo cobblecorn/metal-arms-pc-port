@@ -8,8 +8,8 @@ IDI_MA_PORT ICON "ma_port.ico"
 
 // Version details (Explorer's Properties > Details); keep in step with port/setup/ma_setup.rc.
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,3,0
- PRODUCTVERSION 1,0,3,0
+ FILEVERSION 1,0,4,0
+ PRODUCTVERSION 1,0,4,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -18,11 +18,11 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "FileDescription", "Metal Arms: Glitch in the System (PC port)"
-            VALUE "FileVersion", "1.0.3.0"
+            VALUE "FileVersion", "1.0.4.0"
             VALUE "InternalName", "ma_port"
             VALUE "OriginalFilename", "ma_port.exe"
             VALUE "ProductName", "Metal Arms PC port"
-            VALUE "ProductVersion", "1.0.3.0"
+            VALUE "ProductVersion", "1.0.4.0"
         END
     END
     BLOCK "VarFileInfo"

@@ -34,6 +34,9 @@
 #include "weapon.h"
 #include "MultiplayerMgr.h"
 #include "eboomer.h"
+#if FANG_WINGC
+#include <cmath>
+#endif
 
 static cchar _apszVehicleMeshFilename[] = "GRMCTANK_00";
 
@@ -3712,6 +3715,20 @@ void CVehicleSentinel::AnimateWheels( u32 uWheelIndex, u32 uBoneIndex, CFMtx43A 
 
 	// compute current rolling angle of tire
 	m_afWheelAngle[ uWheelIndex ] += fRollingVel * FLoop_fPreviousLoopSecs;
+#if FANG_WINGC
+	// Repeated subtraction can stop making progress for large float values,
+	// freezing the game after a bad impulse. Bound the animation in one step.
+	f32 &fAngle = m_afWheelAngle[ uWheelIndex ];
+	if( !std::isfinite( fAngle ) )
+	{
+		fAngle = 0.0f;
+	}
+	else if( fAngle > FMATH_DEG2RAD( 360.0f ) || fAngle < 0.0f )
+	{
+		fAngle = std::fmod( fAngle, FMATH_DEG2RAD( 360.0f ) );
+		if( fAngle < 0.0f ) fAngle += FMATH_DEG2RAD( 360.0f );
+	}
+#else
 	while( m_afWheelAngle[ uWheelIndex ] > FMATH_DEG2RAD( 360.0f ) )
 	{
 		m_afWheelAngle[ uWheelIndex ] -= FMATH_DEG2RAD( 360.0f );
@@ -3721,6 +3738,7 @@ void CVehicleSentinel::AnimateWheels( u32 uWheelIndex, u32 uBoneIndex, CFMtx43A 
 	{
 		m_afWheelAngle[ uWheelIndex ] += FMATH_DEG2RAD( 360.0f );
 	}
+#endif
 
 	// transform tire to its new rolling rotation
 	CFMtx43A mRot;

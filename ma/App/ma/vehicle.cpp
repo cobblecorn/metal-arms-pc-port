@@ -589,6 +589,10 @@ void CVehicle::ComputeGroundNormal( void )
 
 	m_fHeightAboveGround = _FIND_GROUND_RAY_LENGTH;
 
+	// A hit on a wall or ceiling is not a ground plane. Keep the upright
+	// fallback in that case too; CFVec3A's default constructor leaves xyz unset.
+	vGroundNormal.Set( CFVec3A::m_UnitAxisY );
+
 	// set the target unit vector
 	if( FColl_nImpactCount > 0 )
 	{
@@ -602,11 +606,6 @@ void CVehicle::ComputeGroundNormal( void )
 			m_fHeightAboveGround = vDelta.Mag();
 		}
 	}
-	else
-	{
-		vGroundNormal.Set( CFVec3A::m_UnitAxisY );
-	}
-
 	if( BecameAirborne() )
 	{
 		m_fMaxHeightAboveGround = 0.0f;

@@ -4,6 +4,20 @@ Drop image files (or whole folders of them) here. An image named after one of th
 replaces it the next time the game loads that texture, for example "trdggltch00.png". Folders inside
 this one are searched too, so a pack can be extracted here as it is.
 
+With the Metal Arms Mapping Project pack installed, the game folder looks like this:
+
+    Metal Arms PC Port\          (the folder with ma_port.exe)
+    |-- ma_port.exe
+    |-- ma_setup.exe
+    |-- binkw32.dll
+    |-- gamedata\
+    `-- textures\
+        |-- README.txt           (this file)
+        |-- dev-dump\            (images, straight inside)
+        `-- dolphin-mapped\      (images, straight inside)
+
+Other packs work the same way: their folder (or their images) goes inside "textures".
+
 - Formats: TGA, PNG, BMP, JPG. When a texture has several, TGA is used first (it keeps transparency).
 - A replacement must have the same shape as the original (a 256x128 texture can be replaced by
   512x256 or 1024x512, not by 512x512). Sizes are rounded to a power of two, at most 2048.

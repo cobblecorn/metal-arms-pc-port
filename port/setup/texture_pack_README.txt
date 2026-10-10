@@ -17,6 +17,19 @@ shapes were left out, so the game keeps its original for those.
 Install
 -------
 Extract this zip into the folder with ma_port.exe, so that its "textures" folder merges with the
-game's. Start the game; ma_port.log lists every replacement ("PORT-TEX").
+game's. Afterwards the game folder should look like this:
+
+    Metal Arms PC Port\          (the folder with ma_port.exe)
+    |-- ma_port.exe
+    |-- ma_setup.exe
+    |-- binkw32.dll
+    |-- gamedata\
+    `-- textures\
+        |-- README.txt
+        |-- dev-dump\            (images, straight inside)
+        `-- dolphin-mapped\      (images, straight inside)
+
+If you copy the folders by hand, put dev-dump and dolphin-mapped inside the game's "textures"
+folder. Start the game; ma_port.log lists every replacement ("PORT-TEX").
 
 To remove it, delete the dolphin-mapped and dev-dump folders from "textures".
