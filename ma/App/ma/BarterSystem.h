@@ -56,6 +56,10 @@ extern void bartersystem_Work();
 
 // Returns TRUE if the barters are in the world and are actually bartering (not attract mode)
 extern BOOL bartersystem_IsActive();
+#if FANG_WINGC
+// Read-only readiness signal for opt-in native purchase regression tests.
+extern BOOL bartersystem_PortReadyForInput();
+#endif
 
 // Return TRUE if the barters are currently in the world somewhere, either in active or attract modes
 extern BOOL bartersystem_AreInWorld();

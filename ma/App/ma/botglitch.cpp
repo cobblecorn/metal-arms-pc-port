@@ -714,7 +714,11 @@ BOOL CBotGlitch::ClassHierarchyBuilt( void ) {
 		goto _ExitWithError;
 	}
 
+#if FANG_WINGC
+	PortRestoreArmServoFromInventory();
+#else
 	SetServoLevel( SERVO_TYPE_ARMS, m_anServoLevel[SERVO_TYPE_ARMS], TRUE );
+#endif
 
 	// turn glitch headlight on by default so artists can see their bump maps...
 	#if( FANG_PLATFORM_WIN )
@@ -762,7 +766,12 @@ void CBotGlitch::_ClearDataMembers( void ) {
 	m_pBotInfo_MountAim = &m_BotInfo_MountAim;
 	m_pBotInfo_Walk = &m_BotInfo_Walk;
 	m_pBotInfo_Jump = &m_BotInfo_Jump;
+#if FANG_WINGC
+	m_PortServoWeaponInfo = m_BotInfo_Weapon;
+	m_pBotInfo_Weapon = &m_PortServoWeaponInfo;
+#else
 	m_pBotInfo_Weapon = &m_BotInfo_Weapon;
+#endif
 	m_pBotInfo_Idle = m_BotInfo_Idle;
 	m_nCountIdles = m_nBotInfo_Idles;
 
@@ -899,6 +908,15 @@ void CBotGlitch::_ClearDataMembers( void ) {
 }	
 
 
+#if FANG_WINGC
+void CBotGlitch::PortRestoreArmServoFromInventory( void ) {
+	CItemInst *pServo = m_pInventory ? m_pInventory->IsItemInInventory( "Arm Servo" ) : NULL;
+	const u32 nLevel = pServo && pServo->m_nClipAmmo > 0 ?
+		FMATH_MIN( (u32)pServo->m_nClipAmmo - 1, (u32)SERVO_COUNT - 1 ) : 0;
+	SetServoLevel( SERVO_TYPE_ARMS, nLevel, TRUE );
+}
+#endif
+
 void CBotGlitch::SetServoLevel( ServoType_e nServoType, u32 nServoLevel, BOOL bForceUpdate ) {
 	FASSERT( IsCreated() );
 	FASSERT( nServoType>=0 && nServoType<SERVO_TYPE_COUNT );
@@ -934,6 +952,12 @@ void CBotGlitch::SetServoLevel( ServoType_e nServoType, u32 nServoLevel, BOOL bF
 
 		m_anServoLevel[nServoType] = nServoLevel;
 	}
+#if FANG_WINGC
+	if( nServoType == SERVO_TYPE_ARMS && m_pInventory ) {
+		CItemInst *pServo = m_pInventory->IsItemInInventory( "Arm Servo" );
+		if( pServo ) pServo->NotifyAmmoMightHaveChanged( (u16)(nServoLevel + 1), pServo->m_nReserveAmmo );
+	}
+#endif
 }
 
 

@@ -779,6 +779,9 @@ void CBarterItemInst::AddToWorld()
 		else
 		{
 			m_pWorldMesh = m_pCollectableType->GetWorldMesh(&bIsEUKMesh);
+#if FANG_WINGC
+			if( CCollectable::IsWeaponUpgrade( m_pCollectableType->m_eType ) ) bIsEUKMesh = TRUE;
+#endif
 			SetABox(bIsEUKMesh);
 		}
 #if FANG_WINGC
@@ -873,8 +876,8 @@ void CBarterItemInst::Work()
 		m_pWorldMesh->m_Xfm.BuildFromMtx(mtxFinal,fScale);
 		m_pWorldMesh->UpdateTracker();
 		
-		wchar pwszIntermediateOutputText[NUM_WCHARS_TAKE_OFF_THE_STACK];
-		wchar pwszFinalOutputText[NUM_WCHARS_TAKE_OFF_THE_STACK];
+		wchar pwszIntermediateOutputText[NUM_WCHARS_TAKE_OFF_THE_STACK] = {0};
+		wchar pwszFinalOutputText[NUM_WCHARS_TAKE_OFF_THE_STACK] = {0};
 		BOOL bok = TRUE;
 		s32 nNumWChars;
 		if (IsABox()) // need concat
@@ -887,7 +890,7 @@ void CBarterItemInst::Work()
 					_snwprintf( pwszIntermediateOutputText, NUM_WCHARS_TAKE_OFF_THE_STACK, Game_apwszPhrases[ GAMEPHRASE_N_ROUNDS_OF ], m_pCollectableType->m_nAmmoCount, L"");
 					nNumWChars = fclib_wcslen(pwszIntermediateOutputText);
 					bok = CCollectable::TypeToHUDString( &pwszIntermediateOutputText[nNumWChars], NUM_WCHARS_TAKE_OFF_THE_STACK-nNumWChars, m_pCollectableType, TRUE, TRUE );
-					_snwprintf(pwszFinalOutputText, NUM_WCHARS_TAKE_OFF_THE_STACK, pwszIntermediateOutputText, Game_apwszPhrases[ GAMEPHRASE_AMMO ]);
+					if( bok ) _snwprintf(pwszFinalOutputText, NUM_WCHARS_TAKE_OFF_THE_STACK, pwszIntermediateOutputText, Game_apwszPhrases[ GAMEPHRASE_AMMO ]);
 					break;
 				case COLLECTABLE_WEAPON_ROCKET_L1:
 				case COLLECTABLE_WEAPON_ROCKET_L2:
@@ -899,7 +902,7 @@ void CBarterItemInst::Work()
 			else // must be an upgrade
 			{
 				bok = CCollectable::TypeToHUDString( pwszIntermediateOutputText, NUM_WCHARS_TAKE_OFF_THE_STACK, m_pCollectableType, TRUE );
-				_snwprintf(pwszFinalOutputText, NUM_WCHARS_TAKE_OFF_THE_STACK, pwszIntermediateOutputText, Game_apwszPhrases[ GAMEPHRASE_UPGRADE ]);
+				if( bok ) _snwprintf(pwszFinalOutputText, NUM_WCHARS_TAKE_OFF_THE_STACK, pwszIntermediateOutputText, Game_apwszPhrases[ GAMEPHRASE_UPGRADE ]);
 			}
 		}
 		else

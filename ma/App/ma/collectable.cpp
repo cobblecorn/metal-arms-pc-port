@@ -140,6 +140,44 @@ static const u32 _uNumCollectableTypes		= sizeof( _collectableTypes ) / sizeof( 
 
 static CCollectableBuilder _CollectableBuilder;
 
+#if FANG_WINGC
+// Retail EUKs are independent goodies, not entries in ItemList$.csv.
+static const NameType_t _retailWeaponUpgrades[] = {
+	{ "euk laser", COLLECTABLE_WEAPON_LASER_L1 },
+	{ "euk ripper", COLLECTABLE_WEAPON_RIPPER_L1 },
+	{ "euk rivet gun", COLLECTABLE_WEAPON_RIVET_GUN_L1 },
+	{ "euk rocket", COLLECTABLE_WEAPON_ROCKET_L1 },
+	{ "euk blaster", COLLECTABLE_WEAPON_BLASTER_L1 },
+	{ "euk tether", COLLECTABLE_WEAPON_TETHER_L1 },
+	{ "euk spew", COLLECTABLE_WEAPON_SPEW_L1 },
+	{ "euk scope", COLLECTABLE_WEAPON_SCOPE_L1 },
+};
+
+static CollectableType_e _RetailUpgradeBase( cchar *pszName ) {
+	if( !pszName ) return COLLECTABLE_UNKNOWN;
+	for( u32 i = 0; i < sizeof(_retailWeaponUpgrades) / sizeof(_retailWeaponUpgrades[0]); ++i ) {
+		const size_t n = strlen( _retailWeaponUpgrades[i].pszName );
+		if( !strnicmp( pszName, _retailWeaponUpgrades[i].pszName, n ) &&
+			( !pszName[n] || !strcmp( pszName + n, " 2" ) ||
+			  ( _retailWeaponUpgrades[i].eType != COLLECTABLE_WEAPON_SCOPE_L1 && !strcmp( pszName + n, " 3" ) ) ) )
+			return _retailWeaponUpgrades[i].eType;
+	}
+	return COLLECTABLE_UNKNOWN;
+}
+
+static CollectableType_e _RetailUpgradeType( cchar *pszName ) {
+	const CollectableType_e eBase = _RetailUpgradeBase( pszName );
+	if( eBase == COLLECTABLE_UNKNOWN ) return COLLECTABLE_UNKNOWN;
+	for( u32 i = 0; i < sizeof(_retailWeaponUpgrades) / sizeof(_retailWeaponUpgrades[0]); ++i ) {
+		if( _retailWeaponUpgrades[i].eType != eBase ) continue;
+		const size_t n = strlen( _retailWeaponUpgrades[i].pszName );
+		const u32 nVariant = pszName[n] ? pszName[n + 1] - '1' : 0;
+		return (CollectableType_e)(COLLECTABLE_WEAPON_UPGRADE + i * 3 + nVariant);
+	}
+	return COLLECTABLE_UNKNOWN;
+}
+#endif
+
 typedef struct {
 	cchar *pszMeshName;
 	u32 uPoolSize;
@@ -649,6 +687,11 @@ BOOL CCollectableType::_SetupMeshPool( u32 uPoolSize, CFMeshPool **pMeshPool, FM
 		if( bIsSpecialEUK ) {
 			RemapTCs( pWorldMesh, m_eType );
 		}
+#if FANG_WINGC
+		else if( CCollectable::IsWeaponUpgrade( m_eType ) ) {
+			RemapTCs( pWorldMesh, _RetailUpgradeBase( m_pszName ) );
+		}
+#endif
 
 		paMeshes[i] = pWorldMesh;
 	}
@@ -1746,6 +1789,10 @@ BOOL CCollectable::_GiveWeaponToPlayerScoped( CBot *pBot, cchar *pszWeaponName, 
 	if( pBot->m_pInventory == NULL ) {
 		return FALSE;
 	}
+#if FANG_WINGC
+	if( IsWeaponUpgrade( pCollect->m_eType ) )
+		return _GiveWeaponUpgradeToPlayer( pBot, pCollect );
+#endif
 
 	// Get the ammo count. If we are given an ammo count of -1, that means
 	// we use the default for this weapon type.
@@ -2391,6 +2438,10 @@ CCollectableType *CCollectable::_FindCollectableType( CollectableType_e eType ) 
 
 CollectableType_e CCollectable::_ClassifyCollectableType( cchar *pszTypeName ) {
 	FASSERT( pszTypeName );
+#if FANG_WINGC
+	const CollectableType_e eUpgrade = _RetailUpgradeType( pszTypeName );
+	if( eUpgrade != COLLECTABLE_UNKNOWN ) return eUpgrade;
+#endif
 	const cchar *pszLookName = pszTypeName;
 
 	// NKM - This is a hack since we want "coring charge" but the LDs have "coringcharge" in all the worlds.
@@ -2406,6 +2457,41 @@ CollectableType_e CCollectable::_ClassifyCollectableType( cchar *pszTypeName ) {
 
 	return COLLECTABLE_UNKNOWN;
 }
+
+#if FANG_WINGC
+CWeapon *CCollectable::_FindWeaponUpgrade( CBot *pBot, CCollectableType *pType, u32 &nTarget ) {
+	if( !pBot || !pType || !(pBot->TypeBits() & ENTITY_BIT_BOTGLITCH) || !pBot->m_pInventory ) return NULL;
+	CCollectableType *pBase = _FindCollectableType( _RetailUpgradeBase( pType->m_pszName ) );
+	if( !pBase ) return NULL;
+	CItemInst *pItem = pBot->m_pInventory->IsWeaponInInventory( pBase->m_pszName );
+	CWeapon *pWeapon = pItem ? pItem->m_pWeapon : NULL;
+	// m_uCurLevel 0 marks an item without an upgrade chain (HighestUpgradeAvailable() would wrap).
+	if( !pItem || !pItem->m_pItemData || !pItem->m_pItemData->m_uCurLevel || !pWeapon || !pWeapon->IsCreated() ) return NULL;
+	const u32 nCurrent = pWeapon->GetUpgradeLevel();
+	// Retail EUKs (including numbered variants) advance the owned weapon once.
+	nTarget = nCurrent + 1;
+	// Weapon tables also contain NPC-only tiers. Never advance past the owned
+	// item's upgrade chain, which NotifyWeaponUpgraded must be able to traverse.
+	if( nTarget <= nCurrent || nTarget >= pWeapon->GetUpgradeLevelCount() ||
+		nTarget > pItem->HighestUpgradeAvailable() ) return NULL;
+	return pWeapon;
+}
+
+BOOL CCollectable::_GiveWeaponUpgradeToPlayer( CBot *pBot, CCollectableType *pType ) {
+	u32 nTarget = 0;
+	CWeapon *pWeapon = _FindWeaponUpgrade( pBot, pType, nTarget );
+	if( !pWeapon ) return FALSE;
+	const u32 nCurrent = pWeapon->GetUpgradeLevel();
+	pWeapon->SetUpgradeLevel( nTarget );
+	if( pWeapon->GetUpgradeLevel() != nTarget ) return FALSE;
+	CCollectableType *pBase = _FindCollectableType( _RetailUpgradeBase( pType->m_pszName ) );
+	CCollectableType *pUpgraded = _FindCollectableType( (CollectableType_e)(pBase->m_eType + nTarget) );
+	if( pUpgraded && m_pCollectHud ) _PickupSpecialItem( pUpgraded );
+	DEVPRINTF( "Port: '%s' upgraded player %d '%s' from level %u to %u.\n",
+		pType->m_pszName, pBot->m_nPossessionPlayerIndex + 1, pBase->m_pszName, nCurrent + 1, nTarget + 1 );
+	return TRUE;
+}
+#endif
 
 // This should be called when you DON'T have the weapon
 void CCollectable::_GiveWeaponToPlayer( CBot *pBot, CInventory *pInv, cchar *pszWeaponName, s32 nAmmoCount ) {
@@ -2582,6 +2668,19 @@ BOOL CCollectable::_GiveWeaponAmmoToPlayer( CBot *pBot, CItemInst *pItemInst, CI
 
 		pItemInst->NotifyAmmoMightHaveChanged( pWeap->GetClipAmmo(), pWeap->GetReserveAmmo() );
 	}
+#if FANG_WINGC
+	else if( pBot->TypeBits() & ENTITY_BIT_BOTCHEMBOT ) {
+		// Slosh owns an inventory weapon too; the Glitch-only path above skipped
+		// refilling his Magma Bombs while still reporting a successful pickup.
+		CCollectableType *pType = _FindCollectableType( pszWeaponName );
+		if( !pType || pType->m_eType != COLLECTABLE_WEAPON_MAGMA_BOMB ) return FALSE;
+		CWeapon *pWeap = pItemInst->m_pWeapon;
+		if( !pWeap || !pWeap->IsCreated() || pWeap->GetItemInst() != pItemInst ||
+			pWeap->IsClipFull() || nAmmoCount <= 0 ) return FALSE;
+		pWeap->AddToClip( nAmmoCount );
+		pItemInst->NotifyAmmoMightHaveChanged( pWeap->GetClipAmmo(), pWeap->GetReserveAmmo() );
+	}
+#endif
 
 	return TRUE;
 }
@@ -2648,12 +2747,33 @@ BOOL CCollectable::TypeToHUDString( wchar *pDest, u32 uDestWcharCount, CCollecta
 	FASSERT( pDest );
 	FASSERT( pCollectType );
 	FASSERT( uDestWcharCount <= Fang_ConfigDefs.nText_MaxCharsPerPrintf ); 
+#if FANG_WINGC
+	if( !uDestWcharCount ) return FALSE;
+	pDest[0] = 0;
+	if( IsWeaponUpgrade( pCollectType->m_eType ) ) {
+		CCollectableType *pBase = _FindCollectableType( _RetailUpgradeBase( pCollectType->m_pszName ) );
+		if( !pBase ) return FALSE;
+		u32 nTarget = (pCollectType->m_eType - COLLECTABLE_WEAPON_UPGRADE) % 3;
+		if( !nTarget ) nTarget = 1;
+		if( CPlayer::m_nCurrent >= 0 && CPlayer::m_nCurrent < CPlayer::m_nPlayerCount ) {
+			CEntity *pActor = Player_aPlayer[CPlayer::m_nCurrent].m_pEntityCurrent;
+			u32 nOwnedTarget;
+			if( pActor && (pActor->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
+				_FindWeaponUpgrade( (CBot *)pActor, pCollectType, nOwnedTarget ) ) nTarget = nOwnedTarget;
+		}
+		pCollectType = _FindCollectableType( (CollectableType_e)(pBase->m_eType + nTarget) );
+		if( !pCollectType ) return FALSE;
+	}
+#endif
 
 	CItem *pItem = NULL;
 	u32 uEUK = 0;
 
 	if( pCollectType->m_uItemRepositoryIndex != ITEM_UNKNOWN ) {
 		pItem = CItemRepository::RetrieveEntry( pCollectType->m_uItemRepositoryIndex );
+#if FANG_WINGC
+		if( !pItem ) return FALSE;
+#endif
 		uEUK = pItem->m_uCurLevel; // 0,1 for level 1, 2 for level 2, and 3 for level 3
 	}
 
@@ -2686,6 +2806,9 @@ BOOL CCollectable::TypeToHUDString( wchar *pDest, u32 uDestWcharCount, CCollecta
 		case COLLECTABLE_CHIP:
 		case COLLECTABLE_DET_PACK:
 		case COLLECTABLE_SECRET_CHIP:
+#if FANG_WINGC
+			if( !pItem ) return FALSE;
+#endif
 			FASSERT( pItem ); // all defaults should be in the item repository
 			_snwprintf( pDest, uDestWcharCount, L"%ls%ls", pItem->m_pwszDisplayName, ( bAddConcatText ? L" %ls ": L"" ) );
 			return TRUE;
@@ -2730,6 +2853,9 @@ BOOL CCollectable::TypeToHUDString( wchar *pDest, u32 uDestWcharCount, CCollecta
 			return FALSE;
 		break;
 		default:
+#if FANG_WINGC
+			if( !pItem ) return FALSE;
+#endif
 			FASSERT( pItem ); // all defaults should be in the item repository
 			_snwprintf( pDest, uDestWcharCount, L"%ls%ls%ls%ls", 
 				( bSkipLevelText ? L"" : wpszLevel ), ( bSkipLevelText ? L"" : L" " ), pItem->m_pwszDisplayName, ( bAddConcatText ? L" %ls ": L"" ) );
@@ -2794,6 +2920,9 @@ BOOL CCollectable::_IsWeapon( CCollectableType *pType ) {
 // only secondary weapon that has multiple EUK levels.
 BOOL CCollectable::IsPrimaryWeaponType( CCollectableType *pType ) {
 	FASSERT( pType );
+#if FANG_WINGC
+	if( IsWeaponUpgrade( pType->m_eType ) ) return TRUE; // primary weapons and scope upgrades
+#endif
 	FASSERT( _IsWeapon( pType ) );
 
 	switch( pType->m_eType ) {
@@ -3408,6 +3537,12 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	if( IsWeaponUpgrade( m_pCollectableType->m_eType ) ) {
+		if( !_GiveWeaponUpgradeToPlayer( m_pCollectBot, m_pCollectableType ) ) return FALSE;
+		bNoSound = TRUE;
+	} else
+#endif
 	switch( m_pCollectableType->m_eType ) {
 		case COLLECTABLE_WASHER:
 #if FANG_WINGC
@@ -3765,7 +3900,8 @@ void CCollectable::_AddToInventory( void ) {
 		++pInv->m_uNumItems;
 
 		pItemInst->m_pItemData = pItem;
-		pItemInst->m_nClipAmmo = 1;
+		pItemInst->m_nClipAmmo = bIsArmServo ?
+			(m_pCollectableType->m_eType - COLLECTABLE_ARM_SERVO_L1) + 1 : 1;
 		pItemInst->m_nReserveAmmo = CItemInst_nNoMaxAmmo;
 		pItemInst->m_nUpgradeLevel = pItemInst->m_pItemData->m_uCurLevel;
 		pItemInst->m_pOwnerInventory = pInv;
@@ -4043,7 +4179,8 @@ void CCollectable::_RespawnItem( CCollectableSpawnPoint *pPoint ) {
 #if FANG_WINGC
 BOOL CCollectable::_IsPersonalWeapon() const {
 	return MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 &&
-		m_nRecipientPlayer < 0 && m_pCollectableType && IsWeapon( m_pCollectableType->m_eType );
+		m_nRecipientPlayer < 0 && m_pCollectableType &&
+		(IsWeapon( m_pCollectableType->m_eType ) || IsWeaponUpgrade( m_pCollectableType->m_eType ));
 }
 BOOL CCollectable::_CoopDrawFilter( CFMeshInst *pMesh, void *pData ) {
 	CCollectable *pPickup = (CCollectable *)pData;
@@ -4083,7 +4220,18 @@ s32 CCollectable::_CanPickup( void ) {
 		}
 
 #if FANG_WINGC
+		if( (pPlayerBot->TypeBits() & ENTITY_BIT_BOTCHEMBOT) &&
+			m_pCollectableType->m_eType == COLLECTABLE_WEAPON_MAGMA_BOMB ) {
+			CItemInst *pItem = pPlayerBot->m_pInventory ?
+				pPlayerBot->m_pInventory->IsWeaponInInventory( m_pCollectableType->m_pszName ) : NULL;
+			if( !pItem || !pItem->m_pWeapon || !pItem->m_pWeapon->IsCreated() || pItem->m_pWeapon->IsClipFull() ) continue;
+		}
+		if( IsWeaponUpgrade( m_pCollectableType->m_eType ) ) {
+			u32 nTarget;
+			if( !_FindWeaponUpgrade( pPlayerBot, m_pCollectableType, nTarget ) ) continue;
+		}
 		if( _IsPersonalWeapon() && (pPlayerBot->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
+			!IsWeaponUpgrade( m_pCollectableType->m_eType ) &&
 			!PlayerNeeds( (CBotGlitch *)pPlayerBot, m_pCollectableType->m_eType, FALSE ) &&
 			!PlayerNeeds( (CBotGlitch *)pPlayerBot, m_pCollectableType->m_eType, TRUE ) ) continue;
 #endif
@@ -4260,6 +4408,15 @@ BOOL CCollectable::PlayerNeeds( CBotGlitch* pPlayer, CollectableType_e eType, BO
 	FASSERT( pPlayer->m_pInventory );
 	FASSERT( pPlayer->TypeBits() & ENTITY_BIT_BOTGLITCH );
 	FASSERT( eType < COLLECTABLE_COUNT);
+#if FANG_WINGC
+	if( IsWeaponUpgrade( eType ) ) {
+		if( bRepresentAmmo ) return FALSE;
+		u32 nTarget;
+		if( !_FindWeaponUpgrade( pPlayer, GetCollectableTypeObjectFromType( eType ), nTarget ) ) return FALSE;
+		const u32 nSpecified = (eType - COLLECTABLE_WEAPON_UPGRADE) % 3;
+		return !nSpecified || nTarget == nSpecified;
+	}
+#endif
 
 	if( bRepresentAmmo ) { // if it's ammo
 		if( IsWeapon( eType ) == FALSE ) { // better be a weapon type, else what the hell?

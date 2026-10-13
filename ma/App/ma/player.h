@@ -293,6 +293,10 @@ public:
 	void CreditDeath( void );
 	void CreditSecretArea( void );
 	void CreditSecretChip( void );
+#if FANG_WINGC
+	static void CheckpointSaveSecretChips( void );
+	static void CheckpointRestoreSecretChips( void );
+#endif
 
 	// Retrieving game stats
 

@@ -103,7 +103,9 @@ typedef enum
 
 #if FANG_WINGC
 	COLLECTABLE_MEGA_WASHER, // retail GameCube goodie; append so weapon IDs do not move
-	COLLECTABLE_COUNT,
+	COLLECTABLE_WEAPON_UPGRADE, // first retail EUK; 7 three-level families, then 2 scope variants
+	COLLECTABLE_WEAPON_UPGRADE_END = COLLECTABLE_WEAPON_UPGRADE + 23,
+	COLLECTABLE_COUNT = COLLECTABLE_WEAPON_UPGRADE_END,
 #else
 	COLLECTABLE_COUNT = COLLECTABLE_WEAPON_END,
 #endif
@@ -334,6 +336,11 @@ public:
 	static CCollectableType *GetCollectableTypeObjectFromString( cchar *pszName );
 	static CollectableType_e GetCollectableTypeFromString( cchar *pszName );
 	static CCollectableType* GetCollectableTypeObjectFromType(CollectableType_e eType);
+#if FANG_WINGC
+	static FINLINE BOOL IsWeaponUpgrade( CollectableType_e eType ) {
+		return eType >= COLLECTABLE_WEAPON_UPGRADE && eType < COLLECTABLE_WEAPON_UPGRADE_END;
+	}
+#endif
 
 	// Definition of 'need'
 	// Yes for health, if the player has less than full health
@@ -420,6 +427,10 @@ private:
 	static BOOL _GiveWeaponToPlayerScoped( CBot *pBot, cchar *pszWeaponName, s32 nAmmoCount );
 #endif
 	static BOOL _GiveWeaponAmmoToPlayer( CBot *pBot, CItemInst *pItemInst, CInventory *pInv, cchar *pszWeaponName, s32 uAmmoCount );
+#if FANG_WINGC
+	static CWeapon *_FindWeaponUpgrade( CBot *pBot, CCollectableType *pType, u32 &nTarget );
+	static BOOL _GiveWeaponUpgradeToPlayer( CBot *pBot, CCollectableType *pType );
+#endif
 
 	static BOOL _PlaceIntoWorld( CCollectableType *pType, const CFMtx43A *pMtx, const CFVec3A *pVelWS = NULL, f32 fScale = 1.0f, f32 fSpawnTime = 0.0f, s32 nAmmoCount = -1, CEntity *pSpawnIgnoreEntity = NULL, s32 nRecipientPlayer = -1 );
 

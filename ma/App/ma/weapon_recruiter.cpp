@@ -25,6 +25,7 @@
 #include "fresload.h"
 #include "fsndfx.h"
 #include "bot.h"
+#include "vehicle.h"
 #include "fmeshpool.h"
 #include "frenderer.h"
 #include "fdraw.h"
@@ -34,6 +35,22 @@
 #include "ai\aiapi.h"
 #include "ai\aibrain.h"
 #include "ai\aimover.h"
+
+#if FANG_WINGC
+static void _SyncRecruitDriverVehicle( CBot *pDriver, u8 nRace ) {
+	CVehicle *pVehicle = pDriver->m_pDrivingVehicle;
+	if( !pVehicle || !pVehicle->IsCreated() || pVehicle->GetDriverBot() != pDriver ||
+		pVehicle->m_nPossessionPlayerIndex >= 0 ) return;
+	pVehicle->SetTeam( pDriver->GetTeam() );
+	CAIBrain *pBrain = pVehicle->AIBrain();
+	if( pBrain && pVehicle->IsInWorld() ) {
+		ai_SetRace( pBrain, nRace );
+		// Discard the former hostile target; the vehicle brain drives/fires on
+		// behalf of its pilot and will acquire a target under the new allegiance.
+		ai_ResetToJob( pBrain );
+	}
+}
+#endif
 
 
 
@@ -1112,6 +1129,9 @@ void CWeaponRecruiter::UnrecruitBot( CBot *pBot, BOOL bMakeEffect ) {
 		}
 	}
 	
+#if FANG_WINGC
+	_SyncRecruitDriverVehicle( pBot, pRecruitData->m_nOrigRace );
+#endif
 	pBot->m_nRecruitID = -1;
 	pBot->m_nRecruitPlayerIndex = -1;
 }
@@ -1427,6 +1447,9 @@ void CWeaponRecruiter::_SetAIToRecruitedState( CRecruitData *pRecruitData ) {
 				break;
 		}
 	}
+#if FANG_WINGC
+	_SyncRecruitDriverVehicle( pRecruitData->m_pBot, pRecruitData->m_nNewRace );
+#endif
 }
 
 

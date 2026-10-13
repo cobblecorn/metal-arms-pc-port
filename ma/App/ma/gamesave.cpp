@@ -105,6 +105,10 @@ static void _SaveGlobalData( s32 nCheckpoint )
 	CFCheckPoint::SaveData( FLoop_nRealTotalLoopTicks );
 	CFCheckPoint::SaveData( FLoop_nTotalLoopTicks );
 	CFCheckPoint::SaveData( ai_bUnarmedPlayerRuleDisabled);
+#if FANG_WINGC
+	// The chip entities and inventory roll back; their level counter must match.
+	CPlayer::CheckpointSaveSecretChips();
+#endif
 
 	// save the level parameters.
 	// cjm moved here because level_CheckpointSave() "piggybacks" on to the data handle set above.
@@ -120,6 +124,9 @@ static void _RestoreGlobalData( s32 nCheckpoint )
 	CFCheckPoint::LoadData( FLoop_nRealTotalLoopTicks );
 	CFCheckPoint::LoadData( FLoop_nTotalLoopTicks );
 	CFCheckPoint::LoadData( ai_bUnarmedPlayerRuleDisabled);
+#if FANG_WINGC
+	CPlayer::CheckpointRestoreSecretChips();
+#endif
 
 	// Restore the level parameters...
 	// cjm moved here because level_CheckpointRestore() "piggybacks" on to the data handle set above.

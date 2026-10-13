@@ -5546,7 +5546,12 @@ void CBattleStage::SwitchTo( void ) {
 	m_eStageState = STATE_BATTLE;
 	_SetFinished( FALSE );
 
+#if FANG_WINGC
+	// The combat stage needs normal weapon selection/reload after the instruction stages.
+	CSpyVsSpy::TurnOffHUD( FALSE );
+#else
 	CSpyVsSpy::TurnOffHUD( FALSE, 0, TRUE );
+#endif
 	CSpyVsSpy::AttackDisable( FALSE );
 	CSpyVsSpy::TakeControlFromPlayer( FALSE );
 
@@ -5636,7 +5641,15 @@ void CBattleStage::_BattleWork( void ) {
 	if( i == _BATTLE_NUM_GUYS ) {
 		m_eStageState = STATE_WALK_TO_DOOR;
 
+#if FANG_WINGC
+		CSpyVsSpy::TurnOffHUD( FALSE, FALSE, TRUE );
+		const s32 nPlayers = MultiplayerMgr.IsLocalCoop() ? CPlayer::m_nPlayerCount : 1;
+		for( s32 n = 0; n < nPlayers; ++n )
+			CHud2::GetHudForPlayer(n)->TextDisplay_Start( 6.0f, NULL, FALSE, TRUE,
+				L"Training complete. Go to the open arena door." );
+#else
 		CSpyVsSpy::TurnOffHUD( TRUE );
+#endif
 
 		CInventory *pInv = CSpyVsSpy::GetGlitch()->m_pInventory;
 		CItemInst *pPrimary = pInv->IsWeaponInInventory( "Empty Primary" );

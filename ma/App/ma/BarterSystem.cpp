@@ -190,6 +190,11 @@ static BOOL _Call_FailedPurchase( void );
 static BOOL _Call_RejectedItem( void );
 static BOOL _Call_Exit( void );
 static BOOL _Call_Available( void );
+#if FANG_WINGC
+BOOL bartersystem_PortReadyForInput() {
+	return _bLevelOK && _eState == BARTERSTATE_ACTIVE && _nWaitState == WAIT_STATE_NONE && _Call_ReadyToBarter();
+}
+#endif
 static void _HandleCancelButton( CBot *pPlayer );
 static void _HandlePurchaseButton( CBot *pPlayer );
 static BOOL _WaitStateWork( void );

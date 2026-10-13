@@ -529,6 +529,10 @@ private:
 	static BotInfo_Walk_t m_BotInfo_Walk;				// Walk bot info
 	static BotInfo_Jump_t m_BotInfo_Jump;				// Jump bot info
 	static BotInfo_Weapon_t m_BotInfo_Weapon;			// Weapon bot info
+#if FANG_WINGC
+	BotInfo_Weapon_t m_PortServoWeaponInfo; // servo timing belongs to this bot, not the shared class defaults
+	void PortRestoreArmServoFromInventory( void );
+#endif
 	static BotInfo_Glitch_t m_BotInfo_Glitch;			// Glitch bot info
 	static BotInfo_Idle_t*	m_BotInfo_Idle;				// Idle bot info
 	static u32				m_nBotInfo_Idles;			// Idle bot info count

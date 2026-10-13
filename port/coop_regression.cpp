@@ -12,6 +12,7 @@
 #include "game.h"
 #include "gamesave.h"
 #include "BarterSystem.h"
+#include "BarterTypes.h"
 #include "econsole.h"
 #include "gamepad.h"
 #include "Door.h"
@@ -70,6 +71,98 @@ static void Check(BOOL bOK, const char *pszCheck) {
     DEVPRINTF("COOP-TEST %s: %s\n", bOK ? "PASS" : "FAIL", pszCheck);
 }
 
+static void VendorUpgradeWork(CBot *buyer, CBot *partner, int owner, u32 now, int &step, u32 &stamp) {
+    static int caption=0, purchase=0, funds=0, partnerFunds=0;
+    static u32 partnerLevel=0;
+    static CWeapon *weapon=NULL, *partnerWeapon=NULL;
+    static CBarterItemInst *offer=NULL;
+    static BOOL pressed=FALSE;
+    const char *families[]={"Laser","Ripper","Rivet Gun","Rocket","Blaster","Tether","Spew","Scope"};
+    const char *buys[]={"EUK Rivet Gun 2","EUK Rivet Gun 3","EUK Ripper 2","EUK Ripper 3"};
+    const char *tags[]={"Rivet Gun L1","Rivet Gun L1","Ripper L1","Ripper L1"};
+    if (!step) {
+        for (int n=0;n<2;n++) {
+            const char *tag=n ? "Ripper L1" : "Rivet Gun L1";
+            CItemInst *item=buyer->m_pInventory->IsWeaponInInventory(tag);
+            if (!item) { CCollectable::GiveWeaponToPlayer(buyer,tag,10); item=buyer->m_pInventory->IsWeaponInInventory(tag); }
+            Check(item && item->m_pWeapon,"native shopper owns test weapon");
+            if (!item || !item->m_pWeapon) {step=99;return;}
+            item->m_pWeapon->SetUpgradeLevel(0);
+        }
+        CEntity *point=CEntity::Find("barter1");
+        const BOOL placed=point && bartersystem_PlaceInWorldAndStartAttracting("barter1");
+        Check(placed,"native upgrade vendor placed");if(!placed){step=99;return;}
+        CFMtx43A at=*point->MtxToWorld();CFVec3A offset(at.m_vFront);offset.Mul(9);at.m_vPos.Add(offset);
+        at.m_vFront.Negate();at.m_vRight.Negate();buyer->Relocate_RotXlatFromUnitMtx_WS(&at);
+        if(CPlayer::m_nPlayerCount>1){at.m_vPos.x+=30;partner->Relocate_RotXlatFromUnitMtx_WS(&at);}
+        buyer->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo=1000;step=1;stamp=now;
+    } else if(step==1){
+        if(!bartersystem_IsActive() && now-stamp>1000)
+            for(CEntity *p=CEntity::InWorldList_GetHead();p;p=p->InWorldList_GetNext())
+                if(bartersystem_IsBarterBot(p)){p->ActionNearby(buyer);break;}
+        if(bartersystem_PortReadyForInput()){Check(TRUE,"native vendor accepts input");step=2;stamp=now;}
+        else if(now-stamp>25000){Check(FALSE,"native vendor opens for upgrade tests");step=99;}
+    } else if(step==2 || step==4){
+        if(!bartersystem_PortReadyForInput())return;
+        if(step==2 && caption==23){step=4;stamp=now;return;}
+        if(step==4 && purchase==4){
+            Check(!CCollectable::GiveWeaponToPlayer(buyer,"EUK Rivet Gun") && !CCollectable::GiveWeaponToPlayer(buyer,"EUK Ripper"),"native maxed EUK grant refuses NPC-only tiers");
+            Gamepad_aapSample[Player_aPlayer[owner].m_nControllerIndex][GAMEPAD_MAIN_SELECT_PRIMARY]->uLatches|=GAMEPAD_BUTTON_1ST_PRESS_MASK;
+            step=6;stamp=now;return;
+        }
+        char name[64];int slot=2;
+        if(step==2){int family=caption/3,variant=caption%3;_snprintf(name,sizeof(name),variant?"EUK %s %d":"EUK %s",families[family],variant+1);if(family==7)slot=0;}
+        else strcpy(name,buys[purchase]);
+        CBarterItem *catalog=CBarterItem::FindBarterItem(slot,name);
+        CCollectableType *type=CCollectable::GetCollectableTypeObjectFromString(name);
+        Check(catalog && type && catalog->m_eCollectableType==type->m_eType,"native shop catalog retains correct EUK identity");
+        if(!catalog||!type){step=99;return;}
+        if(!type->m_bSetup){CCollectable::NotifyCollectableUsedInWorld(type->m_eType);if(!type->Setup()){Check(FALSE,"native EUK resources load");step=99;return;}}
+        offer=CBarterLevel::GetCurrentItemInst();if(!offer){Check(FALSE,"native active offer exists");step=99;return;}
+        offer->RemoveFromWorld();if(!offer->Init(catalog,TRUE,1,37)){Check(FALSE,"native EUK offer initializes");step=99;return;}
+        offer->SetNeeded(TRUE);offer->SetAmmo(FALSE);offer->SetSelected(TRUE);offer->AddToWorld();
+        DEVPRINTF("VENDOR-UPGRADE selecting shopper=P%d item='%s' type=%d phase=%s\n",owner+1,name,type->m_eType,step==2?"display":"purchase");
+        if(step==4){
+            CItemInst *item=buyer->m_pInventory->IsWeaponInInventory(tags[purchase]);weapon=item?item->m_pWeapon:NULL;
+            Check(weapon && CCollectable::PlayerNeeds((CBotGlitch*)buyer,type->m_eType,FALSE),"native buyer needs the offered upgrade");
+            if(!weapon){step=99;return;}
+            partnerWeapon=NULL;
+            if(CPlayer::m_nPlayerCount>1){CItemInst *other=partner->m_pInventory->IsWeaponInInventory(tags[purchase]);partnerWeapon=other?other->m_pWeapon:NULL;partnerLevel=partnerWeapon?partnerWeapon->GetUpgradeLevel():0;}
+            funds=buyer->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo;
+            partnerFunds=partner->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo;
+        }
+        step=step==2?3:5;stamp=now;
+    } else if(step==3 && now-stamp>250){
+        Check(offer->IsInWorld() && offer->m_pWorldMesh,"native selected EUK renders its display mesh");
+        wchar text[256];Check(CCollectable::TypeToHUDString(text,256,offer->m_pCollectableType,TRUE),"native selected EUK formats its caption");caption++;step=2;
+    } else if(step==5){
+        if(!pressed && now-stamp>600 && bartersystem_PortReadyForInput()){
+            Gamepad_aapSample[Player_aPlayer[owner].m_nControllerIndex][GAMEPAD_MAIN_JUMP]->uLatches|=GAMEPAD_BUTTON_1ST_PRESS_MASK;
+            DEVPRINTF("VENDOR-UPGRADE purchase input shopper=P%d item='%s'\n",owner+1,buys[purchase]);pressed=TRUE;
+        }
+        const int expected=purchase%2+1;
+        if(pressed && weapon->GetUpgradeLevel()==(u32)expected && now-stamp>1000){
+            CItemInst *item=weapon->GetItemInst();Check(item && item->m_nUpgradeLevel==expected+1,"native purchase upgrades weapon and saved inventory level");
+            Check(buyer->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo==funds-37,"native purchase charges exactly one upgrade price");
+            if(CPlayer::m_nPlayerCount>1){Check(partner->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo==partnerFunds,"native upgrade leaves partner wallet unchanged");Check(!partnerWeapon||partnerWeapon->GetUpgradeLevel()==partnerLevel,"native upgrade leaves partner weapon unchanged");}
+            DEVPRINTF("VENDOR-UPGRADE bought shopper=P%d item='%s' weaponLevel=%u itemLevel=%d washers=%d\n",owner+1,buys[purchase],weapon->GetUpgradeLevel()+1,item->m_nUpgradeLevel,buyer->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo);
+            purchase++;pressed=FALSE;step=4;stamp=now;
+        } else if(now-stamp>15000){Check(FALSE,"native upgrade purchase resolves after controller input");step=99;}
+    } else if(step==7 && now-stamp>1500){
+        for(int n=0;n<2;n++){
+            CItemInst *item=buyer->m_pInventory->IsWeaponInInventory(n ? "Ripper L1" : "Rivet Gun L1");
+            Check(item && item->m_pWeapon && item->m_pWeapon->GetUpgradeLevel()==2 && item->m_nUpgradeLevel==3,"native touching maxed EUK leaves player tier intact");
+        }
+        Check(buyer->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo==funds-37,"native touching maxed EUK leaves wallet intact");
+        DEVPRINTF("VENDOR-UPGRADE COMPLETE shopper=P%d players=%d displayed=%d purchased=%d\n",owner+1,CPlayer::m_nPlayerCount,caption,purchase);step=99;
+    } else if(step==6 && !bartersystem_IsActive()){
+        Check(buyer->IsDrawEnabled() && Player_aPlayer[owner].HasEntityControl(),"native upgrade shop exit restores player");
+        Check(buyer->CanPickupItems(),"native maxed EUK test has normal pickup eligibility after shop exit");
+        Check(CCollectable::GiveToPlayer(buyer,"EUK Rivet Gun",1.0f) && CCollectable::GiveToPlayer(buyer,"EUK Ripper",1.0f),"native maxed EUK world pickups placed at buyer");
+        step=7;stamp=now;
+    } else if(step==6 && now-stamp>15000){Check(FALSE,"native upgrade shop closes");step=99;}
+}
+
 void port_CoopRegressionWork() {
     static char mode[32];
     static BOOL bRead = FALSE;
@@ -93,7 +186,7 @@ void port_CoopRegressionWork() {
     const BOOL invasionFixture = !strcmp(mode,"invasion32");
     const BOOL corrosiveFixture = !strcmp(mode,"corrosive36");
     const BOOL movementCheats = !strcmp(mode,"movement-cheats");
-    const BOOL soloFixture = !strcmp(mode,"hangar-magnet") || !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
+    const BOOL soloFixture = !strncmp(mode,"shop-upgrades",13) || !strcmp(mode,"hangar-magnet") || !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
     if (!mode[0] || CPlayer::m_nPlayerCount < 1 || (CPlayer::m_nPlayerCount < 2 && !soloFixture && !coliseumGates && !invasionFixture && !movementCheats) || step == 99) return;
     CBot *p0 = (CBot *)Player_aPlayer[0].m_pEntityOrig;
     CBot *p1 = CPlayer::m_nPlayerCount > 1 ? (CBot *)Player_aPlayer[1].m_pEntityOrig : p0;
@@ -559,6 +652,11 @@ void port_CoopRegressionWork() {
     CBot *pOwner = owner ? p1 : p0;
     CBot *pPartner = owner ? p0 : p1;
     CPlayer::SetCurrent(owner);
+
+    if(!strncmp(mode,"shop-upgrades",13)) {
+        VendorUpgradeWork(pOwner,pPartner,owner,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
 
     if(!strcmp(mode,"goff-parts")) {
         const char *names[3]={"goffhead","goffleg","gofftorso"};

@@ -204,6 +204,10 @@ void CFPhysicsObject::_SmoothVectorClampMin( CFVec3A &rvInput, f32 fMinRange, f3
 // set member variables to default values
 void CFPhysicsObject::_SetDefaults( void )
 {
+#if FANG_WINGC
+	// A reused vehicle must never recover a state cached before this reset.
+	m_bPortHaveGoodState = FALSE;
+#endif
 	m_fMass = _DEFAULT_MASS;
 	m_fInverseMass = 1.0 / _DEFAULT_MASS;
 	m_vCMOffset.Zero();

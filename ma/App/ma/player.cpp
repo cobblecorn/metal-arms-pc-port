@@ -1953,3 +1953,15 @@ void CPlayer::CreditSecretChip( void )
 	if (m_GameStats.m_bIsSinglePlayer)
 		m_GameStats.m_SPStats.m_nSecretChipsCollected++;
 }
+
+#if FANG_WINGC
+void CPlayer::CheckpointSaveSecretChips( void ) {
+	for( s32 i = 0; i < MAX_PLAYERS; ++i )
+		CFCheckPoint::SaveData( Player_aPlayer[i].m_GameStats.m_SPStats.m_nSecretChipsCollected );
+}
+
+void CPlayer::CheckpointRestoreSecretChips( void ) {
+	for( s32 i = 0; i < MAX_PLAYERS; ++i )
+		CFCheckPoint::LoadData( Player_aPlayer[i].m_GameStats.m_SPStats.m_nSecretChipsCollected );
+}
+#endif
