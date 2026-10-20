@@ -172,6 +172,23 @@ void fdx8mesh_ModuleShutdown( void )
 
 BOOL _bFlipCullDir=FALSE;
 
+#if FANG_WINGC
+static FMeshCullDir_e _PortModelCullDir( FMeshCullDir_e nCullDir, const CFMtx43A &Mtx ) {
+	// Mirroring a world instance reverses triangle winding. Keep this local
+	// to the draw: reflection passes still apply their separate view flip.
+	const CFVec3A &r = Mtx.m_vRight, &u = Mtx.m_vUp, &f = Mtx.m_vFront;
+	const f32 fDet = r.x*(u.y*f.z-u.z*f.y) - r.y*(u.x*f.z-u.z*f.x) + r.z*(u.x*f.y-u.y*f.x);
+	if( fDet < 0.0f ) {
+		if( nCullDir == FMESH_CULLDIR_CW ) return FMESH_CULLDIR_CCW;
+		if( nCullDir == FMESH_CULLDIR_CCW ) return FMESH_CULLDIR_CW;
+	}
+	return nCullDir;
+}
+#define _INSTANCE_CULL_DIR _PortModelCullDir((FMeshCullDir_e)m_nCullDirection, m_PosMtx)
+#else
+#define _INSTANCE_CULL_DIR ((FMeshCullDir_e)m_nCullDirection)
+#endif
+
 
 //
 //
@@ -542,7 +559,7 @@ BOOL CFMeshInst::DrawMaterialLight_P( FViewportPlanesMask_t nCrossesPlanesMask, 
 	#endif
 
 	fdx8_SetRenderState_FILLMODE( FRenderer_nD3DFillMode );
-	_SetCullDir_P( (FMeshCullDir_e)m_nCullDirection );
+	_SetCullDir_P( _INSTANCE_CULL_DIR );
 	FDX8Mesh_t *pMeshIS = m_pMesh->pMeshIS;
 	u32 nMeshBoneCount = m_pMesh->nBoneCount;
 
@@ -992,7 +1009,7 @@ void CFMeshInst::DrawMaterialSurface_P( FViewportPlanesMask_t nCrossesPlanesMask
 	#endif
 
 //	fdx8_SetRenderState_FILLMODE( FRenderer_nD3DFillMode );
-	_SetCullDir_P( (FMeshCullDir_e)m_nCullDirection );
+	_SetCullDir_P( _INSTANCE_CULL_DIR );
 	FDX8Mesh_t *pMeshIS = m_pMesh->pMeshIS;
 	u32 nMeshBoneCount = m_pMesh->nBoneCount;
 
@@ -1265,7 +1282,7 @@ void CFMeshInst::DrawMaterialSpecular_P( FViewportPlanesMask_t nCrossesPlanesMas
 	#endif
 
 	fdx8_SetRenderState_FILLMODE( FRenderer_nD3DFillMode );
-	_SetCullDir_P( (FMeshCullDir_e)m_nCullDirection );
+	_SetCullDir_P( _INSTANCE_CULL_DIR );
 	FDX8Mesh_t *pMeshIS = m_pMesh->pMeshIS;
 	u32 nMeshBoneCount = m_pMesh->nBoneCount;
 
@@ -1511,7 +1528,7 @@ void CFMeshInst::DrawMaterialTranslucency_P( FViewportPlanesMask_t nCrossesPlane
 	#endif
 
 	fdx8_SetRenderState_FILLMODE( FRenderer_nD3DFillMode );
-	_SetCullDir_P( (FMeshCullDir_e)m_nCullDirection );
+	_SetCullDir_P( _INSTANCE_CULL_DIR );
 	FDX8Mesh_t *pMeshIS = m_pMesh->pMeshIS;
 	u32 nMeshBoneCount = m_pMesh->nBoneCount;
 
@@ -1778,7 +1795,7 @@ void CFMeshInst::DrawAllMaterials_P( FViewportPlanesMask_t nCrossesPlanesMask )
 
 	fdx8_SetRenderState_FILLMODE( FRenderer_nD3DFillMode );
 
-	_SetCullDir_P( (FMeshCullDir_e)m_nCullDirection );
+	_SetCullDir_P( _INSTANCE_CULL_DIR );
 
 	FDX8Mesh_t *pMeshIS = m_pMesh->pMeshIS;
 	u32 nMeshBoneCount = m_pMesh->nBoneCount;
@@ -2199,7 +2216,7 @@ void CFMeshInst::DrawShadow_P( FViewportPlanesMask_t nCrossesPlanesMask, FMeshMa
 
 	fdx8_SetRenderState_FILLMODE( FRenderer_nD3DFillMode );
 
-	_SetCullDir_P( (FMeshCullDir_e)m_nCullDirection );
+	_SetCullDir_P( _INSTANCE_CULL_DIR );
 
 	if ( !(m_pMesh->nFlags & FMESH_FLAGS_VOLUME_MESH) )
 	{

@@ -9,6 +9,7 @@
 #include "collectable.h"
 #include "ItemInst.h"
 #include "ItemRepository.h"
+#include "item.h"
 #include "game.h"
 #include "gamesave.h"
 #include "BarterSystem.h"
@@ -45,6 +46,10 @@
 #include "botpart.h"
 #include "fworld.h"
 #include "ColiseumMiniGame.h"
+#include "SpawnSys.h"
+#include "espline.h"
+#include "goodiebag.h"
+#include "AI/AIGameUtils.h"
 
 extern BOOL pausescreen_IsActive();
 
@@ -163,6 +168,8 @@ static void VendorUpgradeWork(CBot *buyer, CBot *partner, int owner, u32 now, in
     } else if(step==6 && now-stamp>15000){Check(FALSE,"native upgrade shop closes");step=99;}
 }
 
+#include "reddit_regression.inl"
+
 void port_CoopRegressionWork() {
     static char mode[32];
     static BOOL bRead = FALSE;
@@ -186,7 +193,8 @@ void port_CoopRegressionWork() {
     const BOOL invasionFixture = !strcmp(mode,"invasion32");
     const BOOL corrosiveFixture = !strcmp(mode,"corrosive36");
     const BOOL movementCheats = !strcmp(mode,"movement-cheats");
-    const BOOL soloFixture = !strncmp(mode,"shop-upgrades",13) || !strcmp(mode,"hangar-magnet") || !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
+    const BOOL domeFixture = !strncmp(mode,"corrosive-dome",14);
+    const BOOL soloFixture = !strncmp(mode,"report-",7) || domeFixture || !strncmp(mode,"washer-report",13) || !strncmp(mode,"pickup-",7) || !strcmp(mode,"swarmer-report") || !strncmp(mode,"shop-upgrades",13) || !strncmp(mode,"shop-ammo",9) || !strcmp(mode,"hangar-magnet") || !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
     if (!mode[0] || CPlayer::m_nPlayerCount < 1 || (CPlayer::m_nPlayerCount < 2 && !soloFixture && !coliseumGates && !invasionFixture && !movementCheats) || step == 99) return;
     CBot *p0 = (CBot *)Player_aPlayer[0].m_pEntityOrig;
     CBot *p1 = CPlayer::m_nPlayerCount > 1 ? (CBot *)Player_aPlayer[1].m_pEntityOrig : p0;
@@ -194,7 +202,7 @@ void port_CoopRegressionWork() {
     const u32 now = GetTickCount();
     if (!nStart) nStart = now;
     if (now - nStart < 1500 && strncmp(mode,"fabricator",10)) return;
-    if (!step && !spyFixture && !coliseumGates && !invasionFixture && !corrosiveFixture && strncmp(mode,"fabricator",10)) {
+    if (!step && strncmp(mode,"report-arena",12) && !spyFixture && !coliseumGates && !invasionFixture && !corrosiveFixture && !domeFixture && strncmp(mode,"fabricator",10)) {
         if (!Player_aPlayer[0].HasEntityControl()) { nControlReadyTime = 0; return; }
         if (!nControlReadyTime) nControlReadyTime = now;
         if (now - nControlReadyTime < 3000) return;
@@ -653,8 +661,62 @@ void port_CoopRegressionWork() {
     CBot *pPartner = owner ? p0 : p1;
     CPlayer::SetCurrent(owner);
 
+    if(!strcmp(mode,"report-systems")) {
+        SystemsReportWork(p0,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+    if(!strncmp(mode,"report-arena",12)) {
+        ArenaReportWork(pOwner,owner,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+
+    if(!strncmp(mode,"report-health",13)) {
+        HealthReportWork(pOwner,owner,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+    if(!strcmp(mode,"report-rebuild")) {
+        RebuildReportWork(p0,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+    if(!strcmp(mode,"report-recruit")) {
+        RecruitReportWork(p0,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+
+    if(!strncmp(mode,"washer-report",13)) {
+        WasherReportWork(pOwner,pPartner,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+
+    if(!strncmp(mode,"pickup-",7)) {
+        PickupReportWork(p0,mode,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+
+    if(domeFixture) {
+        if(!step && CColiseumMiniGame::PortTestCorrosiveDome(0,owner)){step=1;nStepTime=now;}
+        else if(step==1 && CColiseumMiniGame::PortTestCorrosiveDome(1,owner)) {
+            Check(TRUE,"native physical dome entry allows the real wrench");step=2;nStepTime=now;
+        } else if(step==2 && CColiseumMiniGame::PortTestCorrosiveDome(2,owner)) {
+            Check(TRUE,"native Corrosive destroys occupied dome and completes the wrench escape");
+            DEVPRINTF("CORROSIVE-DOME COMPLETE P%d\n",owner+1);step=99;
+        } else if(step && now-nStepTime>60000) {
+            CColiseumMiniGame::PortTestCorrosiveDome(3,owner);
+            Check(FALSE,step==1 ? "native Corrosive physical dome entry/wrench readiness" : "native Corrosive completes physical dome attack while disassembled");step=99;
+        }
+        CPlayer::SetCurrent(previous);return;
+    }
+    if(!strcmp(mode,"swarmer-report")) {
+        SwarmerReportWork(p0,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+
     if(!strncmp(mode,"shop-upgrades",13)) {
         VendorUpgradeWork(pOwner,pPartner,owner,now,step,nStepTime);
+        CPlayer::SetCurrent(previous);return;
+    }
+    if(!strncmp(mode,"shop-ammo",9)) {
+        VendorAmmoWork(pOwner,pPartner,owner,now,step,nStepTime);
         CPlayer::SetCurrent(previous);return;
     }
 
@@ -1260,6 +1322,7 @@ void port_CoopRegressionWork() {
                 Check(pFlamer->GetClipAmmo() < ammoBefore, "Slosh fires the flamethrower and consumes fuel");
                 pFlamer->TriggerWork(0, 0, &target);
                 pFlamer->Work();
+                DEVPRINTF("FLAMER-REPORT COMPLETE\n");
                 step = 99;
             }
         }

@@ -942,8 +942,13 @@ BOOL CColiseumMiniGame::LoadLevel1( LevelEvent_e eEvent )
 			pInv->SetToUnarmed(TRUE);
 #if FANG_WINGC
 			_PortStripPartners();
+			// Whatever ends the level (the scripted win, a fight called early, a skip), the next
+			// level starts with the inventory carried in here, not the arena's. Retail set this
+			// only on the scored-win path, so any other ending saved the stripped inventory.
+			CPlayer::SetSaveInventory( &m_InvCopy );
+			_PortRestorePartners();
 #endif
-		}	
+		}
 		return TRUE;
 	}
 
@@ -972,8 +977,13 @@ BOOL CColiseumMiniGame::LoadLevel2( LevelEvent_e eEvent )
 			pInv->SetToUnarmed(TRUE);
 #if FANG_WINGC
 			_PortStripPartners();
+			// Whatever ends the level (the scripted win, a fight called early, a skip), the next
+			// level starts with the inventory carried in here, not the arena's. Retail set this
+			// only on the scored-win path, so any other ending saved the stripped inventory.
+			CPlayer::SetSaveInventory( &m_InvCopy );
+			_PortRestorePartners();
 #endif
-		}	
+		}
 		return TRUE;
 	}
 
@@ -1021,8 +1031,13 @@ BOOL CColiseumMiniGame::LoadLevel3( LevelEvent_e eEvent )
 			pInv->SetToUnarmed(TRUE);
 #if FANG_WINGC
 			_PortStripPartners();
+			// Whatever ends the level (the scripted win, a fight called early, a skip), the next
+			// level starts with the inventory carried in here, not the arena's. Retail set this
+			// only on the scored-win path, so any other ending saved the stripped inventory.
+			CPlayer::SetSaveInventory( &m_InvCopy );
+			_PortRestorePartners();
 #endif
-		}	
+		}
 		return TRUE;
 	}
 
@@ -1051,8 +1066,13 @@ BOOL CColiseumMiniGame::LoadLevel4( LevelEvent_e eEvent )
 			pInv->SetToUnarmed(TRUE);
 #if FANG_WINGC
 			_PortStripPartners();
+			// Whatever ends the level (the scripted win, a fight called early, a skip), the next
+			// level starts with the inventory carried in here, not the arena's. Retail set this
+			// only on the scored-win path, so any other ending saved the stripped inventory.
+			CPlayer::SetSaveInventory( &m_InvCopy );
+			_PortRestorePartners();
 #endif
-		}	
+		}
 		return TRUE;
 	}
 
@@ -1994,10 +2014,12 @@ void CColiseumMiniGame::InitGame()
 		CCorrosiveCombat::UseAlternateAggressionCalculations( TRUE );
 	}
 #if FANG_WINGC
-	// Coliseum 3's later waves (grunt5-8, pred1) are out of the world when the arena starts, so
-	// retail's list held only the first four and the fight was won when they died, even with the
-	// next wave arriving. Count them too; MainGame() still ends the fight if one never shows up.
-	if( m_nLevelID == 2 ) {
+	// Later waves are out of the world when the arena starts: Coliseum 3's grunt5-8 and pred1,
+	// Coliseum 2's shielded g1-g3_group1 that its battle script adds once the zombies die. Retail's
+	// list held only the first wave, so the fight was won (and the level ended) with the next wave
+	// arriving and shooting. Count them too; MainGame() still ends the fight if one never shows up.
+	// Coliseum 4 is won against Corrosive and keeps its list.
+	if( m_nLevelID <= 2 ) {
 		for( CEntity *pOut = CEntity::OutOfWorldList_GetHead(); pOut && m_nNumEnemies < MAX_ENEMIES; pOut = pOut->OutOfWorldList_GetNext() ) {
 			if( (pOut->LeafTypeBit()&ENTITY_BITS_ENEMYBOTS) && ((CBot *)pOut)->AIBrain() &&
 				( ((CBot *)pOut)->AIBrain()->GetRace() == AIRACE_MIL || ((CBot *)pOut)->AIBrain()->GetRace() == AIRACE_ZOMBIE ) ) {
@@ -3582,8 +3604,11 @@ BOOL CColiseumMiniGame::MainGame()
 		}
 #if FANG_WINGC
 		// Every arena bot is dead and the rest have not come in for a minute: the script is not
-		// sending them, so end the fight rather than leave it running forever.
-		if( !bAllDead && !bAnyActive && bAnyPending ) {
+		// sending them, so end the fight rather than leave it running forever. Only once the fight
+		// has begun (an arena bot has died): before that, the arena bots wait out of the world
+		// through the cell, weapon room and announcer intro, and calling the fight then ran the
+		// whole victory sequence at once.
+		if( !bAllDead && !bAnyActive && bAnyPending && nDead > 0 ) {
 			_fPortArenaQuietSecs += FLoop_fRealPreviousLoopSecs;
 			if( _fPortArenaQuietSecs > _PORT_ARENA_QUIET_SECS ) {
 				DEVPRINTF( "Port: Coliseum %d: no new bots for %.0f s with all others dead; ending the fight.\n", m_nLevelID + 1, _PORT_ARENA_QUIET_SECS );
@@ -3832,6 +3857,82 @@ BOOL CColiseumMiniGame::MainGame()
 }
 
 #if FANG_WINGC
+BOOL CColiseumMiniGame::PortTestCorrosiveDome( s32 nStep, s32 nPlayer ) {
+	CColiseumMiniGame *pGame = m_pColiseumMiniGame;
+	if( !pGame || pGame->m_nLevelID != 3 || nPlayer < 0 || nPlayer >= CPlayer::m_nPlayerCount ||
+		!pGame->m_nNumHuts || !pGame->m_nNumTripwires || pGame->m_State == STATE_INIT ) return FALSE;
+	CBotGlitch *pActor = (CBotGlitch *)Player_aPlayer[nPlayer].m_pEntityOrig;
+	CBot *pBoss = pGame->m_pEnemies[0];
+	if( !pActor || !pBoss ) return FALSE;
+	static BOOL bEntered=FALSE;
+	if( nStep == 0 ) {
+		bEntered=FALSE;
+		// Skip the escort only. Physical tripwire detection, wrench, boss AI,
+		// destruction callback and victory detection all run normally.
+		pGame->m_State = STATE_MAIN_GAME;
+		CBot::SetCutscenePlaying(FALSE);
+		// Complete the shared entrance trigger before parking spectators.
+		// Otherwise its script keeps Corrosive in the intro while this test
+		// has already bypassed the escort state machine.
+		CEntity *pEntrance=CEntity::Find("trig_doorclose");
+		if( pEntrance && pEntrance->IsInWorld() ) for( s32 n=0;n<CPlayer::m_nPlayerCount;++n ) {
+			CBot *pBot=(CBot *)Player_aPlayer[n].m_pEntityOrig;
+			CFMtx43A at=*pBot->MtxToWorld();at.m_vPos=pEntrance->MtxToWorld()->m_vPos;
+			pBot->Relocate_RotXlatFromUnitMtx_WS(&at);pBot->ZeroVelocity();
+		}
+		for( s32 n=0; n<CPlayer::m_nPlayerCount; ++n ) {
+			CBot *pBot = (CBot *)Player_aPlayer[n].m_pEntityOrig;
+			pBot->SetInvincible(TRUE);
+			if( n != nPlayer ) {
+				CFMtx43A mtx=*pBot->MtxToWorld();mtx.m_vPos.Set(-80,1,350);
+				pBot->Relocate_RotXlatFromUnitMtx_WS(&mtx);
+			}
+		}
+		if( !pGame->m_paTripwireEntity[0] || !CCollectable::GiveWeaponToPlayer(pActor,"wrench",1) ) return FALSE;
+		pActor->m_pInventory->SetCurWeapon(INV_INDEX_SECONDARY,pActor->m_pInventory->IsWeaponInInventory("wrench"),FALSE,TRUE);
+		// Let the real entrance script issue its goto and attack. Assigning
+		// combat here races that script and loses a queued dome request when
+		// its later goto replaces the test's premature attack goal.
+		CEntity *pCombatStart=CEntity::Find("goto_c1");
+		if( !pCombatStart ) return FALSE;
+		CFMtx43A bossAt=*pBoss->MtxToWorld();bossAt.m_vPos=pCombatStart->MtxToWorld()->m_vPos;
+		bossAt.m_vPos.y+=2;pBoss->Relocate_RotXlatFromUnitMtx_WS(&bossAt);pBoss->ZeroVelocity();
+		Player_aPlayer[nPlayer].EnableEntityControl();
+		gamecam_SwitchPlayerTo3rdPersonCamera((GameCamPlayer_e)nPlayer,pActor);
+		aibrainman_Activate(pBoss->AIBrain());
+		return TRUE;
+	}
+	if( nStep == 1 ) {
+		if( !bEntered ) {
+			CGroundCombat *pCombat=CCorrosiveCombat::GetGroundCombatPtr();
+			// Wait for the entrance script's combat goal before crossing. Dome
+			// behavior must also work when another partner is his current enemy.
+			if( !pCombat || pBoss->AIBrain()->GetCurThoughtPtr()!=pCombat ) return FALSE;
+			CFMtx43A at=*pActor->MtxToWorld();at.m_vPos=pGame->m_paTripwireEntity[0]->MtxToWorld()->m_vPos;at.m_vPos.y+=2;
+			pActor->Relocate_RotXlatFromUnitMtx_WS(&at);pActor->ZeroVelocity();bEntered=TRUE;
+			DEVPRINTF("CORROSIVE-DOME enter P%d at %.2f,%.2f,%.2f\n",nPlayer+1,at.m_vPos.x,at.m_vPos.y,at.m_vPos.z);
+		}
+		if( pGame->m_pHutInside != pGame->m_paHuts[0] || !pGame->m_paHuts[0] || pActor->IsInAir() ) return FALSE;
+		// Use the wrench when the boss commits to the attack. The authored
+		// eight-second disassembly can expire while he walks across the arena.
+		const CBotCorrosive::BehaviorState_e eAttack=((CBotCorrosive *)pBoss)->GetBehaviorState();
+		if( eAttack != CBotCorrosive::BEHAVIOR_STATE_FINGER_FLICK && eAttack != CBotCorrosive::BEHAVIOR_STATE_SWAT ) return FALSE;
+		CWeapon *pWrench=pActor->GetSecondaryWeapon();
+		return pWrench && pWrench->Type()==CWeapon::WEAPON_TYPE_WRENCH && pWrench->Throwable_TriggerWork(1.0f) && pActor->IsInPieces();
+	}
+	if( nStep == 2 ) return pGame->m_nScore==4 || pGame->m_State==STATE_END_CUTSCENE || pGame->m_State==STATE_WAIT || pGame->m_State==STATE_END_GAME;
+	if( nStep == 3 ) {
+		CGroundCombat *pCombat=CCorrosiveCombat::GetGroundCombatPtr();
+		const CFVec3A &v=pBoss->MtxToWorld()->m_vPos;
+		DEVPRINTF("CORROSIVE-DOME boss pos=%.2f,%.2f,%.2f behavior=%d thought=%d enemy=%d cutscene=%d\n",v.x,v.y,v.z,((CBotCorrosive *)pBoss)->GetBehaviorState(),pCombat && pBoss->AIBrain()->GetCurThoughtPtr()==pCombat,pCombat && pCombat->m_pEnemy==pActor,CBot::m_bCutscenePlaying);
+		DEVPRINTF("CORROSIVE-DOME status state=%d score=%d hut=%d occupied=%d pieces=%d grounded=%d peer=%d flick=%d\n",
+			pGame->m_State,pGame->m_nScore,pGame->m_paHuts[0]!=NULL,pGame->m_pHutInside!=NULL,
+			pActor->IsInPieces(),pActor->IsOnGroundInPieces(),pGame->m_bDoPeer,pGame->m_bDoFlickNextFrame);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 BOOL CColiseumMiniGame::PortTestCorrosive( s32 nStep ) {
 	CColiseumMiniGame *pGame = m_pColiseumMiniGame;
 	if( !pGame || pGame->m_nLevelID != 3 || !MultiplayerMgr.IsLocalCoop() || CPlayer::m_nPlayerCount < 2 ) return FALSE;

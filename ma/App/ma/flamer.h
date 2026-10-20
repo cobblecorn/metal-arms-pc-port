@@ -215,6 +215,14 @@ public:
 
 	void StopFlamer( void );
 
+#if FANG_WINGC
+	void SetDamageProfiles( const CDamageProfile *pHit, const CDamageProfile *pBurn ) {
+		FASSERT( pHit && pBurn );
+		m_pDamageProfileHit = pHit;
+		m_pDamageProfileBurn = pBurn;
+	}
+#endif
+
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // Protected Functions:

@@ -536,6 +536,12 @@ BOOL CWeaponFlamer::ClassHierarchyBuild( void ) {
 		goto _ExitWithError;
 	}
 
+#if FANG_WINGC
+	// Builders may create a non-L1 variant directly, without SetUpgradeLevel.
+	// Initialize that stream's profiles as well as updating later tier changes.
+	m_pFlamer->SetDamageProfiles( m_apDamageProfileHit[m_nUpgradeLevel], m_apDamageProfileBurn[m_nUpgradeLevel] );
+#endif
+
 	m_pResourceData = &m_aResourceData[ m_nUpgradeLevel ];
 	m_pUserProps = &m_aUserProps[ m_nUpgradeLevel ];
 
@@ -772,6 +778,11 @@ void CWeaponFlamer::ClassHierarchySetUpgradeLevel( u32 nPreviousUpgradeLevel ) {
 	// Set up new level...
 	m_pResourceData = &m_aResourceData[ m_nUpgradeLevel ];
 	m_pUserProps = &m_aUserProps[ m_nUpgradeLevel ];
+#if FANG_WINGC
+	// The stream was created with L1's profiles. NPC, possessed and Slosh
+	// variants must replace those too, not only the mesh and ammo settings.
+	m_pFlamer->SetDamageProfiles( m_apDamageProfileHit[m_nUpgradeLevel], m_apDamageProfileBurn[m_nUpgradeLevel] );
+#endif
 
 	if( IsInWorld() ) {
 		m_pResourceData->m_pWorldMesh->m_Xfm = pOldResourceData->m_pWorldMesh->m_Xfm;

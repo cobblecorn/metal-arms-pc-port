@@ -414,7 +414,13 @@ void CInventory::SetToInitial() {
 
 	fang_MemZero( this, sizeof( CInventory ) );
 
+#if FANG_WINGC
+	// Retail wedmmines01's inventory starts at one. The later batteries are
+	// numbered 2 and 3; starting at three remaps both upgrades to Mega Energy.
+	m_uNumBatteries = 1;
+#else
 	m_uNumBatteries = 3;
+#endif
 	m_auNumWeapons[0] = 2;
 	m_auNumWeapons[1] = 1;
 	m_auCurWeapon[0] = 1;

@@ -164,6 +164,7 @@ public:
 		
 #if FANG_WINGC
 	static BOOL PortTestCorrosive( s32 nStep );
+	static BOOL PortTestCorrosiveDome( s32 nStep, s32 nPlayer );
 #endif
 
 private:

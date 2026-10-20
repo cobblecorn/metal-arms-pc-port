@@ -733,7 +733,13 @@ BOOL CBotGrunt::ClassHierarchyBuild( void ) {
 
 		ShieldInit_t shieldInit;
 		shieldInit.uShieldFlags = 0;
+#if FANG_WINGC
+		// Retail CBotGrunt::ClassHierarchyBuild (main.dol 8003754c):
+		// this source revision's 1.0 makes the same bubble 2.5 times too big.
+		shieldInit.fShieldScale = 0.4f;
+#else
 		shieldInit.fShieldScale = 1.0f;
+#endif
 		shieldInit.fShieldRechargeTime = m_BotInfo_Grunt.fShieldRechargeTime;
 		shieldInit.fShieldRechargeDelay = m_BotInfo_Grunt.fShieldRechargeDelay;
 		shieldInit.pArmorProfile = CDamage::FindArmorProfile( m_BotInfo_Grunt.pszShieldArmorProfile );

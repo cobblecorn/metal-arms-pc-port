@@ -877,7 +877,14 @@ void CSpawnNet::InitSpawnPts(void)
 
 void CSpawnNet::Work(void)
 {
+#if FANG_WINGC
+	// Script/tripwire-controlled nets must retain their requested alert level.
+	// Comparing an uncomputed automatic zero used to turn them off again once
+	// the temporary defcon timeout elapsed, including both Slosh missions.
+	u8 uDefConLevel = (m_uSpawnNetFlags & SPAWNNET_NO_AUTO_DEFCON) ? m_uDefConLevel : SPAWNNET_DEFCON_0_INACTIVE;
+#else
 	u8 uDefConLevel = SPAWNNET_DEFCON_0_INACTIVE;
+#endif
 	CBot* pIntruder = NULL;
 
 	if (!(m_uSpawnNetFlags & SPAWNNET_NO_AUTO_DEFCON))

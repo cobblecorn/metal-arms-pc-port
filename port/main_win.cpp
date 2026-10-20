@@ -44,7 +44,7 @@
 //   -shots <dir>    save the back buffer to <dir>\shot_NNN.bmp every -shot-every frames (default 300)
 //   -save-dir <dir> the save root: Profiles and Co-op folders and settings.ini (default: %APPDATA%\MAGITS)
 //   -start-at X,Y,Z[,YAW] test/play aid: move player 1 to this world position (yaw in degrees) once play begins
-//   -sfx-db <dB>    trim for sound effects other than dialogue; default 0 (retail mix)
+//   -sfx-db <dB>    trim for sound effects other than dialogue; default -6 (0 restores retail mix)
 //   -aniso <n>      anisotropic texture filtering level (default 16, capped by the GPU; 1 = off)
 //   -test-win-level <s> test aid: complete the loaded level s seconds in (reaches the results screen)
 //   -test-give <item>   test aid: give player 1 a weapon/throwable (e.g. "coring charge") and select it

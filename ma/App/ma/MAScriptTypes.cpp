@@ -5985,6 +5985,9 @@ cell AMX_NATIVE_CALL CMAST_BarterWrapper::Barter_Remove(AMX *pAMX, cell *aParams
 	SCRIPT_CHECK_NUM_PARAMS( "Barter_Remove", 1 );
 
 	bartersystem_RemoveFromWorld( (BOOL)aParams[1] );
+#if FANG_WINGC
+	bartersystem_PortScriptRemoved();
+#endif
 
 	return TRUE;
 }

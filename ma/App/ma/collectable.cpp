@@ -693,6 +693,14 @@ BOOL CCollectableType::_SetupMeshPool( u32 uPoolSize, CFMeshPool **pMeshPool, FM
 		}
 #endif
 
+#if FANG_WINGC
+		// Retail 80177d38 supplies per-type tints after creating each pool
+		// instance. The common health asset is green without Mega Energy's tint.
+		if( m_eType==COLLECTABLE_MEGA_HEALTH ) pWorldMesh->SetMeshTint(68.0f/255.0f,138.0f/255.0f,1.0f);
+		else if( m_eType==COLLECTABLE_MEGA_WASHER ) pWorldMesh->SetMeshTint(1.0f,194.0f/255.0f,28.0f/255.0f);
+		else if( m_eType>=COLLECTABLE_ARM_SERVO_L1 && m_eType<=COLLECTABLE_ARM_SERVO_L3 )
+			pWorldMesh->SetMeshTint(64.0f/255.0f,64.0f/255.0f,64.0f/255.0f);
+#endif
 		paMeshes[i] = pWorldMesh;
 	}
 
@@ -1514,6 +1522,12 @@ void CCollectable::NotifyCollectableUsedInWorld( CollectableType_e eType, BOOL b
 BOOL CCollectable::PostPlayerCreationSetup( void ) {
 	FResFrame_t Frame = fres_GetFrame();
 	CCollectableType *pType = NULL;
+#if FANG_WINGC
+	// They Live authors the first scope as an EUK. Prepare the base
+	// attachment too, so a player without one has a real pickup weapon.
+	CCollectableType *pFirstScope = _FindCollectableType("EUK Scope");
+	if( pFirstScope && pFirstScope->m_bNeedSetup ) NotifyCollectableUsedInWorld(COLLECTABLE_WEAPON_SCOPE_L1);
+#endif
 
 	pType = (CCollectableType *) flinklist_GetHead( &m_CollectableTypeList );
 
@@ -2199,6 +2213,9 @@ void CCollectable::ClassHierarchyWork( void ) {
 	if( !IsOurWorkBitSet() ) {
 		return;
 	}
+#if FANG_WINGC
+	_WorkWasherAttraction();
+#endif
 
 	// So we don't have any lingering values
 	m_pPlayer = NULL;
@@ -2231,6 +2248,9 @@ void CCollectable::ClassHierarchyWork( void ) {
 		Center.Mul( -1.0f );
 
 		fScale = m_pCollectableType->m_bSpecialEUK ? 1.0f : m_fScale;
+#if FANG_WINGC
+		if( m_nPortWasherPlayer >= 0 ) fScale *= 1.0f - 0.9f*FMATH_MIN(m_fPortWasherTime*2.0f,1.0f);
+#endif
 		FASSERT( fScale > 0.0f );
 
 		CFMtx43A::m_XlatRotY.m_vPos.Zero();
@@ -2246,7 +2266,11 @@ void CCollectable::ClassHierarchyWork( void ) {
         CFMtx43A::m_XlatRotY.m_vPos = m_MtxToWorld.m_vPos;
 		CFMtx43A::m_XlatRotY.m_vPos.Add( Center );
 
-		if( m_eState == STATE_STOPPED || m_eState == STATE_FLOAT_UP ) {
+		if( (m_eState == STATE_STOPPED || m_eState == STATE_FLOAT_UP)
+#if FANG_WINGC
+			&& m_nPortWasherPlayer < 0
+#endif
+			) {
 			CFMtx43A::m_XlatRotY.m_vPos.y += ( 0.65f * fmath_Sin( m_fTransY + FMATH_DEG2RAD( m_uBobOffset ) ) );
 		}
 
@@ -2459,6 +2483,14 @@ CollectableType_e CCollectable::_ClassifyCollectableType( cchar *pszTypeName ) {
 }
 
 #if FANG_WINGC
+BOOL CCollectable::_IsFirstScopePickup( CBot *pBot, CCollectableType *pType ) {
+	// They Live's first scope is authored as the unnumbered "EUK Scope".
+	// It supplies the attachment when missing, then upgrades an owned scope.
+	return pBot && pType && pType->m_pszName && (pBot->TypeBits() & ENTITY_BIT_BOTGLITCH) && pBot->m_pInventory &&
+		!fclib_stricmp(pType->m_pszName, "euk scope") &&
+		!pBot->m_pInventory->IsWeaponInInventory("Scope L1");
+}
+
 CWeapon *CCollectable::_FindWeaponUpgrade( CBot *pBot, CCollectableType *pType, u32 &nTarget ) {
 	if( !pBot || !pType || !(pBot->TypeBits() & ENTITY_BIT_BOTGLITCH) || !pBot->m_pInventory ) return NULL;
 	CCollectableType *pBase = _FindCollectableType( _RetailUpgradeBase( pType->m_pszName ) );
@@ -2478,6 +2510,7 @@ CWeapon *CCollectable::_FindWeaponUpgrade( CBot *pBot, CCollectableType *pType, 
 }
 
 BOOL CCollectable::_GiveWeaponUpgradeToPlayer( CBot *pBot, CCollectableType *pType ) {
+	if( _IsFirstScopePickup(pBot, pType) ) return GiveWeaponToPlayer(pBot, "Scope L1", 0);
 	u32 nTarget = 0;
 	CWeapon *pWeapon = _FindWeaponUpgrade( pBot, pType, nTarget );
 	if( !pWeapon ) return FALSE;
@@ -2758,7 +2791,8 @@ BOOL CCollectable::TypeToHUDString( wchar *pDest, u32 uDestWcharCount, CCollecta
 		if( CPlayer::m_nCurrent >= 0 && CPlayer::m_nCurrent < CPlayer::m_nPlayerCount ) {
 			CEntity *pActor = Player_aPlayer[CPlayer::m_nCurrent].m_pEntityCurrent;
 			u32 nOwnedTarget;
-			if( pActor && (pActor->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
+			if( pActor && (pActor->TypeBits() & ENTITY_BIT_BOTGLITCH) && _IsFirstScopePickup((CBot *)pActor, pCollectType) ) nTarget = 0;
+			else if( pActor && (pActor->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
 				_FindWeaponUpgrade( (CBot *)pActor, pCollectType, nOwnedTarget ) ) nTarget = nOwnedTarget;
 		}
 		pCollectType = _FindCollectableType( (CollectableType_e)(pBase->m_eType + nTarget) );
@@ -3202,6 +3236,9 @@ void CCollectable::_ClearDataMembers( void ) {
 #if FANG_WINGC
 	m_nCoopCollectedMask = 0;
 	m_nRecipientPlayer = -1;
+	m_nPortWasherPlayer = -1;
+	m_fPortWasherTime = 0.0f;
+	m_PortWasherStart.Zero();
 #endif
 	m_pCollectableType = NULL;
 	m_pWorldMesh = NULL;
@@ -3227,6 +3264,12 @@ void CCollectable::_ClearDataMembers( void ) {
 
 BOOL CCollectable::_Setup( const CFMtx43A *pMtx, f32 fScale, f32 fSpawnTime/* = 0.0f*/, s32 nAmmoCount/* = -1*/ ) {
 	FASSERT( pMtx );
+#if FANG_WINGC
+	// Pool reuse and checkpoint restore restart the transient hop. Logical
+	// pickup scale stays unchanged, so restored washers cannot remain tiny.
+	m_nPortWasherPlayer=-1;m_fPortWasherTime=0.0f;
+	m_PortWasherStart=pMtx->m_vPos;
+#endif
 
 	m_VelocityWS.Zero();
 	m_LastPos = pMtx->m_vPos;
@@ -4189,6 +4232,62 @@ BOOL CCollectable::_CoopDrawFilter( CFMeshInst *pMesh, void *pData ) {
 }
 #endif
 
+#if FANG_WINGC
+BOOL CCollectable::_WorkWasherAttraction() {
+	if( !MultiplayerMgr.IsSinglePlayer() || !m_pWorldMesh || !m_pCollectableType ||
+		m_pCollectableType->m_eType != COLLECTABLE_WASHER ) return FALSE;
+	CBotGlitch *pTarget=NULL;
+	if( m_nPortWasherPlayer >= 0 && m_nPortWasherPlayer < CPlayer::m_nPlayerCount ) {
+		CEntity *p=Player_aPlayer[m_nPortWasherPlayer].m_pEntityCurrent;
+		if( p && (p->TypeBits() & ENTITY_BIT_BOTGLITCH) ) pTarget=(CBotGlitch *)p;
+	}
+	if( pTarget && (!pTarget->IsInWorld() || pTarget->IsDeadOrDying() ||
+		!pTarget->CanPickupItems() || pTarget->IsInPieces() || pTarget->GetCurMech()) ) pTarget=NULL;
+	if( !pTarget && m_nPortWasherPlayer >= 0 ) {
+		m_nPortWasherPlayer=-1;m_fPortWasherTime=0.0f;m_eState=STATE_PLACED;m_VelocityWS.Zero();
+		return FALSE;
+	}
+	if( !pTarget ) {
+		if( m_eState != STATE_STOPPED && m_eState != STATE_FLOAT_UP ) return FALSE;
+		// Retail main.dol 8017dca8: ordinary washers within 20 units, a
+		// thick-projectile LOS test, then a four-unit hop over 0.2 seconds
+		// followed by a 0.25-second flight to Glitch's head (80178264).
+		f32 fBest=400.0f;
+		for( s32 n=0;n<CPlayer::m_nPlayerCount;++n ) {
+			CEntity *p=Player_aPlayer[n].m_pEntityCurrent;
+			if( !p || !(p->TypeBits() & ENTITY_BIT_BOTGLITCH) ) continue;
+			CBotGlitch *pBot=(CBotGlitch *)p;
+			if( !pBot->IsInWorld() || pBot->IsDeadOrDying() || !pBot->CanPickupItems() ||
+				pBot->IsInPieces() || pBot->GetCurMech() || (m_nRecipientPlayer>=0 && m_nRecipientPlayer!=n) ) continue;
+			CFVec3A center=pBot->MtxToWorld()->m_vPos;center.y+=pBot->m_fCollCylinderHeight_WS*.5f;
+			f32 fDist=center.DistSq(m_MtxToWorld.m_vPos);
+			if( fDist<0.0000001f || fDist>fBest ) continue;
+			CFVec3A start=m_MtxToWorld.m_vPos;start.y+=2.0f;
+			const CFVec3A *pHead=pBot->GetTagPoint(pBot->GetTagPointCount()>1?1:0);
+			FWorld_nTrackerSkipListCount=0;pBot->AppendTrackerSkipList();
+			if( FWorld_nTrackerSkipListCount<FWORLD_MAX_SKIPLIST_ENTRIES ) FWorld_apTrackerSkipList[FWorld_nTrackerSkipListCount++]=m_pWorldMesh;
+			if( fworld_IsLineOfSightObstructed(&start,pHead,FWorld_nTrackerSkipListCount,
+				(const CFWorldTracker * const *)FWorld_apTrackerSkipList,m_pWorldMesh,0xffffffffffffffff,
+				FCOLL_MASK_COLLIDE_WITH_THICK_PROJECTILES) ) continue;
+			fBest=fDist;pTarget=pBot;m_nPortWasherPlayer=n;
+		}
+		if( !pTarget ) return FALSE;
+		m_PortWasherStart=m_MtxToWorld.m_vPos;m_fPortWasherTime=0.0f;
+		m_eState=STATE_STOPPED;m_VelocityWS.Zero();
+	}
+	m_fPortWasherTime+=FLoop_fPreviousLoopSecs;
+	CFVec3A from=m_PortWasherStart;from.y+=4.0f;
+	if( m_fPortWasherTime <= .2f ) {
+		m_MtxToWorld.m_vPos=m_PortWasherStart;m_MtxToWorld.m_vPos.y+=4.0f*m_fPortWasherTime*5.0f;
+	} else {
+		const CFVec3A *pHead=pTarget->GetTagPoint(pTarget->GetTagPointCount()>1?1:0);
+		CFVec3A delta;delta.Sub(*pHead,from);delta.Mul(FMATH_MIN((m_fPortWasherTime-.2f)*4.0f,1.0f));
+		m_MtxToWorld.m_vPos.Add(from,delta);
+	}
+	return TRUE;
+}
+#endif
+
 s32 CCollectable::_CanPickup( void ) {
 	if( m_pWorldMesh == NULL ) {
 		return -1;
@@ -4202,6 +4301,7 @@ s32 CCollectable::_CanPickup( void ) {
 	for( s32 i = 0; i < CPlayer::m_nPlayerCount; ++i ) {
 #if FANG_WINGC
 		if( m_nRecipientPlayer >= 0 && m_nRecipientPlayer != i ) continue;
+		if( m_nPortWasherPlayer >= 0 && m_nPortWasherPlayer != i ) continue;
 		if( _IsPersonalWeapon() && (m_nCoopCollectedMask & (1u << i)) ) continue;
 #endif
 		CEntity *pPlayer = Player_aPlayer[i].m_pEntityCurrent;
@@ -4228,7 +4328,7 @@ s32 CCollectable::_CanPickup( void ) {
 		}
 		if( IsWeaponUpgrade( m_pCollectableType->m_eType ) ) {
 			u32 nTarget;
-			if( !_FindWeaponUpgrade( pPlayerBot, m_pCollectableType, nTarget ) ) continue;
+			if( !_IsFirstScopePickup(pPlayerBot, m_pCollectableType) && !_FindWeaponUpgrade( pPlayerBot, m_pCollectableType, nTarget ) ) continue;
 		}
 		if( _IsPersonalWeapon() && (pPlayerBot->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
 			!IsWeaponUpgrade( m_pCollectableType->m_eType ) &&
@@ -4411,6 +4511,7 @@ BOOL CCollectable::PlayerNeeds( CBotGlitch* pPlayer, CollectableType_e eType, BO
 #if FANG_WINGC
 	if( IsWeaponUpgrade( eType ) ) {
 		if( bRepresentAmmo ) return FALSE;
+		if( _IsFirstScopePickup(pPlayer, GetCollectableTypeObjectFromType(eType)) ) return TRUE;
 		u32 nTarget;
 		if( !_FindWeaponUpgrade( pPlayer, GetCollectableTypeObjectFromType( eType ), nTarget ) ) return FALSE;
 		const u32 nSpecified = (eType - COLLECTABLE_WEAPON_UPGRADE) % 3;

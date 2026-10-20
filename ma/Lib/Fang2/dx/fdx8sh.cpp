@@ -1901,7 +1901,8 @@ u32 fsh_SetGlobalRegister( FShReg_e nRegNum, u32 nNewValue )
 	return nPrevValue;
 }
 
-void fsh_Open( void ) 
+
+void fsh_Open( void )
 {
 	FASSERT( _bWindowCreated );
 	FASSERT( !_bShaderSystemOpen );
@@ -1921,6 +1922,12 @@ void fsh_Open( void )
 	fdx8_SetRenderState_STENCILREF( 0 );
 	fdx8_SetRenderState_STENCILMASK( 0xffffffff );
 	fdx8_SetRenderState_STENCILWRITEMASK( 0xffffffff );
+#if FANG_WINGC
+	// a fresh frame of cutout marks (_SetCutoutStencil)
+	if( FVid_Mode.nStencilBits ) {
+		FDX8_pDev->Clear( 0, NULL, D3DCLEAR_STENCIL, 0, 1.0f, 0 );
+	}
+#endif
 
 	FDX8_pDev->SetTextureStageState( 0, D3DTSS_TEXCOORDINDEX, 0 );
 	FDX8_pDev->SetTextureStageState( 1, D3DTSS_TEXCOORDINDEX, 1 );
@@ -3661,6 +3668,45 @@ static void _SetSurfaceCutoutTest()
 	}
 }
 
+#if FANG_WINGC
+// The extra light passes (headlamp, spotlights, other dynamic lights) and specular add onto the
+// first pass with Xbox's exact depth match; PC's tolerant match also passes in a cutout's holes,
+// where the first pass's alpha test drew nothing, so fences and girders took the light across
+// their whole quads. Those passes don't sample the base texture's alpha, so the stencil buffer
+// carries the cutout instead: every first pass writes whether it is a cutout (1) or not (0) where
+// it draws, and a cutout's extra light and specular passes draw only where the mark is 1. One mark
+// for all cutouts, because world geometry runs every material's light passes before any surface
+// pass. The surface pass is not stencil-tested: it repeats the alpha test itself.
+static void _SetCutoutStencil()
+{
+	if( !FVid_Mode.nStencilBits ) {
+		return;
+	}
+	const BOOL bCutout = _SurfaceNeedsCutoutTest(_nSurfaceShaderID);
+	const BOOL bFirstPass = ( _nPassIdx == 0 && FSh_shaderType == SHADERTYPE_DIFFUSE );
+	const BOOL bAddedLight = ( ( _nPassIdx > 0 && FSh_shaderType == SHADERTYPE_DIFFUSE ) || FSh_shaderType == SHADERTYPE_SPECULAR );
+	if( FSh_bShadowRender || !( bFirstPass || ( bAddedLight && bCutout ) ) ) {
+		fdx8_SetRenderState_STENCILENABLE( FALSE );
+		return;
+	}
+
+	fdx8_SetRenderState_STENCILENABLE( TRUE );
+	fdx8_SetRenderState_STENCILFAIL( D3DSTENCILOP_KEEP );
+	fdx8_SetRenderState_STENCILZFAIL( D3DSTENCILOP_KEEP );
+	fdx8_SetRenderState_STENCILMASK( 0xff );
+	fdx8_SetRenderState_STENCILWRITEMASK( 0xff );
+	if( bFirstPass ) {
+		fdx8_SetRenderState_STENCILFUNC( D3DCMP_ALWAYS );
+		fdx8_SetRenderState_STENCILPASS( D3DSTENCILOP_REPLACE );
+		fdx8_SetRenderState_STENCILREF( bCutout ? 1 : 0 );
+	} else {
+		fdx8_SetRenderState_STENCILFUNC( D3DCMP_EQUAL );
+		fdx8_SetRenderState_STENCILPASS( D3DSTENCILOP_KEEP );
+		fdx8_SetRenderState_STENCILREF( 1 );
+	}
+}
+#endif
+
 //Setup render states such as Blend mode, Alphatest, Ztest, Alpha/Color write and Material Constants
 void _SetRenderStates()
 {
@@ -3673,6 +3719,10 @@ void _SetRenderStates()
 	d3d8mat.Ambient = white;
 	d3d8mat.Emissive = black;
 	d3d8mat.Specular = black;
+
+#if FANG_WINGC
+	_SetCutoutStencil();
+#endif
 
 	//Allow alpha writing ONLY for pass 0 of diffuse pass, this is used for fog.
 	if (_nPassIdx == 0 && FSh_shaderType == SHADERTYPE_DIFFUSE && (_bFogEnabled||FSh_bAlphaOut))
@@ -5669,6 +5719,13 @@ void fsh_ExecuteCurrent(BOOL bShadowRender, s32 nShadowID)
 		//Blend states, z buffering, etc. should only be set once for the surface shader.
 		_SetRenderStates(); //set render states and blending depending on shader type.
 	}
+#if FANG_WINGC
+	else
+	{
+		// _SetRenderStates() skipped: the surface pass must still not test the cutout stencil
+		fdx8_SetRenderState_STENCILENABLE( FALSE );
+	}
+#endif
 	//This handles specific vertex/pixel shaders, textures and texture matrices and must be set on an per-mesh level.
 	_SetPassDXState();
 

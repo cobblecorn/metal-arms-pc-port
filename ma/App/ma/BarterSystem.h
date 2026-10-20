@@ -59,6 +59,8 @@ extern BOOL bartersystem_IsActive();
 #if FANG_WINGC
 // Read-only readiness signal for opt-in native purchase regression tests.
 extern BOOL bartersystem_PortReadyForInput();
+// A level script removed the vendors (Barter_Remove): possession's unhide must not bring them back.
+extern void bartersystem_PortScriptRemoved( void );
 #endif
 
 // Return TRUE if the barters are currently in the world somewhere, either in active or attract modes

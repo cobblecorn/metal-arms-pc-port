@@ -313,6 +313,21 @@ int main() {
  require(gate._CoopHoldTripwireEnter(&bodies[0]) && !gate.fired,"dead body cannot activate floor pad");
  for(int index:{-1,LEVEL_SINGLE_PLAYER_COUNT}) {Level_nLoadedIndex=index;require(!_CoopFloorSwitchTripwire("circtrig1"),"invalid level cannot bypass a gate");}
 
+ for(int n=2;n<=4;++n)for(int actor=0;actor<n;++actor)for(int hut=1;hut<=10;++hut) {
+  char name[16];std::sprintf(name,"trig_hut%02d",hut);
+  reset(n,name);Level_aInfo[0].pszWorldResName="WEBCcolis04";
+  bodies[actor].matrix.m_vPos={0,0,0};
+  require(gate._CoopHoldTripwireEnter(&bodies[actor])&&gate.fired==1,"one living player can hide under a Corrosive dome");
+  require(gate.lastTripper==&bodies[actor]&&!_nCoopHeldTripwires,"dome retains actual occupant and never waits for partners");
+ }
+ for(const char* name:{"trig_hut00","trig_hut11","trig_hut01_extra","trig_middle1","trig_doorclose","levelend"}) {
+  reset(4,name);Level_aInfo[0].pszWorldResName="WEBCcolis04";
+  gate._CoopHoldTripwireEnter(&bodies[0]);require(!gate.fired,"other Corrosive gates retain team rules");
+ }
+ reset(4,"trig_hut01");gate._CoopHoldTripwireEnter(&bodies[0]);require(!gate.fired,"dome override restricted to Corrosive mission");
+ Level_nLoadedIndex=50;Level_aInfo[50].pszWorldResName="WEBCcolis04";
+ require(_CoopCorrosiveDomeTripwire("trig_hut10"),"world table index includes development entries before campaign; do not compare it to campaign level enum");
+
  for(int n=2;n<=4;n++)for(int first=0;first<n;first++) {
   reset(n,"save03");bodies[first].matrix.m_vPos={0,0,0};
   require(gate._CoopHoldTripwireEnter(&bodies[first]),"checkpoint handled");

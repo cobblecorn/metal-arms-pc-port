@@ -1208,6 +1208,18 @@ BOOL CDamageForm::_PrepareForSubmission( f32 fDuration ) {
 // Returns TRUE when the form has retired.
 BOOL CDamageForm::_Work( void ) {
 	BOOL bDealDamage = TRUE;
+#if FANG_WINGC
+	const f32 fOriginalNormIntensity = m_fNormIntensity;
+	if( m_fSecsUntilFormRetired != 0.0f && m_pDamageProfile->m_fDamagePeriod == 0.0f ) {
+		// A persistent zero-period profile means once per console frame. PC
+		// rendering is uncapped; integrate its authored 60-Hz intensity over
+		// actual active time. Instant hits and explicitly timed ticks keep
+		// their original behavior, including the Mil's 0.25-second burn tick.
+		f32 fActiveSecs = FLoop_fPreviousLoopSecs;
+		if( m_fSecsUntilFormRetired > 0.0f ) fActiveSecs = FMATH_MIN(fActiveSecs, m_fSecsUntilFormRetired);
+		m_fNormIntensity *= 60.0f * fActiveSecs;
+	}
+#endif
 
 	if( m_fSecsUntilFormRetired != 0.0f ) {
 		// See if it's time to issue more damage...
@@ -1255,6 +1267,9 @@ BOOL CDamageForm::_Work( void ) {
 		}
 	}
 
+#if FANG_WINGC
+	m_fNormIntensity = fOriginalNormIntensity;
+#endif
 	// Handle form retirement...
 
 	if( m_fSecsUntilFormRetired == 0.0f ) {

@@ -121,9 +121,17 @@ CReticle::TexInfo_t CReticle::m_aTexInfo[TEXTURE_COUNT] = {
 	0.1f,				// fNormScreenRadius
 
 	// TEXTURE_FLAMER:
+#if FANG_WINGC
+	// Retail reticle table (main.dol 803ca924), rather than the old tiny
+	// standard-crosshair placeholder from this source revision.
+	"tfh_cross02",
+	0.15f,
+	0.15f,
+#else
 	"TFH2crossD1",		// pszTexName
 	0.025f,				// fScale
 	0.025f,				// fNormScreenRadius
+#endif
 
 	// TEXTURE_DROID_SCOPE1:
 	"TFH2scope01",		// pszTexName
@@ -178,7 +186,11 @@ f32 CReticle::m_afNormScreenRadius[TYPE_COUNT] = {
 	0.1f,	// TYPE_DROID_STANDARD
 	0.1f,	// TYPE_BLASTER
 	_LINESCALE_OUTER_NORM_RADIUS,	// TYPE_TETHER
+#if FANG_WINGC
+	0.2f,	// TYPE_FLAMER: retail targeting-radius table at 803ca9bc
+#else
 	0.025f,	// TYPE_FLAMER
+#endif
 	0.025f,	// TYPE_DROID_SCOPE
 	0.175f,	// TYPE_FLOORSENTRY
 	0.15f,	// TYPE_QUADLASER

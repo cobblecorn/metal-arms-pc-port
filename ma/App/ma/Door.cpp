@@ -796,6 +796,12 @@ BOOL CDoorEntity::ClassHierarchyBuild()
 			(!fclib_stricmp(Name(), "outerdoor6") || !fclib_stricmp(Name(), "outerdoor3")) ) {
 			m_eBehavior = DOOR_BEHAVIOR_OTHER;
 		}
+		// The factory combat exit is also owned by its victory stage. Retail
+		// data omits behavetype here; proximity logic immediately recloses it
+		// after _BattleWork opens it, hiding the route from the player.
+		if( Level_nLoadedIndex >= 0 && Level_nLoadedIndex < Level_nCount &&
+			Level_aInfo[Level_nLoadedIndex].nLevel == LEVEL_SPY_VS_SPY && Name() &&
+			!fclib_stricmp(Name(), "battledoor") ) m_eBehavior = DOOR_BEHAVIOR_OTHER;
 #endif
 
 		m_uBehaviorCtrlFlags = pBuilder->m_uBehaviorCtrlFlags;
@@ -931,6 +937,9 @@ BOOL CDoorEntity::ClassHierarchyBuilt( void ) {
 	EnableOurWorkBit();
 //	SnapToPos(0);
 	SnapToPos(m_bStartOpen);
+#if FANG_WINGC
+	SetLockState(m_bLocked);
+#endif
 
 	return TRUE;
 
@@ -1353,6 +1362,22 @@ void CDoorEntity::SnapToPos(u32 uNewPos)
 void CDoorEntity::SetLockState(BOOL bLocked)
 {
 	m_bLocked = bLocked;
+#if FANG_WINGC
+	// Retail 80184bfc/801862c4 reserves layer 20 for the lock indicator.
+	// Its atlas is red at S=0, green at S=0.5; scripted OTHER doors remain
+	// red. Artist-authored scrolling must stop before selecting that half.
+	CFWorldMesh *pMesh=GetMeshInst();
+	if( pMesh && pMesh->m_pMesh ) {
+		const FMeshTexLayerHandle_t hLight=pMesh->GetTexLayerHandle(20);
+		if( hLight>=0 && pMesh->GetTexLayerID(hLight)->pAnimTC ) {
+			pMesh->AnimTC_AnimateScroll(hLight,FALSE);
+			CFVec2 rate;rate.x=rate.y=0.0f;pMesh->AnimTC_SetScrollRate(hLight,rate);
+			pMesh->AnimTC_ApplyToShader(hLight,TRUE);
+			CFVec2 st;st.x=(!m_bLocked && m_eBehavior!=DOOR_BEHAVIOR_OTHER)?0.5f:0.0f;st.y=0.0f;
+			pMesh->AnimTC_SetScrollST(hLight,st);
+		}
+	}
+#endif
 }
 
 // =============================================================================================================
@@ -2434,6 +2459,7 @@ void CDoorEntity::CheckpointRestore( void )
 	CFCheckPoint::LoadData( m_bStartOpen );
 
 #if FANG_WINGC
+	SetLockState(m_bLocked);
 	// Restore the saved pose even when the endpoint state did not change, or
 	// the checkpoint caught the lift moving. SnapToPos would discard its
 	// saved open/pickup timers and play arrival sounds during restoration.

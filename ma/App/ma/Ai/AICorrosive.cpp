@@ -153,6 +153,9 @@ CCorrosiveCombat::CCorrosiveCombat( void )
 
 CCorrosiveCombat::~CCorrosiveCombat( void )
 {
+#if FANG_WINGC
+	if( m_pCorrosiveCombat == this ) m_pCorrosiveCombat = NULL;
+#endif
 	m_pBehaviorRequestCallbackFcn = NULL;
 }
 
@@ -1392,6 +1395,9 @@ void CCorrosiveCombat::BeatChestWork( void ) {
 
 
 void CCorrosiveCombat::AttackThisLocation( CFVec3A *pLocationToAttack, BOOL bLOSOverride ) {
+#if FANG_WINGC
+	if( !m_pCorrosiveCombat ) return;
+#endif
 	m_pCorrosiveCombat->m_bNewOverrideState = TRUE;
 	m_pCorrosiveCombat->m_eOverrideState = OVERRIDE_STATE_ATTACK_LOCATION;
 	m_pCorrosiveCombat->m_vOverrideAttackLocation = *pLocationToAttack;
@@ -1401,7 +1407,13 @@ void CCorrosiveCombat::AttackThisLocation( CFVec3A *pLocationToAttack, BOOL bLOS
 
 void CCorrosiveCombat::PeerAtThisLocation( CFVec3A *pLocationToPeerAt, BOOL bLOSOverride ) {
 
+#if FANG_WINGC
+	// Tripwire and level callbacks run outside the transient AI work context.
+	// This command only queues state on Corrosive's persistent thought.
+	if( !m_pCorrosiveCombat ) return;
+#else
 	if (!CGroundCombat::s_pWD) { return; }
+#endif
 
 	m_pCorrosiveCombat->m_bNewOverrideState = TRUE;
 	m_pCorrosiveCombat->m_eOverrideState = OVERRIDE_STATE_PEER_HERE;
@@ -1412,7 +1424,11 @@ void CCorrosiveCombat::PeerAtThisLocation( CFVec3A *pLocationToPeerAt, BOOL bLOS
 
 void CCorrosiveCombat::DoFingerFlick(const CFSphere& rSphere, u32 nUserData, AttackCompleteCallback_t pAttackCallback) {
 
+#if FANG_WINGC
+	if( !m_pCorrosiveCombat ) return;
+#else
 	if (!CGroundCombat::s_pWD) { return; }
+#endif
 
 	if ( m_pCorrosiveCombat->m_eOverrideState != OVERRIDE_STATE_FINGER_FLICK ) {
 		m_pCorrosiveCombat->m_bNewOverrideState = TRUE;
@@ -1428,7 +1444,11 @@ void CCorrosiveCombat::DoFingerFlick(const CFSphere& rSphere, u32 nUserData, Att
 
 void CCorrosiveCombat::CancelFingerFlick() {
 
+#if FANG_WINGC
+	if( !m_pCorrosiveCombat ) return;
+#else
 	if (!CGroundCombat::s_pWD) { return; }
+#endif
 
 	if ( m_pCorrosiveCombat->m_eOverrideState == OVERRIDE_STATE_FINGER_FLICK ) {
 		if ( m_pCorrosiveCombat->m_eFingerFlickState == FINGERFLICK_STATE_GOTOATTACKPOINT ) {
@@ -1438,8 +1458,17 @@ void CCorrosiveCombat::CancelFingerFlick() {
 }
 
 void CCorrosiveCombat::CancelPeer(BOOL bForce) {
+#if FANG_WINGC
+	if( !m_pCorrosiveCombat ) return;
+#endif
 	if ( m_pCorrosiveCombat->m_eOverrideState == OVERRIDE_STATE_PEER_HERE ) {
 		//Cancel the peer only if I'm not actually doing the peer animation.
+#if FANG_WINGC
+		CAIBrain *pBrain=m_pCorrosiveCombat->GetBrain();
+		CEntity *pOwner=(pBrain && pBrain->GetAIMover()) ? pBrain->GetAIMover()->GetEntity() : NULL;
+		if( !pOwner || !(pOwner->TypeBits() & ENTITY_BIT_BOTCORROSIVE) ) return;
+		CBotCorrosive *pCorrosive=(CBotCorrosive *)pOwner;
+#else
 		CGroundCombatWorkContext* _pWD = CGroundCombat::s_pWD;
 		CBotCorrosive* pCorrosive = NULL;
 
@@ -1449,6 +1478,7 @@ void CCorrosiveCombat::CancelPeer(BOOL bForce) {
 		if ( _pWD->pBot && ( _pWD->pBot->TypeBits() & ENTITY_BIT_BOTCORROSIVE ) ) {
 			pCorrosive = (CBotCorrosive*) _pWD->pBot;
 		}
+#endif
 
 		if (pCorrosive->GetBehaviorState() != CBotCorrosive::BEHAVIOR_STATE_PEER_UNDER || bForce) {
 			m_pCorrosiveCombat->m_ePeerHereState = PEERHERE_STATE_PEERCOMPLETE;

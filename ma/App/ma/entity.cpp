@@ -4436,6 +4436,16 @@ static BOOL _CoopFloorSwitchTripwire( cchar *pszName ) {
 	return FALSE;
 }
 
+static BOOL _CoopCorrosiveDomeTripwire( cchar *pszName ) {
+	if( !pszName || Level_nLoadedIndex < 0 || Level_nLoadedIndex >= Level_nCount ||
+		fclib_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WEBCcolis04") ||
+		fclib_strlen(pszName) != 10 || fclib_strnicmp(pszName,"trig_hut",8) ) return FALSE;
+	// The ten local hiding spots drive Corrosive's peer/flick AI. They must
+	// retain the actual occupant; requiring the entire team prevents the attack.
+	return (pszName[8]=='0' && pszName[9]>='1' && pszName[9]<='9') ||
+		(pszName[8]=='1' && pszName[9]=='0');
+}
+
 static BOOL _CoopTripwireGateActive( void ) {
 	// Test aid: MA_PORT_COOP_HOLD=0 (-coop-hold off) lets player 1 trip events alone, so a test
 	// window whose partners can't move still reaches scripted scenes.
@@ -4648,13 +4658,14 @@ BOOL CEntity::_CoopHoldTripwireEnter( CEntity *pTripper ) {
 		return TRUE;
 	}
 	const BOOL bFloorSwitch = _CoopFloorSwitchTripwire(Name());
-	if( bFloorSwitch || _CoopCheckpointTripwire( Name() ) ) {
+	const BOOL bDome = _CoopCorrosiveDomeTripwire(Name());
+	if( bFloorSwitch || bDome || _CoopCheckpointTripwire( Name() ) ) {
 		if( pHeld ) {
 			*pHeld = _aCoopHeldTripwires[--_nCoopHeldTripwires];
 		}
 		DEVPRINTF( "Co-op: %s '%s' reached by player %d; no partner wait.\n",
-			bFloorSwitch ? "floor switch" : "checkpoint trigger", Name(), nPlayer + 1 );
-		_CoopFireTripwireEnter( bFloorSwitch ? pTripper : _CoopReleaseTripper(pTripper) );
+			bDome ? "Corrosive dome" : bFloorSwitch ? "floor switch" : "checkpoint trigger", Name(), nPlayer + 1 );
+		_CoopFireTripwireEnter( (bFloorSwitch || bDome) ? pTripper : _CoopReleaseTripper(pTripper) );
 		return TRUE;
 	}
 	u32 nArrived = (1 << nPlayer) | _CoopPlayersInsideMask() | (pHeld ? pHeld->nArrivedMask : 0);

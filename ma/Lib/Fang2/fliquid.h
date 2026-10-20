@@ -201,7 +201,11 @@ FCLASS_ALIGN_PREFIX class CFLiquidVolume
 		f32 m_fGlowScale;
 		
 		f32 m_fdT_Add;
-		
+#if FANG_WINGC
+		f32 m_fPortStepSecs;	// time not yet simulated (the surface steps at the console's 60 Hz)
+		void _WorkStep( f32 fdT );
+#endif
+
 		CFVec2 m_vCurrent;
 		CFVec2 m_vScroll;
 		//

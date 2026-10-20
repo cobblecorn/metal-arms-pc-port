@@ -106,6 +106,9 @@ CFLiquidVolume::CFLiquidVolume( void )
 	m_fGeoDraw = 100.0f;
 	
 	m_fdT_Add = 0.0f;
+#if FANG_WINGC
+	m_fPortStepSecs = 0.0f;
+#endif
 	m_fGlowScale = 1.0f;
 	
 	m_vScroll = CFVec2(0,0);
@@ -847,7 +850,31 @@ BOOL CFLiquidVolume::InCurCollisionList(f32 fX, f32 fZ, u32 nFrame)
 	return bRet;
 }
 
+#if FANG_WINGC
+// The wave grid damps by a fixed factor every step, so stepping once per rendered frame made the
+// surface depend on the frame rate: at 144 Hz and up, ripples died out before they spread and
+// water and goo just warped. Step at the console's 60 Hz instead (at most two steps a frame).
+#define _PORT_LIQUID_STEP_SECS	( 1.0f / 60.0f )
+
 void CFLiquidVolume::Work()
+{
+	if (!m_pData)
+	{
+		return;
+	}
+	m_fPortStepSecs += FLoop_fPreviousLoopSecs;
+	for( u32 nStep = 0; nStep < 2 && m_fPortStepSecs >= _PORT_LIQUID_STEP_SECS; nStep++ )
+	{
+		m_fPortStepSecs -= _PORT_LIQUID_STEP_SECS;
+		_WorkStep( _PORT_LIQUID_STEP_SECS );
+	}
+	FMATH_CLAMPMAX( m_fPortStepSecs, _PORT_LIQUID_STEP_SECS );	// a long frame does not queue a backlog
+}
+
+void CFLiquidVolume::_WorkStep( f32 fdT )
+#else
+void CFLiquidVolume::Work()
+#endif
 {
 	if (m_pData)
 	{
@@ -856,12 +883,14 @@ void CFLiquidVolume::Work()
 		{
 			HandleCollisions();
 		}
-	
+
 		u32 nX, nY;
+#if !FANG_WINGC
 		f32 fdT = FLoop_fPreviousLoopSecs;
-		
+
 		if (fdT > 0.034f) { fdT = 0.034f; }
-				
+#endif
+
 		RestoreDrag();
 		
 //DoWaves();

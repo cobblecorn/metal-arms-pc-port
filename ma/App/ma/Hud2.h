@@ -260,7 +260,7 @@ public:
 
 	void SetHudMode(HudMode_e eNewHudMode);
 	void StartBatteryPickup();
-	void Work(CInventory *pInventory, f32 fBotHealth);
+	void Work(CInventory *pInventory, f32 fBotHealth, u32 uNumBatteries = 0);
 //	void Draw(CInventory *pInventory);
 	void Draw( u32 uNumBatteries, f32 *pfVal=NULL, const CFColorRGBA *pStartColor=NULL, const CFColorRGBA *pEndColor=NULL );
 	void DrawMeshes(CInventory *pInventory);

@@ -236,6 +236,33 @@ void CPlayer::UninitSystem( void ) {
 }
 
 
+#if FANG_WINGC
+// Saves made before the Coliseum inventory fix can carry the arena's stripped inventory into
+// every later level: SetToUnarmed( TRUE ) leaves no items at all (no washers, chips or servo),
+// which no ordinary inventory has. Give such a player back the inventory they entered the
+// Coliseums with, as retail's restore would have.
+static void _PortRepairColiseumInventory( CPlayerProfile *pProfile, s32 nLevel, CInventory *pInv ) {
+	if( nLevel <= LEVEL_COLISEUM_1 || nLevel >= LEVEL_SINGLE_PLAYER_COUNT || pInv->m_uNumItems != 0 ) {
+		return;
+	}
+	const CMemCardInventory *pEntry = &pProfile->m_Data.aLevelProgress[LEVEL_COLISEUM_1].Inventory;
+	if( pEntry->m_nNumItems == 0 ||
+		pEntry->m_anNumWeapons[0] + pEntry->m_anNumWeapons[1] <= (s32)( pInv->m_auNumWeapons[0] + pInv->m_auNumWeapons[1] ) ) {
+		return;
+	}
+	CInventory Repaired;
+	if( !CMemCardInventory::RestoreInventory( pEntry, &Repaired ) ) {
+		return;
+	}
+	FMATH_CLAMPMIN( Repaired.m_uNumBatteries, pInv->m_uNumBatteries );
+	DEVPRINTF( "Port: level %d started with a Coliseum-stripped inventory (%u+%u weapons, no items); restored the "
+			   "Coliseum 1 entry inventory (%d+%d weapons, %d items).\n", nLevel, pInv->m_auNumWeapons[0], pInv->m_auNumWeapons[1],
+			   pEntry->m_anNumWeapons[0], pEntry->m_anNumWeapons[1], pEntry->m_nNumItems );
+	pInv->CopyInv( &Repaired, TRUE );
+}
+#endif
+
+
 BOOL CPlayer::InitLevel( const GameInitInfo_t *pGameInit, Level_e nLevel ) {
 	s32 i, j, nIndex;
 	CPlayerProfile *pProfile;
@@ -285,6 +312,9 @@ BOOL CPlayer::InitLevel( const GameInitInfo_t *pGameInit, Level_e nLevel ) {
 					DEVPRINTF( "Player::InitLevel() : Failed while restore the player's inventory, setting to defaults.\n" );
 					pPlayer->m_BotInv.SetToDefaults();
 				}
+#if FANG_WINGC
+				_PortRepairColiseumInventory( pProfile, nLevel, pPlayer->GetInventory( i ) );
+#endif
 			} else {
 				// If this is a multiplayer game we need to handle our weapon restrictions.
 				if( pMPRules ) {
@@ -399,6 +429,16 @@ BOOL CPlayer::InitLevel( const GameInitInfo_t *pGameInit, Level_e nLevel ) {
 		pPlayer->m_vPosWhenLeavingGround.Set( 0.f, 0.f, 0.f );
 
 		pPlayer->ResetTargetAssistance();
+#if FANG_WINGC
+		char szPickupTest[32];
+		if( GetEnvironmentVariableA("MA_PORT_TEST_COOP_POLISH",szPickupTest,sizeof(szPickupTest)) &&
+			!strncmp(szPickupTest,"pickup-",7) ) {
+			// Opt-in probe: use a fresh campaign inventory before actors and
+			// pickup resources are built. Tests always use an isolated save dir.
+			pPlayer->m_BotInv.SetToInitial();
+			if( !strcmp(szPickupTest,"pickup-battery3") ) pPlayer->m_BotInv.m_uNumBatteries=2;
+		}
+#endif
 	}
 
 	#if FANG_PLATFORM_WIN && !FANG_PRODUCTION_BUILD
@@ -508,7 +548,9 @@ void CPlayer::UninitLevel( Level_e nLevel, BOOL bLevelCompleted ) {
 		}
 	}
 #if FANG_WINGC
-	// per-level, used or not
+	// per-level, used or not: a Coliseum quit before completion must not hand its saved
+	// inventory to whichever level is completed next
+	m_pInvSave = NULL;
 	for( i=0; i < MAX_PLAYERS; ++i ) {
 		m_apPortInvSave[i] = NULL;
 	}

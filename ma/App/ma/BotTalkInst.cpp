@@ -134,6 +134,23 @@ void CBotTalkInst::Destroy() {
 	_Clear();
 }
 
+#if FANG_WINGC
+static BOOL _PortIsInstructorCommand( cchar *pszFile ) {
+	// True and decoy factory orders must be equally audible in every slot.
+	static cchar *names[] = {
+		"brgt_cstepl", "brgt_cstepr", "brgt_cfrwrd", "brgt_cback",
+		"brgt_crotel", "brgt_croter", "brgt_cjump", "brgt_cflip", "brgt_cstop",
+		"brgt_stepl", "brgt_stepr", "brgt_frwrd", "brgt_back",
+		"brgt_rotel", "brgt_roter", "brgt_jump", "brgt_flip", "brgt_stop",
+		"brgt_comand"
+	};
+	if( !pszFile ) return FALSE;
+	for( u32 i=0; i<sizeof(names)/sizeof(names[0]); ++i )
+		if( !fclib_stricmp(pszFile,names[i]) ) return TRUE;
+	return FALSE;
+}
+#endif
+
 BOOL CBotTalkInst::Start( CBot *pBotToRun, BotTalkInstDoneCallback_t* pfcnTalkDoneCallback /* =NULL*/ ) {
 	
 	if( pBotToRun == NULL ) {
@@ -204,6 +221,13 @@ BOOL CBotTalkInst::Start( CBot *pBotToRun, BotTalkInstDoneCallback_t* pfcnTalkDo
 	if( IsTriggerEventStart() ) {
 		CFScriptSystem::TriggerEvent(CTalkSystem2::m_nTalkEvent, 0, (u32)(m_pBotTarget), 0);
 	}
+
+#if FANG_WINGC
+	if( _PortIsInstructorCommand(m_pTalkData->m_pszSourceFileName) ) {
+		Force2dAudio();
+		DuckAudioWhenPlaying(TRUE);
+	}
+#endif
 
 	//automatically duck the audio and music if this sound
 	//has the appropriate flag set.

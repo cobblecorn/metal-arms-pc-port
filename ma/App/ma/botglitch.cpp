@@ -2060,6 +2060,11 @@ void CBotGlitch::_ChangeWeaponIndex( u32 nHandIndex, u32 nNewIndex ) {
 
 
 BOOL CBotGlitch::_IsPrimaryWeaponSwitchQueued( void ) {
+#if FANG_WINGC
+	// IsInPieces() becomes false before the rebuild animation/blend has finished.
+	// Keep the pending weapon queued until the entire body is assembled again.
+	if( m_bInPieces ) return FALSE;
+#endif
 	if( m_WeaponInv[0].m_nWeaponSwitchToIndex == 255 ) {
 		// No switch request...
 		return FALSE;
@@ -2104,6 +2109,9 @@ BOOL CBotGlitch::_IsPrimaryWeaponSwitchQueued( void ) {
 
 
 BOOL CBotGlitch::_IsSecondaryWeaponSwitchQueued( void ) {
+#if FANG_WINGC
+	if( m_bInPieces ) return FALSE;
+#endif
 	if( m_WeaponInv[1].m_nWeaponSwitchToIndex == 255 ) {
 		// No switch request...
 		return FALSE;

@@ -271,7 +271,11 @@ private:
 #if FANG_WINGC
 	u32 m_nCoopCollectedMask;
 	s32 m_nRecipientPlayer; // -1: world pickup; otherwise only the intended recipient may collect it
+	s32 m_nPortWasherPlayer;
+	f32 m_fPortWasherTime;
+	CFVec3A m_PortWasherStart;
 	BOOL _IsPersonalWeapon() const;
+	BOOL _WorkWasherAttraction();
 	static BOOL _CoopDrawFilter( CFMeshInst *pMesh, void *pData );
 #endif
 
@@ -429,6 +433,7 @@ private:
 	static BOOL _GiveWeaponAmmoToPlayer( CBot *pBot, CItemInst *pItemInst, CInventory *pInv, cchar *pszWeaponName, s32 uAmmoCount );
 #if FANG_WINGC
 	static CWeapon *_FindWeaponUpgrade( CBot *pBot, CCollectableType *pType, u32 &nTarget );
+	static BOOL _IsFirstScopePickup( CBot *pBot, CCollectableType *pType );
 	static BOOL _GiveWeaponUpgradeToPlayer( CBot *pBot, CCollectableType *pType );
 #endif
 

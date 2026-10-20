@@ -20,6 +20,7 @@ using u32=unsigned;using s32=int;using s16=short;using f32=float;using cchar=con
 #define TRUE true
 #define FALSE false
 #define strnicmp _strnicmp
+#define fclib_stricmp _stricmp
 #define FASSERT(x) require(!!(x),"production assertion")
 #define DEVPRINTF(...) ((void)0)
 constexpr int MAX_PLAYERS=4,ENTITY_BIT_BOTGLITCH=1;
@@ -56,6 +57,8 @@ struct CCollectable {
  static void* m_pCollectHud;static CCollectableType* shown;
  static CCollectableType* _FindCollectableType(CollectableType_e t){for(auto& v:weaponTypes)if(v.m_eType==t)return &v;return nullptr;}
  static CWeapon* _FindWeaponUpgrade(CBot*,CCollectableType*,u32&);
+ static BOOL _IsFirstScopePickup(CBot*,CCollectableType*);
+ static BOOL GiveWeaponToPlayer(CBot*,const char* name,int ammo){require(!_stricmp(name,"Scope L1")&&ammo==0,"first scope acquires the base attachment without ammo");return true;}
  static BOOL _GiveWeaponUpgradeToPlayer(CBot*,CCollectableType*);
  static void _PickupSpecialItem(CCollectableType* t){shown=t;}
 };
@@ -103,7 +106,7 @@ int main(){
    if(f!=7){require(CCollectable::_GiveWeaponUpgradeToPlayer(&bots[p],&pickup),"second EUK advances L2 to L3");require(items[p].m_nUpgradeLevel==3&&items[p].m_pItemData==&levels[2],"L3 persists in inventory");}
    require(!CCollectable::_GiveWeaponUpgradeToPlayer(&bots[p],&pickup),"maxed player gun refuses NPC-only tier without traversing past item chain");
   }
-  inventories[0].item=nullptr;require(!CCollectable::_GiveWeaponUpgradeToPlayer(&bots[0],&pickup),"unowned weapon refuses pickup");
+  inventories[0].item=nullptr;require(CCollectable::_GiveWeaponUpgradeToPlayer(&bots[0],&pickup)==(f==7&&variant==1),"only the unnumbered first scope acquires a missing base attachment");
   bots[1].bits=0;require(!CCollectable::_GiveWeaponUpgradeToPlayer(&bots[1],&pickup),"possessed NPC cannot consume EUK");
   CFWorldMesh mesh;CCollectableType::RemapTCs(&mesh,_RetailUpgradeBase(name));
   require(mesh.calls==(f==7?0:1),"scope stays untouched and EUK atlas remaps");
@@ -146,6 +149,7 @@ def main():
         (collect, "static CollectableType_e _RetailUpgradeType("),
         ((ROOT / "ma/App/ma/ItemInst.cpp").read_text(), "void CItemInst::NotifyWeaponUpgraded("),
         ((ROOT / "ma/App/ma/ItemInst.cpp").read_text(), "u32 CItemInst::HighestUpgradeAvailable("),
+        (collect, "BOOL CCollectable::_IsFirstScopePickup("),
         (collect, "CWeapon *CCollectable::_FindWeaponUpgrade("),
         (collect, "BOOL CCollectable::_GiveWeaponUpgradeToPlayer("),
         (collect, "void CCollectableType::RemapTCs("),

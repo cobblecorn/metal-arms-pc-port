@@ -64,10 +64,11 @@ struct CCollectable {
 #endif
  static CBot* m_pCollectBot;static CPlayer* m_pPlayer;static CHud2* m_pCollectHud;
  CCollectableType* m_pCollectableType=&magma;CFWorldMesh* m_pWorldMesh=nullptr;float m_fScale=1;struct{CFVec3A m_vPos{0,1,0};}m_MtxToWorld;
- int m_nRecipientPlayer=-1;u32 m_nCoopCollectedMask=0;
+ int m_nRecipientPlayer=-1,m_nPortWasherPlayer=-1;u32 m_nCoopCollectedMask=0;
  static CCollectableType* _FindCollectableType(const char* name){return !_stricmp(name,"Magma Bomb")?&magma:&flamer;}
  static bool PlayerNeeds(CBotGlitch*,CollectableType_e,BOOL){return true;}
  static CWeapon* _FindWeaponUpgrade(CBot*,CCollectableType*,u32&){return nullptr;}
+ static BOOL _IsFirstScopePickup(CBot*,CCollectableType*){return false;}
  static BOOL _GiveWeaponAmmoToPlayer(CBot*,CItemInst*,CInventory*,cchar*,s32);
  BOOL _IsPickupAllowed();s32 _CanPickup();bool _IsPersonalWeapon()const{return CPlayer::m_nPlayerCount>1;}
 };

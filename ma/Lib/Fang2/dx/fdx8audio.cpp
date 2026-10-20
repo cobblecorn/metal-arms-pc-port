@@ -382,18 +382,18 @@ static s32 _GainToDSVolume( f32 fGain )
 }
 
 // Optional PC trims of effects against dialogue. Mission dialogue and bot chatter are bank sound effects
-// like gunfire, so they share the Sound Effects level. On PC the effects once buried them (user reports,
-// 2026-09-29), which -11/-6 dB defaults here covered; the cause was the Xbox voice counts letting far more
-// effects sound at once than on the GameCube. With the GameCube's counts (faudio_Install) the default is
-// the retail mix, 0 dB. The options remain for anyone who wants dialogue further forward:
+// like gunfire, so they share the Sound Effects level. Keep the GameCube voice limits,
+// and give PC effects 6 dB of headroom against speech after the 1.0.8 playtest reports.
+// This does not rewrite the user's saved music/effects sliders. -sfx-db 0 restores the
+// untrimmed retail balance; both trims remain independently configurable.
 // - Dialogue keeps the retail level: the level dialogue banks (level_NNd), barter, buddy, intro, taunt
 //   and announcer banks, bot remarks ("br..."), speaker lines ("ca_08o_010"; two letters and '_' in a
 //   level bank) and the Coliseum announcer ("..._ann").
-// - Every other effect is trimmed by -sfx-db / MA_PORT_SFX_DB (default 0 dB).
+// - Every other effect is trimmed by -sfx-db / MA_PORT_SFX_DB (default -6 dB).
 // - The player's own sounds, 2D effects named "sw" (weapons, the AA gun), "sr" (robots: footsteps,
 //   equipment, vehicles) or "sd" (weapon parts), are trimmed by -player-sfx-db / MA_PORT_PLAYER_SFX_DB
 //   more (default 0 dB). Both 0 is the retail mix. Streams (music, streamed speech) are untouched.
-#define _PORT_SFX_DEFAULT_DB			( 0.0f )
+#define _PORT_SFX_DEFAULT_DB			( -6.0f )
 #define _PORT_PLAYER_SFX_DEFAULT_DB		( 0.0f )
 
 static f32 _PortTrimGain( cchar *pszEnv, f32 fDefaultDB, cchar *pszWhat )

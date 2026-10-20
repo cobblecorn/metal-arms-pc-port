@@ -455,7 +455,11 @@ HRESULT IDirect3DDevice8::SetRenderState( D3DRENDERSTATETYPE nState, DWORD nValu
 
 	case D3DRS_ZBIAS:
 		// D3D8: integer 0..16, larger = closer. D3D9: float depth offset, negative = closer.
-		s_fGameDepthBias = -(float)nValue * 1.5e-5f;
+		// 5e-6 per level (the usual D3D8-to-9 mapping; about 80 steps of a 24-bit depth buffer)
+		// keeps decals clear of their walls. The GameCube's bias shifts the projection, so its pull
+		// grows with distance, while a constant depth offset grows with distance squared: the
+		// earlier 1.5e-5 pulled distant decals and glows in front of the objects ahead of them.
+		s_fGameDepthBias = -(float)nValue * 5.0e-6f;
 		return _ApplyDepthBias( m_pDev );
 
 	case D3DRS_ZFUNC:

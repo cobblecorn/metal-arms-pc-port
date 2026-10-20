@@ -129,6 +129,11 @@ static s32 _nBarterPlayer = 0;
 static BOOL _abCoopEmptyOffer[MAX_PLAYERS];
 static s16 _anCoopEmptyOfferPoint[MAX_PLAYERS];
 static u32 _anCoopEmptyOfferTicks[MAX_PLAYERS];
+// The point the script last put the vendors at. Possessing a bot hides them; retail's unhide only
+// cleared the hidden state, so a level script that places them once (Get To The Tower's opening
+// cutscene) lost them for the rest of the level after the player's first possession.
+static s16 _nPortLastPlacedPt = -1;
+static BOOL _bPortCheckpointRestoring = FALSE;
 class CBarterPlayerScope {
 	s32 m_nPrevious;
 public:
@@ -232,6 +237,8 @@ BOOL bartersystem_InitLevel( cchar *pszCSVFile ) {
 #if FANG_WINGC
 	_nBarterPlayer = 0;
 	for( s32 n=0; n<MAX_PLAYERS; ++n ) _abCoopEmptyOffer[n] = FALSE;
+	_nPortLastPlacedPt = -1;
+	_bPortCheckpointRestoring = FALSE;
 #endif
 	
 	FASSERT( !_bLevelOK );
@@ -591,6 +598,19 @@ BOOL bartersystem_AreInWorld() {
 // Returns TRUE if the move was successful, FALSE if we couldn't find the point or the barters are currently Active.
 BOOL bartersystem_PlaceInWorldAndStartAttracting( cchar *pszPointName ) {
 	if( !_bLevelOK || !pszPointName || bartersystem_IsActive() || _eState == BARTERSTATE_HIDDEN ) {
+#if FANG_WINGC
+		DEVPRINTF( "Port: barters not placed at '%s' (level ok %d, active %d, hidden %d).\n", pszPointName ? pszPointName : "?",
+				   _bLevelOK, _bLevelOK && bartersystem_IsActive(), _eState == BARTERSTATE_HIDDEN );
+		if( _bLevelOK && pszPointName && _eState == BARTERSTATE_HIDDEN ) {
+			// asked for while the player possesses a bot: they appear there when it ends
+			for( u32 nPt=0; nPt < _nBarterPtCnt; nPt++ ) {
+				if( !fclib_stricmp( _apBarterPts[nPt]->Name(), pszPointName ) ) {
+					_nPortLastPlacedPt = (s16)nPt;
+					break;
+				}
+			}
+		}
+#endif
 		return FALSE;
 	}
 
@@ -622,6 +642,13 @@ BOOL bartersystem_PlaceInWorldAndStartAttracting( cchar *pszPointName ) {
 	_InsertBartersIntoWorld( i );
 
 	_eState = BARTERSTATE_ATTRACT;
+#if FANG_WINGC
+	_nPortLastPlacedPt = (s16)i;
+	{
+		const CFVec3A &vPos = _apBarterPts[i]->MtxToWorld()->m_vPos;
+		DEVPRINTF( "Port: barters placed at '%s' (%.1f,%.1f,%.1f).\n", pszPointName, vPos.x, vPos.y, vPos.z );
+	}
+#endif
 
 	return TRUE;
 }
@@ -702,6 +729,11 @@ void bartersystem_Hide( BOOL bHide ) {
 	if( !_bLevelOK ) {
 		return;
 	}
+#if FANG_WINGC
+	if( bHide != ( _eState == BARTERSTATE_HIDDEN ) ) {
+		DEVPRINTF( "Port: barters %s.\n", bHide ? "hidden" : "unhidden" );
+	}
+#endif
 
 	if( bHide ) {
 		// we should pull the barters out of the world and put them in the hidden state
@@ -712,11 +744,27 @@ void bartersystem_Hide( BOOL bHide ) {
 	} else {
 		// we should unhide the barters
 
+#if FANG_WINGC
+		const BOOL bWasHidden = ( _eState == BARTERSTATE_HIDDEN );
+#endif
 		_eState = BARTERSTATE_NOT_IN_WORLD;
 		_nWaitState = WAIT_STATE_NONE;
 		_fTimer = 0.01f;
+#if FANG_WINGC
+		// back where the script left them (a checkpoint restore places them itself)
+		if( bWasHidden && !_bPortCheckpointRestoring && _nPortLastPlacedPt >= 0 && _nPortLastPlacedPt < (s16)_nBarterPtCnt ) {
+			bartersystem_PlaceInWorldAndStartAttracting( _apBarterPts[_nPortLastPlacedPt]->Name() );
+		}
+#endif
 	}
 }
+
+#if FANG_WINGC
+// Barter_Remove from a level script: the vendors have left for good, not just hidden.
+void bartersystem_PortScriptRemoved( void ) {
+	_nPortLastPlacedPt = -1;
+}
+#endif
 
 void bartersystem_EventNotify( u32 nEvent, f32 fVal ) {
 
@@ -1234,12 +1282,20 @@ void bartersystem_CheckpointRestore( void ) {
 	const s16 nPreviousPoint = _nBarterPtSelected;
 	const BOOL bPreviouslyPresent = bartersystem_AreInWorld();
 	bartersystem_RemoveFromWorld( FALSE );
+#if FANG_WINGC
+	_bPortCheckpointRestoring = TRUE;
+#endif
 	bartersystem_Hide( nSavedState == BARTERSTATE_HIDDEN );
 #if FANG_WINGC
+	_bPortCheckpointRestoring = FALSE;
 	if( MultiplayerMgr.IsLocalCoop() && nSavedState == BARTERSTATE_NOT_IN_WORLD &&
 		bPreviouslyPresent && nPreviousPoint >= 0 ) {
 		nSavedState = BARTERSTATE_IDLE;
 		nSavedBartPointIndex = nPreviousPoint;
+	}
+	if( nSavedState == BARTERSTATE_NOT_IN_WORLD ) {
+		// back to before the script placed them (a hidden state keeps the point for the unhide)
+		_nPortLastPlacedPt = -1;
 	}
 #endif
 

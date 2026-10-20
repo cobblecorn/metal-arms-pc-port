@@ -1,5 +1,8 @@
 # Reported bugs audit, 12 October 2026
 
+Historical pass. The current combined coverage and later native results are in
+[the complete report audit](full-bug-list-20261019.md).
+
 Five reports have source-backed repairs. The other seven were investigated but
 are not established as port defects. Native shop tests and offline production
 method tests are listed separately below. Campaign playtesting remains needed
