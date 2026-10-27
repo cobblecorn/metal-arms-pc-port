@@ -266,8 +266,18 @@ public:
 		CArmorProfile *pOccupantRacingArmorProfile;		// Armor profile assigned to vehicle occupants when racing
 		cchar *pszDamageProfile;						// name of Damage profile used when vehicle hits with non bumpers
 		CDamageProfile *pRammingDamageProfile;			// Damage profile used when vehicle rams with bumpers
+#if FANG_WINGC
+		// Retail tables carry four weapon profiles: each weapon has a player and an NPC version
+		// (b_vsentinel: SentinelCannonPC/NPC, SentinelMGunPC/NPC; b_vloader: LoaderGun_PC/NPC, LoaderPincers x2).
+		// Use GetWeaponDamageProfile() to pick one.
+		CDamageProfile *pPrimaryWeaponDamageProfile;		// Damage profile for vehicle's primary weapon, player controlled
+		CDamageProfile *pPrimaryWeaponDamageProfileNPC;		// Damage profile for vehicle's primary weapon, NPC controlled
+		CDamageProfile *pSecondaryWeaponDamageProfile;		// Damage profile for vehicle's secondary weapon, player controlled
+		CDamageProfile *pSecondaryWeaponDamageProfileNPC;	// Damage profile for vehicle's secondary weapon, NPC controlled
+#else
 		CDamageProfile *pPrimaryWeaponDamageProfile;	// Damage profile for vehicle's primary weapon
 		CDamageProfile *pSecondaryWeaponDamageProfile;	// Damage profile for vehicle's secondary weapon
+#endif
 	} BotInfo_Vehicle_t;
 
 	typedef struct
@@ -470,6 +480,18 @@ public:
 	FINLINE f32 GetOOMaxSpeed( void ) const { FASSERT( IsCreated() ); return m_fOOMaxSpeed; };
 
 	FINLINE CArmorProfile* GetPrevArmorProfile( void ) const { return m_pPreviousDriverArmorProfile; }
+
+#if FANG_WINGC
+	// The player or NPC profile of a vehicle weapon, by who fired it (a player index, or -1 for an NPC).
+	// Versus play swaps its mp_ profile data in under these same names (CDamage::SwapMultiplayerData).
+	FINLINE CDamageProfile *GetWeaponDamageProfile( BOOL bSecondary, s32 nShooterPlayerIndex ) const {
+		const BotInfo_Vehicle_t *pInfo = m_pBotInfo_Vehicle;
+		if( bSecondary ) {
+			return ( nShooterPlayerIndex >= 0 || !pInfo->pSecondaryWeaponDamageProfileNPC ) ? pInfo->pSecondaryWeaponDamageProfile : pInfo->pSecondaryWeaponDamageProfileNPC;
+		}
+		return ( nShooterPlayerIndex >= 0 || !pInfo->pPrimaryWeaponDamageProfileNPC ) ? pInfo->pPrimaryWeaponDamageProfile : pInfo->pPrimaryWeaponDamageProfileNPC;
+	}
+#endif
 
 	virtual BOOL CheckpointSave( void );
 	virtual void CheckpointRestore( void );

@@ -26,6 +26,9 @@
 #include "bink.h"
 #include "fclib.h"
 #include "fdatastreaming.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // LOCAL DEFINES
@@ -189,7 +192,11 @@ FMovie2_Error_e fmovie2_Install( void ) {
 	}
 
 	//check to see if we have any movies to play.  If we don't then don't grab memory!
+#if FANG_WINGC
+	if( _uNumMovieTableEntries == 0 && !pcmods_HasMovies() )
+#else
 	if( _uNumMovieTableEntries == 0 )
+#endif
 		return FMOVIE2_NO_ERROR;
 
 #if !_USE_STREAMING_MEMORY
@@ -290,15 +297,22 @@ void fmovie2_Play( cchar *pszFileName, f32 fVolume, cu32 uPlayFlags ) {
 		}
 	}
 
-	if( !pMovieEntry ) {
-		DEVPRINTF( "[ FMOVIE2 ] Error : Couldn't find movie file %s in Movie Filename Table!\n", pszFileName );
-		return;
-	}
-
-	//if we are here, we found this filename in the movie table, lets construct the filename and load it!
-	char szFullMoviePathName[ MAX_PATH ];
-	fclib_strcpy( szFullMoviePathName, pMovieEntry->pszPath );
-	fclib_strcat( szFullMoviePathName, pMovieEntry->pszName );
+    char szFullMoviePathName[ MAX_PATH ];
+#if FANG_WINGC
+    const BOOL modMovie=pcmods_ResolveMedia(pszFileName,szFullMoviePathName,sizeof(szFullMoviePathName));
+#else
+    const BOOL modMovie=FALSE;
+#endif
+    if(!modMovie) {
+        if(!pMovieEntry) {
+            DEVPRINTF("[ FMOVIE2 ] Error : Couldn't find movie file %s in Movie Filename Table!\n",pszFileName);
+            return;
+        }
+        fclib_strcpy(szFullMoviePathName,pMovieEntry->pszPath);
+        fclib_strcat(szFullMoviePathName,pMovieEntry->pszName);
+    } else {
+        DEVPRINTF("PORT-MODS movie override %s\n",szFullMoviePathName);
+    }
 
 	BOOL bFilenameLocalized = ffile_LocalizeFilename( szFullMoviePathName, FALSE ); //DO NOT RENAME FILE, JUST DETERMINE IF IT'S LOCALIZED
 
@@ -476,6 +490,11 @@ BOOL fmovie2_MovieExists( cchar* pszFileName ) {
 			_pBinkDS = pDS;
 		}
 	}
+#endif
+
+#if FANG_WINGC
+    char modMovie[MAX_PATH];
+    if(pcmods_ResolveMedia(pszFileName,modMovie,sizeof(modMovie))) return TRUE;
 #endif
 
 	//search the MovieFilenameTable to see if this movie is in our table...

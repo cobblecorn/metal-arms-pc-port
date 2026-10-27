@@ -41,6 +41,13 @@
 #include "damage.h"
 #include "gcoll.h"
 #include "fdecal.h"
+#if FANG_WINGC
+#include "eparticlepool.h"
+#include "pc_mods.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
+#endif
 
 #include "sas_user.h"
 
@@ -94,6 +101,8 @@ CFTexInst CWeaponLaser::m_aTracerTexInst[EUK_COUNT_LASER];
 
 #if FANG_WINGC
 static BOOL _bUserPropsAvailable = FALSE;
+CWeaponLaser::_RetailCharge_t CWeaponLaser::m_aRetailCharge[EUK_COUNT_LASER];
+static const u16 _CHARGED_TRACER = 0x8000;
 
 // Retail values without a slot in _UserProps_t (see _ReadRetailProperties).
 static f32 _aRetailTracerColor[CWeapon::EUK_COUNT_LASER][4];
@@ -319,7 +328,7 @@ const FGameDataMap_t CWeaponLaser::m_aUserPropMapTable[] = {
 //   infinite), 8 rounds/sec, 10/11/12/13 tracer speed/length/width/max range,
 //   14 max and 46 min target-assist distance, 43 weapon cull distance, 44 recoil.
 // 59 and 71 are the damage profile and decal by vocabulary type; 65 is the firing sound group. The
-// charged burst (fields 19-28, 60-64, 66-72) and the particle effects are not implemented.
+// PC hold/release uses retail charge timing, projectile data, damage and sounds below.
 BOOL CWeaponLaser::_ReadRetailProperties( void ) {
 	// Retail source field for each entry of m_aUserPropVocab, or -1 if it has none.
 	static const s8 anRetailField[] = {
@@ -384,6 +393,41 @@ BOOL CWeaponLaser::_ReadRetailProperties( void ) {
 			break;
 		}
 
+		_RetailCharge_t *pCharge = &m_aRetailCharge[nLevel];
+		static const FGameData_TableEntry_t ParticleField = { FGAMEDATA_VOCAB_PARTICLE };
+		bOK = fgamedata_GetFieldFromTable( hTable, 33, &RetailFloat, &pCharge->fDelay ) &&
+			fgamedata_GetFieldFromTable( hTable, 34, &RetailFloat, &pCharge->fChargeSeconds ) &&
+			fgamedata_GetFieldFromTable( hTable, 35, &RetailFloat, &pCharge->fPitchStart ) &&
+			fgamedata_GetFieldFromTable( hTable, 36, &RetailFloat, &pCharge->fPitchEnd ) &&
+			fgamedata_GetFieldFromTable( hTable, 48, &ParticleField, &pCharge->hChargeParticle ) &&
+			fgamedata_GetFieldFromTable( hTable, 49, &ParticleField, &pCharge->hBurstParticle ) &&
+			fgamedata_GetFieldFromTable( hTable, 50, &ParticleField, &pCharge->hEndParticle ) &&
+			fgamedata_GetFieldFromTable( hTable, 37, &RetailFloat, &pCharge->fReadyEnergy ) &&
+			fgamedata_GetFieldFromTable( hTable, 38, &RetailFloat, &pCharge->fEnergyAfterBurst ) &&
+			fgamedata_GetFieldFromTable( hTable, 20, &RetailFloat, &pCharge->fSpeed ) &&
+			fgamedata_GetFieldFromTable( hTable, 21, &RetailFloat, &pCharge->fLength ) &&
+			fgamedata_GetFieldFromTable( hTable, 22, &RetailFloat, &pCharge->fWidth ) &&
+			fgamedata_GetFieldFromTable( hTable, 23, &RetailFloat, &pCharge->fRange ) &&
+			fgamedata_GetFieldFromTable( hTable, 66, &RetailString, &pCharge->pszChargeSound ) &&
+			fgamedata_GetFieldFromTable( hTable, 67, &RetailString, &pCharge->pszBurstSound ) &&
+			fgamedata_GetFieldFromTable( hTable, 68, &RetailString, &pCharge->pszBurstSound2 ) &&
+			fgamedata_GetFieldFromTable( hTable, 69, &RetailString, &pCharge->pszRicochetSound ) &&
+			fgamedata_GetFieldFromTable( hTable, 70, &RetailString, &pCharge->pszReadySound ) &&
+			fgamedata_GetFieldFromTable( hTable, 63, &RetailString, &pCharge->pszImpact ) &&
+			fgamedata_GetFieldFromTable( hTable, 64, &RetailString, &pCharge->pszRicochetImpact ) &&
+			fgamedata_GetFieldFromTable( hTable, 72, &RetailString, &pCharge->pszDecal );
+		for( u32 i=0; bOK && i<3; ++i ) {
+			bOK = fgamedata_GetFieldFromTable( hTable, 60 + i, &RetailString, &pCharge->apszDamage[i] ) &&
+				fgamedata_GetFieldFromTable( hTable, 29 + i, &RetailFloat, &pCharge->afColor[i] );
+		}
+		if( !bOK || !(pCharge->fDelay >= 0.0f) || !(pCharge->fChargeSeconds > 0.0f) ||
+			!(pCharge->fReadyEnergy > 0.0f && pCharge->fReadyEnergy < 1.0f) ||
+			!(pCharge->fEnergyAfterBurst >= 0.0f && pCharge->fEnergyAfterBurst < pCharge->fReadyEnergy) ||
+			!(pCharge->fSpeed > 0.0f && pCharge->fLength > 0.0f && pCharge->fWidth > 0.0f && pCharge->fRange > 0.0f) ) {
+			bOK = FALSE;
+			break;
+		}
+
 		pProps->fReserveAmmoMax = -1.0f;
 		pProps->fRocketsInPoolCount = 30.0f;		// retail tracer group size
 		pProps->fRocketCullDist = pProps->fWeaponCullDist;
@@ -407,7 +451,7 @@ BOOL CWeaponLaser::_ReadRetailProperties( void ) {
 
 	fmem_ReleaseFrame( Frame );
 	if( bOK ) {
-		DEVPRINTF( "CWeaponLaser: loaded %d retail variants (charged burst not implemented).\n", EUK_COUNT_LASER );
+		DEVPRINTF( "CWeaponLaser: loaded %d retail variants with player hold/release charge data.\n", EUK_COUNT_LASER );
 	}
 	return bOK;
 }
@@ -494,6 +538,12 @@ BOOL CWeaponLaser::InitSystem( void ) {
 		pInfo->nReticleType = CReticle::TYPE_DROID_STANDARD;
 
 		m_apDamageProfile[i] = CDamage::FindDamageProfile( m_aUserProps[i].pszDamageProfile );
+#if FANG_WINGC
+		for( u32 n=0; n<3; ++n ) {
+			cchar *pszName = m_aRetailCharge[i].apszDamage[n];
+			m_aRetailCharge[i].apDamage[n] = pszName && fclib_stricmp( pszName, "None" ) ? CDamage::FindDamageProfile( pszName ) : NULL;
+		}
+#endif
 	}
 
 	// Success...
@@ -590,6 +640,12 @@ BOOL CWeaponLaser::ClassHierarchyBuild( void ) {
 			_apRetailFireGroup[i] = CFSoundGroup::RegisterGroup( _apszRetailFireGroup[i] );
 		}
 		m_aUserProps[i].hFiringSound = _apRetailFireGroup[i] ? CFSoundGroup::GetRandomSoundHandle( _apRetailFireGroup[i] ) : FSNDFX_INVALID_FX_HANDLE;
+		_RetailCharge_t &Charge = m_aRetailCharge[i];
+		Charge.pChargeSound = CFSoundGroup::RegisterGroup( Charge.pszChargeSound );
+		Charge.pBurstSound = CFSoundGroup::RegisterGroup( Charge.pszBurstSound );
+		Charge.pBurstSound2 = CFSoundGroup::RegisterGroup( Charge.pszBurstSound2 );
+		Charge.pRicochetSound = CFSoundGroup::RegisterGroup( Charge.pszRicochetSound );
+		Charge.pReadySound = CFSoundGroup::RegisterGroup( Charge.pszReadySound );
 	}
 #endif
 
@@ -717,6 +773,9 @@ _ExitWithError:
 
 void CWeaponLaser::ClassHierarchyDestroy( void ) {
 	// Destroy ourselves first...
+#if FANG_WINGC
+	CancelPlayerCharge();
+#endif
 
 	fdelete( m_apL3_LaserBeam[0] );
 	fdelete( m_apL3_LaserBeam[1] );
@@ -758,6 +817,17 @@ void CWeaponLaser::_ClearDataMembers( void ) {
 	m_bFireThisFrame = FALSE;
 	m_bRechargeThisFrame = FALSE;
 	m_bFiredLastFrame = FALSE;
+#if FANG_WINGC
+	m_PlayerCharge.Cancel( false );
+	m_pChargeSoundEmitter = NULL;
+	m_bChargedShotThisFrame = FALSE;
+	m_bChargeReadySoundPlayed = FALSE;
+	m_bSecondaryTapThisFrame = FALSE;
+	m_nChargedShotTier = 0;
+	m_hChargeParticle = FPARTICLE_INVALID_HANDLE;
+	m_vChargeMuzzle_WS.Zero();
+	m_fChargePitchBase = 1.0f;
+#endif
 	m_hTracerGroup = TRACER_NULLGROUPHANDLE;
 	m_pvecBuddyFirePos_WS = NULL;
 
@@ -774,9 +844,16 @@ void CWeaponLaser::_ClearDataMembers( void ) {
 
 
 void CWeaponLaser::_TracerKilledCallback( TracerDef_t *pTracerDef, TracerKillReason_e nKillReason, const FCollImpact_t *pImpact ) {
+#if FANG_WINGC
+	if( pTracerDef->nUser & _CHARGED_TRACER ) {
+		_ChargedTracerCallback( pTracerDef, nKillReason, pImpact );
+		return;
+	}
+#endif
 	if( nKillReason == TRACER_KILLREASON_HIT_GEO ) {
 		FASSERT(pTracerDef->pUser != NULL);
 		CWeaponLaser *pLaser = (CWeaponLaser *)(pTracerDef->pUser);
+
 
 		const CGCollMaterial *pCollMaterial = CGColl::GetMaterial( pImpact->nUserType );
 
@@ -896,6 +973,9 @@ void CWeaponLaser::ClassHierarchyAddToWorld( void ) {
 void CWeaponLaser::ClassHierarchyRemoveFromWorld( void ) {
 	FASSERT( IsCreated() );
 	FASSERT( IsInWorld() );
+#if FANG_WINGC
+	CancelPlayerCharge();
+#endif
 
 	CWeapon::ClassHierarchyRemoveFromWorld();
 
@@ -906,6 +986,9 @@ void CWeaponLaser::ClassHierarchyRemoveFromWorld( void ) {
 
 void CWeaponLaser::ClassHierarchyDrawEnable( BOOL bDrawingHasBeenEnabled ) {
 	CWeapon::ClassHierarchyDrawEnable( bDrawingHasBeenEnabled );
+#if FANG_WINGC
+	if( !bDrawingHasBeenEnabled ) CancelPlayerCharge();
+#endif
 
 //	if( IsInWorld() ) 
 	{
@@ -992,10 +1075,208 @@ void CWeaponLaser::ComputeMuzzlePoint_WS( CFVec3A *pMuzzlePoint_WS ) const {
 // Return value:
 //   Bit 0: Trigger #1 fired
 //   Bit 1: Trigger #2 fired
+#if FANG_WINGC
+void CWeaponLaser::_StopChargeSound( void ) {
+	if( m_pChargeSoundEmitter ) {
+		m_pChargeSoundEmitter->Destroy();
+		m_pChargeSoundEmitter = NULL;
+	}
+	m_bChargeReadySoundPlayed = FALSE;
+}
+
+void CWeaponLaser::CancelPlayerCharge( void ) {
+	m_PlayerCharge.Cancel();
+	_StopChargeSound();
+	_StopChargeParticle();
+	m_bFireThisFrame = m_bChargedShotThisFrame = FALSE;
+	m_bSecondaryTapThisFrame = FALSE;
+}
+
+static BOOL _SuperLaserEnabled() {
+    static const BOOL enabled=pcmods_Feature("super_mining_lasers");
+    return enabled;
+}
+
+BOOL CWeaponLaser::SupportsPlayerCharge( void ) const {
+	return IsOwnedByPlayer() && m_aRetailCharge[m_nUpgradeLevel].apDamage[0] &&
+		m_aRetailCharge[m_nUpgradeLevel].apDamage[1] && m_aRetailCharge[m_nUpgradeLevel].apDamage[2];
+}
+
+BOOL CWeaponLaser::UsesMouseChargeControls( void ) const {
+#if defined(MA_PC_INPUT)
+	const s32 player = GetSafeOwnerPlayerIndex();
+	return player >= 0 && player < MAX_PLAYERS && pcinput_UsesMouseWeaponControls(Player_aPlayer[player].m_nControllerIndex);
+#else
+	return FALSE;
+#endif
+}
+
+u16 CWeaponLaser::_PlayerChargeCost( void ) const {
+	// User-selected PC energy rule: four charged bursts per full bar. Round up
+	// for nonstandard clip sizes, and never permit a zero-cost burst.
+	return (u16)FMATH_MAX( 1u, ((u32)m_pInfo->nClipAmmoMax + 3u) / 4u );
+}
+
+u32 CWeaponLaser::_PlayerChargeTrigger( f32 fTrigger, const CFVec3A *pTargetPos_WS, const CFVec3A *pBuddyFirePos_WS ) {
+	const _RetailCharge_t &Charge = m_aRetailCharge[m_nUpgradeLevel];
+	const BOOL bControlled = CurrentState() == STATE_DEPLOYED && GetOwner() && !GetOwner()->IsDeadOrDying();
+	// Each remaining quarter-bar can charge without waiting for a full refill.
+	const BOOL bReady = m_nClipAmmo >= _PlayerChargeCost() && m_fSecondsCountdownTimer <= 0.0f;
+	// Retail charges energy from 0.5 to 1 at 0.5 / field34 per second.
+	const PCLaserCharge::Result Shot = m_PlayerCharge.Sample( fTrigger, bControlled != FALSE, bReady != FALSE,
+		FLoop_fPreviousLoopSecs, Charge.fDelay, Charge.fChargeSeconds, !UsesMouseChargeControls() );
+	m_bRechargeThisFrame = !m_PlayerCharge.IsCharging();
+	if( !m_PlayerCharge.IsCharging() ) _StopChargeSound();
+	m_bSecondaryTapThisFrame = Shot.shot == PCLaserCharge::SECONDARY_TAP;
+	if( Shot.shot != PCLaserCharge::CHARGED || m_nClipAmmo == 0 || m_fSecondsCountdownTimer > 0.0f ) return 0;
+	m_bChargedShotThisFrame = Shot.shot == PCLaserCharge::CHARGED;
+	m_nChargedShotTier = Shot.power >= 0.95f ? 2 : (Shot.power >= 0.5f ? 1 : 0);
+	m_bRechargeThisFrame = FALSE;
+	m_vTargetPos_WS.Set( *pTargetPos_WS );
+	GetOwner()->FocusHumanTargetPoint_WS( &m_vTargetPos_WS, this );
+	m_pvecBuddyFirePos_WS = pBuddyFirePos_WS;
+	m_bFireThisFrame = TRUE;
+	return 1;
+}
+
+void CWeaponLaser::_ConfigureNormalTracer( TracerDef_t *pTracer ) const {
+    // Super Mining Lasers replaces the ordinary impact callback and launcher,
+    // retaining the ordinary projectile dimensions and thin collision mask.
+    if(!_SuperLaserEnabled() || !m_aRetailCharge[m_nUpgradeLevel].apDamage[0]) return;
+    pTracer->nUser=(u16)(_CHARGED_TRACER | m_nUpgradeLevel);
+    pTracer->pFcnKillCallback=_ChargedTracerCallback;
+    pTracer->pFcnBuildSkipList=_ChargedSkipList;
+}
+
+void CWeaponLaser::_ConfigureChargedTracer( TracerDef_t *pTracer ) const {
+	const _RetailCharge_t &Charge = m_aRetailCharge[m_nUpgradeLevel];
+	pTracer->nUser = (u16)(_CHARGED_TRACER | (m_nChargedShotTier << 3) | m_nUpgradeLevel);
+	pTracer->uFlags |= TRACERFLAG_THICK_PROJECTILE | TRACERFLAG_DEFER_FIRST_WORK;
+	pTracer->pFcnKillCallback = _ChargedTracerCallback;
+	pTracer->pFcnBuildSkipList = _ChargedSkipList;
+	pTracer->fSpeed_WS = Charge.fSpeed;
+	pTracer->fLength_WS = Charge.fLength;
+	pTracer->fWidth_WS = Charge.fWidth;
+	pTracer->fMaxTailDist_WS = Charge.fRange;
+	pTracer->ColorRGBA.Set( Charge.afColor[0], Charge.afColor[1], Charge.afColor[2], 1.0f );
+}
+
+CDamageProfile *CWeaponLaser::_ChargedDamageProfile( u16 nShot ) {
+	const u32 nLevel = nShot & 7, nTier = (nShot >> 3) & 3;
+	if( !(nShot & _CHARGED_TRACER) || nLevel >= EUK_COUNT_LASER || nTier >= 3 ) return NULL;
+	return m_aRetailCharge[nLevel].apDamage[nTier];
+}
+
+void CWeaponLaser::_ChargedSkipList( void *pWeapon ) {
+	CWeaponLaser *pLaser = (CWeaponLaser *)pWeapon;
+	if( pLaser->GetOwner() ) pLaser->GetOwner()->AppendTrackerSkipList();
+	else pLaser->AppendTrackerSkipList();
+}
+
+void CWeaponLaser::_ChargeParticleKilled( FParticle_EmitterHandle_t hEmitter, void *pUser ) {
+	CWeaponLaser *pLaser = (CWeaponLaser *)pUser;
+	if( pLaser->m_hChargeParticle == hEmitter ) pLaser->m_hChargeParticle = FPARTICLE_INVALID_HANDLE;
+}
+
+void CWeaponLaser::_StopChargeParticle( void ) {
+	if( m_hChargeParticle ) {
+		// The emitter follows a member position. Kill it before that member can be freed.
+		fparticle_KillEmitter( m_hChargeParticle );
+		m_hChargeParticle = FPARTICLE_INVALID_HANDLE;
+	}
+}
+
+// Retail burst collision: main.dol 801fa9c4, 801fafb8 and 801fb18c.
+// The shot snapshots its upgrade, charge band and damager; later weapon switches
+// and other players cannot change an in-flight shot's damage or ownership.
+void CWeaponLaser::_ChargedTracerCallback( TracerDef_t *pTracer, TracerKillReason_e nReason, const FCollImpact_t *pImpact ) {
+	CDamageProfile *pDamage = _ChargedDamageProfile( pTracer->nUser );
+	if( !pDamage || !pTracer->pUser ) return;
+	CWeaponLaser *pLaser = (CWeaponLaser *)pTracer->pUser;
+	const _RetailCharge_t &Charge = m_aRetailCharge[pTracer->nUser & 7];
+	const f32 fIntensity = 0.5f * (f32)((pTracer->nUser >> 3) & 3);
+	if( nReason == TRACER_KILLREASON_REACHED_MAX_DIST ) {
+		if( Charge.hEndParticle ) {
+			CFVec3A End;
+			End.Mul( pTracer->UnitDir_WS, Charge.fRange ).Add( pTracer->TailPos_WS );
+			fparticle_SpawnEmitter( Charge.hEndParticle, End.v3, &pTracer->UnitDir_WS.v3, fIntensity );
+		}
+		return;
+	}
+	if( nReason != TRACER_KILLREASON_HIT_GEO || !pImpact ) return;
+
+	TracerDef_t Next = *pTracer;
+	Next.pFcnBuildSkipList = NULL; // A reflected shot can return to its firer, as in retail.
+	Next.uFlags |= TRACERFLAG_DEFER_FIRST_WORK;
+	if( CGColl::ExtractWire( pImpact ) ) {
+		Next.TailPos_WS.Mul( Next.UnitDir_WS, 0.01f ).Add( pImpact->ImpactPoint );
+		tracer_NewTracer( pLaser->m_hTracerGroup, &Next, 0.0f, FALSE, FALSE, &pTracer->Damager );
+		return;
+	}
+
+	const u8 nReaction = CGColl::ComputeProjectileReaction( pImpact );
+	const BOOL bReflectOnly = nReaction == CEntity::PROJECTILE_REACTION_RICOCHET || nReaction == CEntity::PROJECTILE_REACTION_SHIELD;
+	FExplosion_GroupHandle_t hGroup = CExplosion2::GetExplosionGroup( bReflectOnly ? Charge.pszRicochetImpact : Charge.pszImpact );
+	if( hGroup ) {
+		FExplosion_SpawnerHandle_t hSpawner = CExplosion2::GetExplosionSpawner();
+		if( hSpawner ) {
+			FExplosionSpawnParams_t Params;
+			Params.InitToDefaults();
+			Params.uFlags = FEXPLOSION_SPAWN_NO_SMOKE; // Retail passes 0x40; burst damage is a separate direct hit.
+			Params.Pos_WS = pImpact->ImpactPoint;
+			Params.UnitDir = pImpact->UnitFaceNormal;
+			Params.uSurfaceType = pImpact->nUserType;
+			CExplosion2::SpawnExplosion( hSpawner, hGroup, &Params );
+		}
+	}
+
+	Next.UnitDir_WS.ReceiveReflection( pTracer->UnitDir_WS, pImpact->UnitFaceNormal );
+	Next.UnitDir_WS.Unitize();
+	Next.TailPos_WS.Mul( Next.UnitDir_WS, 0.01f ).Add( pImpact->ImpactPoint );
+	tracer_NewTracer( pLaser->m_hTracerGroup, &Next, 0.0f, FALSE, FALSE, &pTracer->Damager );
+	if( bReflectOnly ) {
+		CFSoundGroup::PlaySound( Charge.pRicochetSound, FALSE, &pImpact->ImpactPoint );
+	} else {
+		FDecalDefHandle_t hDecal = CFDecal::GetDefByName( Charge.pszDecal );
+		if( hDecal ) CFDecal::Create( hDecal, pImpact, &pTracer->UnitDir_WS );
+		const CGCollMaterial *pMaterial = CGColl::GetMaterial( pImpact );
+		pMaterial->DrawAllDrawableParticles( &pImpact->ImpactPoint, &Next.UnitDir_WS, TRUE, fIntensity, fIntensity, fIntensity );
+	}
+
+	CEntity *pHit = CGColl::ExtractEntity( pImpact );
+	if( pHit ) {
+		CDamageForm *pForm = CDamage::GetEmptyDamageFormFromPool();
+		if( pForm ) {
+			pForm->m_nDamageLocale = CDamageForm::DAMAGE_LOCALE_IMPACT;
+			pForm->m_nDamageDelivery = CDamageForm::DAMAGE_DELIVERY_ONE_SPECIFIC_ENTITY;
+			pForm->m_pDamageProfile = pDamage;
+			pForm->m_Damager = pTracer->Damager;
+			pForm->m_pDamageeEntity = pHit;
+			pForm->InitTriDataFromCollImpact( (CFWorldMesh *)pImpact->pTag, pImpact, &pTracer->UnitDir_WS );
+			CDamage::SubmitDamageForm( pForm );
+		}
+	}
+}
+
+#endif
+
 u32 CWeaponLaser::TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, const CFVec3A *pvTargetPos_WS, const CFVec3A *pBuddyFirePos_WS/* = NULL*/ ) {
 	FASSERT( IsCreated() );
 
 	m_bFireThisFrame = FALSE;
+#if FANG_WINGC
+	m_bChargedShotThisFrame = FALSE;
+	m_bSecondaryTapThisFrame = FALSE;
+	// Primary fire retains rapid shots. A secondary tap uses the selected item;
+	// holding secondary reserves the press for a charge and never throws on release.
+	if( SupportsPlayerCharge() ) {
+		const BOOL bMouse = UsesMouseChargeControls();
+        const f32 fChargeTrigger = bMouse ? fUnitTriggerVal2 : fUnitTriggerVal1;
+        const u32 nChargedFire = _PlayerChargeTrigger( fChargeTrigger, pvTargetPos_WS, pBuddyFirePos_WS );
+        if( nChargedFire || (bMouse ? fChargeTrigger >= 0.25f :
+            ((fChargeTrigger > 0.0f && fChargeTrigger < 1.0f) || m_PlayerCharge.IsCharging())) ) return nChargedFire;
+	}
+#endif
 
 	if(fUnitTriggerVal1 < 0.25f)
 	{
@@ -1084,6 +1365,37 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 	}
 
 	static const f32 _fPerturbFactor = 0.01f;
+#if FANG_WINGC
+	if( CurrentState() != STATE_DEPLOYED || !GetOwner() || GetOwner()->IsDeadOrDying() || !IsOwnedByPlayer() ) {
+		// Keep the original AI fire request, but discard a player's pending charge.
+		if( m_PlayerCharge.IsCharging() || m_bChargedShotThisFrame ) CancelPlayerCharge();
+	}
+	if( m_PlayerCharge.IsCharging() ) {
+		const _RetailCharge_t &Charge = m_aRetailCharge[m_nUpgradeLevel];
+		CFVec3A Muzzle;
+		ComputeMuzzlePoint_WS( &Muzzle );
+		if( !m_pChargeSoundEmitter && Charge.pChargeSound ) {
+			m_pChargeSoundEmitter = CFSoundGroup::AllocAndPlaySound( Charge.pChargeSound, TRUE, &Muzzle, 1.0f, 1.0f, -1.0f, NULL, &m_fChargePitchBase );
+		}
+		if( m_pChargeSoundEmitter ) m_pChargeSoundEmitter->SetFrequencyFactor( m_fChargePitchBase * FMATH_FPOT( m_PlayerCharge.Power(), Charge.fPitchStart, Charge.fPitchEnd ) );
+		m_vChargeMuzzle_WS = Muzzle;
+		if( !m_hChargeParticle && Charge.hChargeParticle && IsDrawEnabled() ) {
+			m_hChargeParticle = fparticle_SpawnEmitter( Charge.hChargeParticle, &m_vChargeMuzzle_WS.v3, &m_MtxToWorld.m_vFront.v3, NULL, m_PlayerCharge.Power() );
+			if( m_hChargeParticle ) fparticle_SetKillCallback( m_hChargeParticle, _ChargeParticleKilled, this );
+		}
+		if( m_hChargeParticle ) fparticle_SetIntensity( m_hChargeParticle, m_PlayerCharge.Power() );
+		if( m_PlayerCharge.Power() >= 1.0f && !m_bChargeReadySoundPlayed ) {
+			if( Charge.pReadySound ) CFSoundGroup::PlaySound( Charge.pReadySound, TRUE, &Muzzle, GetSafeOwnerPlayerIndex() );
+			m_bChargeReadySoundPlayed = TRUE;
+		}
+		if( IsDrawEnabled() && !Charge.hChargeParticle ) {
+			const f32 fSize = Charge.fWidth * (0.25f + 0.75f * m_PlayerCharge.Power());
+			CMuzzleFlash::AddFlash_Card3D( m_ahMuzzleFlashGroup[MUZZLEFLASH_TYPE_LASER_YELLOW], Muzzle, fSize, fSize, 0.0f );
+		}
+	} else {
+		_StopChargeParticle();
+	}
+#endif
 
 	if(m_bFireThisFrame)
 	{
@@ -1192,7 +1504,21 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 				}
 
 				ConstructDamagerData();
-				if (tracer_NewTracer(m_hTracerGroup, &m_aoTracerDef[m_nUpgradeLevel], 0.2f, FALSE, FALSE, &CDamageForm::m_TempDamager))
+				TracerDef_t ShotTracer = m_aoTracerDef[m_nUpgradeLevel];
+				f32 fHeadDistanceOut = 0.2f;
+#if FANG_WINGC
+                const BOOL bSuperLaser=_SuperLaserEnabled() && m_aRetailCharge[m_nUpgradeLevel].apDamage[0];
+                _ConfigureNormalTracer(&ShotTracer);
+				// A local copy prevents charged properties leaking to the next normal shot
+				// or another co-op player's laser of the same upgrade level.
+				if( m_bChargedShotThisFrame ) {
+					_ConfigureChargedTracer( &ShotTracer );
+					fHeadDistanceOut = 0.0f;
+					const _RetailCharge_t &Charge = m_aRetailCharge[m_nUpgradeLevel];
+					if( Charge.hBurstParticle && IsDrawEnabled() ) fparticle_SpawnEmitter( Charge.hBurstParticle, vecMuzzlePoint.v3, &vFireUnitDir.v3, 0.5f * (f32)m_nChargedShotTier );
+				}
+#endif
+				if (tracer_NewTracer(m_hTracerGroup, &ShotTracer, fHeadDistanceOut, FALSE, FALSE, &CDamageForm::m_TempDamager))
 				{
 
 					if (m_pOwnerBot->m_nPossessionPlayerIndex > -1)
@@ -1206,20 +1532,31 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 				}
 				if(m_pvecBuddyFirePos_WS != NULL)
 				{
-					m_aoTracerDef[m_nUpgradeLevel].UnitDir_WS = vFireUnitDir;
-					m_aoTracerDef[m_nUpgradeLevel].TailPos_WS = *m_pvecBuddyFirePos_WS;
+					ShotTracer.UnitDir_WS = vFireUnitDir;
+					ShotTracer.TailPos_WS = *m_pvecBuddyFirePos_WS;
 
 					ConstructDamagerData();
-					tracer_NewTracer(m_hTracerGroup, &m_aoTracerDef[m_nUpgradeLevel], 0.2f, FALSE, FALSE, &CDamageForm::m_TempDamager);
+					tracer_NewTracer(m_hTracerGroup, &ShotTracer, fHeadDistanceOut, FALSE, FALSE, &CDamageForm::m_TempDamager);
 				}
 
 #if FANG_WINGC
-				if( _apRetailFireGroup[m_nUpgradeLevel] ) {
+                if(bSuperLaser && !m_bChargedShotThisFrame) {
+                    const _RetailCharge_t &charge=m_aRetailCharge[m_nUpgradeLevel];
+                    if(charge.hBurstParticle && IsDrawEnabled()) fparticle_SpawnEmitter(charge.hBurstParticle,vecMuzzlePoint.v3,&vFireUnitDir.v3,0.0f);
+                }
+                if(m_bChargedShotThisFrame || bSuperLaser)
+                    CFSoundGroup::PlaySound(m_aRetailCharge[m_nUpgradeLevel].pBurstSound2,IsOwnedByPlayer(),&vecMuzzlePoint,GetSafeOwnerPlayerIndex());
+                if(bSuperLaser && IsOwnedByPlayer()) {
+                    CFCamera *camera=fcamera_GetCameraByIndex(GetSafeOwnerPlayerIndex());
+                    if(camera) camera->ShakeCamera(0.05f,0.1f);
+                }
+				CFSoundGroup *pShotSound = (m_bChargedShotThisFrame || bSuperLaser) ? m_aRetailCharge[m_nUpgradeLevel].pBurstSound : _apRetailFireGroup[m_nUpgradeLevel];
+				if( pShotSound ) {
 					// the group carries the retail volume, pitch and radius for the shot
 					if( IsOwnedByPlayer() ) {
-						CFSoundGroup::PlaySound( _apRetailFireGroup[m_nUpgradeLevel], TRUE, &vecMuzzlePoint, GetOwner() ? GetOwner()->m_nPossessionPlayerIndex : -1 );
+						CFSoundGroup::PlaySound( pShotSound, TRUE, &vecMuzzlePoint, GetOwner() ? GetOwner()->m_nPossessionPlayerIndex : -1 );
 					} else {
-						CFSoundGroup::PlaySound( _apRetailFireGroup[m_nUpgradeLevel], FALSE, &vecMuzzlePoint );
+						CFSoundGroup::PlaySound( pShotSound, FALSE, &vecMuzzlePoint );
 					}
 				} else
 #endif
@@ -1284,8 +1621,17 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 			default:
 			{
 				// Set timer until the next round is ready...
+#if FANG_WINGC
+				if( m_bChargedShotThisFrame ) {
+					const _RetailCharge_t &Charge = m_aRetailCharge[m_nUpgradeLevel];
+					m_fSecondsCountdownTimer += Charge.fDelay;
+					RemoveFromClip( _PlayerChargeCost() );
+				} else
+#endif
+				{
 				m_fSecondsCountdownTimer += m_aUserProps[m_nUpgradeLevel].fOORoundsPerSec;
 				RemoveFromClip(1);
+				}
 				break;
 			}
 		}
@@ -1342,6 +1688,9 @@ void CWeaponLaser::ClassHierarchyWork( void ) {
 // Switches immediately to state CWeapon::CurrentState().
 void CWeaponLaser::ClassHierarchyResetToState( void ) {
 	CWeapon::ClassHierarchyResetToState();
+#if FANG_WINGC
+	CancelPlayerCharge();
+#endif
 
 	m_fSecondsCountdownTimer = 0.0f;
 	m_L3_fDrainCntDn = 0.0f;

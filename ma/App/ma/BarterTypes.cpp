@@ -617,7 +617,11 @@ BOOL CBarterItem::LoadSharedResources(void)
 	return TRUE;
 }
 
+#if FANG_WINGC
+BOOL CBarterItem::Purchase( CBot *pPlayerBot, u32 nFinalPrice, BOOL bAmmo ) const
+#else
 void CBarterItem::Purchase( CBot *pPlayerBot, u32 nFinalPrice ) const 
+#endif
 {
 	FASSERT( pPlayerBot );
 	FASSERT( pPlayerBot->TypeBits() & ENTITY_BIT_BOTGLITCH );
@@ -629,8 +633,31 @@ void CBarterItem::Purchase( CBot *pPlayerBot, u32 nFinalPrice ) const
 	// assert that the player has enough money for this purchase
 	FASSERT( pPlayerBot->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo >= (s16)nFinalPrice );
 
+#if FANG_WINGC
+	// The source dropped the item at the buyer's feet and charged whether or not it was ever collected.
+	// Ammo for a weapon the shopper owns goes straight into that weapon (reserve for primaries) without
+	// touching its upgrade level; anything else is collected for the shopper on the spot by the normal
+	// pickup code. Either way, nothing received, nothing charged.
+	const s32 nWashersBefore = pPlayerBot->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo;
+	BOOL bDelivered;
+	if( bAmmo && CCollectable::GiveOwnedWeaponAmmo( pGlitch, m_eCollectableType, -1 ) ) {
+		bDelivered = TRUE;
+	} else if( bAmmo && CCollectable::OwnsWeaponForAmmo( pGlitch, m_eCollectableType ) ) {
+		// Owned, but no room for it (a full reserve): nothing to buy.
+		bDelivered = FALSE;
+	} else {
+		bDelivered = CCollectable::GiveToPlayerAndCollect( pGlitch, m_eCollectableType, 1.0f );
+	}
+	DEVPRINTF( "Port: shop purchase '%s'%s for %u washers (had %d): %s.\n", CCollectable::GetCollectableTypeObjectFromType( m_eCollectableType ) ?
+		CCollectable::GetCollectableTypeObjectFromType( m_eCollectableType )->m_pszName : "?", bAmmo ? " ammo" : "", nFinalPrice, nWashersBefore,
+		bDelivered ? "delivered, charged" : "not delivered, not charged" );
+	if( !bDelivered ) {
+		return FALSE;
+	}
+#else
 	// NKM
 	CCollectable::GiveToPlayer( pGlitch, m_eCollectableType, 1.0f );
+#endif
 		
 	// play a sound when you buy something
 	FSndFx_FxHandle_t hItemDesc = fsndfx_GetFxHandle( "Power up Pick U" );
@@ -638,6 +665,9 @@ void CBarterItem::Purchase( CBot *pPlayerBot, u32 nFinalPrice ) const
 
 	// charge the player for the purchased item
 	pPlayerBot->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo -= (s16)nFinalPrice;
+#if FANG_WINGC
+	return TRUE;
+#endif
 }
 
 
@@ -965,9 +995,20 @@ BOOL CBarterItemInst::CanPurchase( CBot *pPlayerBot ) const {
 	return ( pPlayerBot->m_pInventory->m_aoItems[INVPOS_WASHER].m_nClipAmmo >= (s32)m_nWasherPrice );
 }
 
+#if FANG_WINGC
+BOOL CBarterItemInst::Purchase( CBot *pPlayerBot )
+#else
 void CBarterItemInst::Purchase( CBot *pPlayerBot ) 
+#endif
 {
+#if FANG_WINGC
+	// Stock goes down only for a delivered purchase.
+	if( !m_poItem->Purchase( pPlayerBot, m_nWasherPrice, IsAmmo() ) ) {
+		return FALSE;
+	}
+#else
 	m_poItem->Purchase( pPlayerBot, m_nWasherPrice );
+#endif
 	s8 nHowManyWeHave = GetQuantity();
 	if (m_poItem->m_eCollectableType != COLLECTABLE_BATTERY) // battery's are fixed quantity!
 	{
@@ -977,6 +1018,9 @@ void CBarterItemInst::Purchase( CBot *pPlayerBot )
 			SetQuantity(nHowManyWeHave-1);
 		}
 	}
+#if FANG_WINGC
+	return TRUE;
+#endif
 }
 
 
@@ -1660,9 +1704,13 @@ BOOL CBarterLevel::PurchaseCurrentItem( CBot *pPlayerBot ) {
 	if( !pItem->CanPurchase( pPlayerBot ) ) {
 		return FALSE;
 	}
+#if FANG_WINGC
+	return pItem->Purchase( pPlayerBot );
+#else
 	pItem->Purchase( pPlayerBot );
 
 	return TRUE;
+#endif
 }
 
 // sets a new table up.

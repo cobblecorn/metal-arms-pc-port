@@ -37,6 +37,9 @@
 #include "tether.h"
 #include "AI/AIEnviro.h"
 #include "fsound.h"
+#if FANG_WINGC
+#include "MultiplayerMgr.h"
+#endif
 
 
 
@@ -1349,7 +1352,13 @@ CWeaponTether::DataPortTest_e CWeaponTether::_TestDataPortTargetable( CBot *pBot
 	pBot->AppendTrackerSkipList();
 	m_pOwnerBot->AppendTrackerSkipList();
 
-	if( fworld_IsLineOfSightObstructed( &FXfm_pView->m_MtxR.m_vPos, pDataPortPos_WS, FWorld_nTrackerSkipListCount, FWorld_apTrackerSkipList ) ) {
+	const CFVec3A *pSightOrigin=&FXfm_pView->m_MtxR.m_vPos;
+#if FANG_WINGC
+	const s32 owner=GetSafeOwnerPlayerIndex();
+	CFCamera *ownerCamera=(MultiplayerMgr.IsLocalCoop() && owner>=0)?fcamera_GetCameraByIndex(owner):NULL;
+	if(ownerCamera)pSightOrigin=&ownerCamera->GetFinalXfm()->m_MtxR.m_vPos;
+#endif
+	if( fworld_IsLineOfSightObstructed( pSightOrigin, pDataPortPos_WS, FWorld_nTrackerSkipListCount, FWorld_apTrackerSkipList ) ) {
 		// Data port is obstructed...
 
 		return DATAPORTTEST_HOLDABLE;

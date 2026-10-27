@@ -18,6 +18,10 @@
 //////////////////////////////////////////////////////////////////////////////////////
  
 #include "fang.h"
+#if FANG_WINGC
+#include "pc_randomizer.h"
+#include "pc_mods.h"
+#endif
 #include "botgrunt.h"
 #include "fanim.h"
 #include "fresload.h"
@@ -32,6 +36,9 @@
 #include "gstring.h"
 #include "meshtypes.h"
 #include "weapons.h"
+#if FANG_WINGC
+#include "weapon_laser.h"
+#endif
 #include "reticle.h"
 #include "player.h"
 #include "level.h"
@@ -50,6 +57,10 @@
 #include "game.h"
 #include "letterbox.h"
 #include "eshield.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#include "MultiplayerMgr.h"
+#endif
 
 #define _BOTINFO_FILENAME		"b_grunt"
 #define _BOTPART_FILENAME		"bp_grunt"
@@ -483,7 +494,14 @@ void CBotGrunt::ClassHierarchyDestroy( void ) {
 }
 
 
+#if FANG_WINGC
+#include "pc_mod_grunt.inl"
+#endif
+
 BOOL CBotGrunt::ClassHierarchyBuild( void ) {
+#if FANG_WINGC
+	PcModGruntScope ModScope((CBotGruntBuilder *)GetLeafClassBuilder());
+#endif
 	FMesh_t *pMesh;
 	FMeshInit_t MeshInit;
 	u32 i;
@@ -617,7 +635,11 @@ BOOL CBotGrunt::ClassHierarchyBuild( void ) {
 		for (i = 0; i < 2; i++) {
 			FASSERT( pBuilder->m_anNPCWeaponType[i] < CBotBuilder::_NPC_WEAPON_COUNT );
 
-			if( m_anWeaponUpgradeLevel[pBuilder->m_anNPCWeaponType[i]] == -1 ) {
+			s32 initialUpgrade=m_anWeaponUpgradeLevel[pBuilder->m_anNPCWeaponType[i]];
+#if FANG_WINGC
+			if (i==0 && pcrandom_Eligible(pBuilder) && pBuilder->m_anNPCWeaponType[0]==CBotBuilder::_NPC_WEAPON_BLASTER) initialUpgrade=0;
+#endif
+			if( initialUpgrade == -1 ) {
 				m_apWeapon[i] = NULL;
 				continue;
 			}
@@ -628,7 +650,11 @@ BOOL CBotGrunt::ClassHierarchyBuild( void ) {
 				goto _ExitWithError;
 			}
 			
-			m_apWeapon[i]->SetSingleMeshForEUKs( m_anWeaponUpgradeLevel[pBuilder->m_anNPCWeaponType[i]] );
+			m_apWeapon[i]->SetSingleMeshForEUKs(
+#if FANG_WINGC
+				(i==0 && pcrandom_WeaponLevels(pBuilder,FALSE)) ? -1 :
+#endif
+				initialUpgrade );
 			
 			if (!CBotBuilder::CreateNPCWeaponOfType(m_apWeapon[i], pBuilder->m_anNPCWeaponType[i]))
 			{
@@ -636,7 +662,10 @@ BOOL CBotGrunt::ClassHierarchyBuild( void ) {
 				goto _ExitWithError;
 			}
 
-			m_apWeapon[i]->SetUpgradeLevel( (u32)m_anWeaponUpgradeLevel[pBuilder->m_anNPCWeaponType[i]] );
+			m_apWeapon[i]->SetUpgradeLevel( (u32)initialUpgrade );
+#if FANG_WINGC
+			if (i==0) pcrandom_ConfigureWeapon(pBuilder,m_apWeapon[i],FALSE);
+#endif
 
 //			m_apWeapon[i]->OverrideMaxReserveAmmo( CWeapon::INFINITE_AMMO );
 			m_apWeapon[i]->SetReserveAmmo( CWeapon::INFINITE_AMMO );
@@ -2122,9 +2151,16 @@ void CBotGrunt::_HandleWeaponFiring( void ) {
 
 	fTrig1 = m_fControls_Fire1;
 	fTrig2 = m_fControls_Fire2;
+#if FANG_WINGC
+	CWeaponLaser *pChargeLaser = m_apWeapon[0] && m_apWeapon[0]->Type() == CWeapon::WEAPON_TYPE_LASER &&
+		((CWeaponLaser *)m_apWeapon[0])->SupportsPlayerCharge() ? (CWeaponLaser *)m_apWeapon[0] : NULL;
+#endif
 
 	if( !_IsFingerOnTrigger1() ) {
 		fTrig1 = 0.0f;
+#if FANG_WINGC
+		if( pChargeLaser ) pChargeLaser->CancelPlayerCharge();
+#endif
 	}
 
 	if( !IsFingerOnTrigger2() ) {
@@ -2139,6 +2175,12 @@ void CBotGrunt::_HandleWeaponFiring( void ) {
 		uLeftArmLimbState = m_pPartMgr->GetLimbState( LIMB_TYPE_LEFT_ARM );
 	}
 
+#if FANG_WINGC
+	const f32 fPrimarySecondary = pChargeLaser && pChargeLaser->UsesMouseChargeControls() ? m_fControls_Fire2 : fTrig2;
+	if( pChargeLaser && uRightArmLimbState == CBotPartMgr::LIMB_STATE_REMOVED ) pChargeLaser->CancelPlayerCharge();
+#else
+	const f32 fPrimarySecondary = fTrig2;
+#endif
 	switch( uRightArmLimbState ) {
 		case CBotPartMgr::LIMB_STATE_DANGLING: {
 			CFVec3A vMuzzlePt;
@@ -2146,7 +2188,7 @@ void CBotGrunt::_HandleWeaponFiring( void ) {
 			m_apWeapon[0]->ComputeMuzzlePoint_WS( &vMuzzlePt );
 			vTgtPt.Mul( m_pWorldMesh->GetBoneMtxPalette()[m_nBoneIndexPriFire]->m_vFront, 1000.0f );
 			vTgtPt.Add( vMuzzlePt );
-			nFireBitsPrimary = m_apWeapon[0]->TriggerWork( fTrig1, fTrig2, &vTgtPt /*&(m_pWorldMesh->GetBoneMtxPalette()[m_nBoneIndexPriFire]->m_vFront)*/, NULL );
+			nFireBitsPrimary = m_apWeapon[0]->TriggerWork( fTrig1, fPrimarySecondary, &vTgtPt /*&(m_pWorldMesh->GetBoneMtxPalette()[m_nBoneIndexPriFire]->m_vFront)*/, NULL );
 			break;
 		}
 
@@ -2156,11 +2198,14 @@ void CBotGrunt::_HandleWeaponFiring( void ) {
 			break;
 
 		default:
-			nFireBitsPrimary = m_apWeapon[0]->TriggerWork( fTrig1, fTrig2, &m_TargetedPoint_WS, NULL );
+			nFireBitsPrimary = m_apWeapon[0]->TriggerWork( fTrig1, fPrimarySecondary, &m_TargetedPoint_WS, NULL );
 			break;
 	}
 
 
+#if FANG_WINGC
+	if( pChargeLaser && pChargeLaser->UsesMouseChargeControls() ) fTrig2 = IsFingerOnTrigger2() && pChargeLaser->PlayerSecondaryTap() ? 1.0f : 0.0f;
+#endif
 	if( nFireBitsPrimary ) {
 		// We fired the primary weapon...
 		JustFired();   // No more disguise...

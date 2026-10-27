@@ -291,7 +291,11 @@ private:
 	static CReticle *Remove( CReticle *pReticle ) { return (CReticle *)flinklist_Remove( &m_LinkRoot, pReticle ); }
 
 	void _Draw_DroidStandard( Type_e nType );
+#if FANG_WINGC
+	void _Draw_MirrorXY( Type_e nType, f32 fNormOffsetX, f32 fNormOffsetY );
+#else
 	void _Draw_MirrorXY( Type_e nType );
+#endif
 	void _Draw_Tether( void );
 	void _Draw_TetherLineScale( FViewport_t *pViewport, const CFColorRGBA *pColorRGBA, f32 fNormInnerRadius, f32 fNormOuterRadius, f32 fNormTickSize, f32 fScale );
 	void _Draw_TetherPentagon( FViewport_t *pViewport, const CFVec3A *pNormOrig, const CFColorRGBA *pColorRGBA, f32 fNormThickness, f32 fNormRadius, f32 fRotAngle, BOOL bFadeEnds );

@@ -257,6 +257,11 @@ _TracerDef_s CVehicleSentinel::m_CannonTracerDef;
 CFTexInst CVehicleSentinel::m_CannonTracerTexInst;
 FDecalDefHandle_t CVehicleSentinel::m_hBulletDecal = FDECALDEF_INVALID_HANDLE;
 FSndFx_FxHandle_t CVehicleSentinel::m_hCannonSFX;
+#if FANG_WINGC
+static const f32 _MACHINE_GUN_PC_VOLUME = 0.70710678f; // -3 dB, machine gun only.
+#else
+static const f32 _MACHINE_GUN_PC_VOLUME = 1.0f;
+#endif
 FSndFx_FxHandle_t CVehicleSentinel::m_hMachineGunSFX;
 CBotPartPool *CVehicleSentinel::m_pPartPool;
 FExplosion_GroupHandle_t CVehicleSentinel::m_hShellExplosion;
@@ -1027,19 +1032,10 @@ void CVehicleSentinel::_TracerKilledCallback( TracerDef_t *pTracerDef, TracerKil
 #if FANG_WINGC
 				// The retail "Sentinel" explosion names a damage profile 'SentinelCannon' that the
 				// damage tables never define, so the shell's blast did no damage at all (only the
-				// impact's shove). Use the cannon's own profiles: player-driven or AI, versus or not.
-				{
-					static CDamageProfile *s_apCannon[4];
-					static BOOL s_bLooked = FALSE;
-					if( !s_bLooked ) {
-						static cchar *s_apszCannon[4] = { "SentinelCannonNPC", "SentinelCannonPC", "mp_SentinelCannonNPC", "mp_SentinelCannonPC" };
-						for( u32 i = 0; i < 4; ++i ) s_apCannon[i] = CDamage::FindDamageProfile( s_apszCannon[i], FALSE, TRUE );
-						s_bLooked = TRUE;
-					}
-					const u32 nProfile = (pTracerDef->Damager.nDamagerPlayerIndex >= 0 ? 1 : 0) +
-						(MultiplayerMgr.IsMultiplayer() && !MultiplayerMgr.IsLocalCoop() ? 2 : 0);
-					ExplosionSpawnParams.pDamageProfile = s_apCannon[nProfile] ? s_apCannon[nProfile] : s_apCannon[nProfile & 1];
-				}
+				// impact's shove). Use the cannon's own profile, player-driven or AI (b_vsentinel's
+				// SentinelCannonPC / SentinelCannonNPC). Versus already has its mp_ data swapped in
+				// under those names, so looking up the mp_ names here would pick the campaign values.
+				ExplosionSpawnParams.pDamageProfile = pSentinel->GetWeaponDamageProfile( FALSE, pTracerDef->Damager.nDamagerPlayerIndex );
 #endif
 				ExplosionSpawnParams.pDamager = &pTracerDef->Damager;
 
@@ -1160,14 +1156,14 @@ void CVehicleSentinel::_UpdateMachineGun( void )
 
 			if( m_hMachineGunSFX != FSNDFX_INVALID_FX_HANDLE )
 			{
-				fsndfx_Play2D( m_hMachineGunSFX, 1.0f, fmath_RandomFloatRange( 0.8f, 1.2f ) );
+				fsndfx_Play2D( m_hMachineGunSFX, _MACHINE_GUN_PC_VOLUME, fmath_RandomFloatRange( 0.8f, 1.2f ) );
 			}
 		} 
 		else
 		{
 			if( m_hMachineGunSFX != FSNDFX_INVALID_FX_HANDLE )
 			{
-				fsndfx_Play3D( m_hMachineGunSFX, &pmSecondaryFire->m_vPos, _MACHINE_GUN_SFX_RADIUS, 1.0f, 1.0f, fmath_RandomFloatRange( 0.8f, 1.2f ) );
+				fsndfx_Play3D( m_hMachineGunSFX, &pmSecondaryFire->m_vPos, _MACHINE_GUN_SFX_RADIUS, 1.0f, _MACHINE_GUN_PC_VOLUME, fmath_RandomFloatRange( 0.8f, 1.2f ) );
 			}
 		}
 
@@ -1254,7 +1250,11 @@ void CVehicleSentinel::_UpdateMachineGun( void )
 					{
 						pDamageForm->m_nDamageLocale = CDamageForm::DAMAGE_LOCALE_IMPACT;
 						pDamageForm->m_nDamageDelivery = CDamageForm::DAMAGE_DELIVERY_ONE_SPECIFIC_ENTITY;
+#if FANG_WINGC
+						pDamageForm->m_pDamageProfile = GetWeaponDamageProfile( TRUE, m_nPossessionPlayerIndex );
+#else
 						pDamageForm->m_pDamageProfile = m_pBotInfo_Vehicle->pSecondaryWeaponDamageProfile;
+#endif
 						pDamageForm->m_Damager.pWeapon = NULL;
 						pDamageForm->m_Damager.pBot = this;
 						pDamageForm->m_Damager.nDamagerPlayerIndex = m_nPossessionPlayerIndex;
@@ -1985,9 +1985,10 @@ void CVehicleSentinel::MoveVehicle( void )
 			m_eSentinelState = VEHICLESENTINEL_STATE_START_UPSIDE_DOWN;
 		}
 	}
-#if !FANG_PRODUCTION_BUILD
+#if !FANG_PRODUCTION_BUILD && !FANG_WINGC
 	else
 	{
+		// Developer-only vehicle hop: never expose this through PC gameplay input.
 		// allow driver to "jump" the vehicle
 		CFVec3A vForce, vPoint;
 		vPoint.Set( 0.0f, 0.0f, 0.0f );

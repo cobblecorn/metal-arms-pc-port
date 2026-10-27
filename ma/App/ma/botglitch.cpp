@@ -32,6 +32,9 @@
 #include "fforce.h"
 #include "meshtypes.h"
 #include "weapons.h"
+#if FANG_WINGC
+#include "weapon_laser.h"
+#endif
 #include "reticle.h"
 #include "player.h"
 #include "level.h"
@@ -3666,6 +3669,12 @@ BOOL CBotGlitch::_IsFingerOnTrigger2( void ) const {
 void CBotGlitch::_HandleWeaponFiring( void ) {
 	f32 fTrig1, fTrig2;
 	u32 nFireBitsPrimary;
+#if FANG_WINGC
+	CWeaponLaser *pChargeLaser = m_apWeapon[0]->Type() == CWeapon::WEAPON_TYPE_LASER &&
+		((CWeaponLaser *)m_apWeapon[0])->SupportsPlayerCharge() ? (CWeaponLaser *)m_apWeapon[0] : NULL;
+	CWeaponRivet *pChargeRivet = m_apWeapon[0]->Type()==CWeapon::WEAPON_TYPE_RIVET_GUN &&
+		((CWeaponRivet*)m_apWeapon[0])->SupportsPlayerCharge() ? (CWeaponRivet*)m_apWeapon[0] : NULL;
+#endif
 
 	m_bFingerOnTrigger1 = _IsFingerOnTrigger1();
 	m_bFingerOnTrigger2 = _IsFingerOnTrigger2();
@@ -3677,6 +3686,14 @@ void CBotGlitch::_HandleWeaponFiring( void ) {
 		FMATH_CLEARBITMASK( m_nBotFlags, BOTFLAG_PLAY_FIRE1_ANIM );
 		EnableAiming( FALSE );
 		fTrig1 = 0.0f;
+#if FANG_WINGC
+		if( m_apWeapon[0]->Type() == CWeapon::WEAPON_TYPE_LASER && ((CWeaponLaser *)m_apWeapon[0])->SupportsPlayerCharge() ) {
+			// A blocked stance/menu is not a physical trigger release. Cancel the
+			// charge and require release before a new player-controlled cycle.
+			((CWeaponLaser *)m_apWeapon[0])->CancelPlayerCharge();
+		}
+		if( pChargeRivet ) pChargeRivet->CancelPlayerCharge();
+#endif
 #if defined(MA_PC_INPUT)
 		// Stance gating is not a physical release of the slingshot trigger.
 		// Keep its sample history held rather than launching a round mid movement.
@@ -3687,12 +3704,24 @@ void CBotGlitch::_HandleWeaponFiring( void ) {
 	}
 
 	fTrig2 = m_bFingerOnTrigger2 ? m_fControls_Fire2 : 0.0f;
+#if FANG_WINGC
+	// Physical secondary history distinguishes a tap from a hold even if a stance
+	// temporarily blocks fire. CancelPlayerCharge suppresses synthetic releases.
+	const f32 fPrimarySecondary = ((pChargeLaser && pChargeLaser->UsesMouseChargeControls()) ||
+		(pChargeRivet && pChargeRivet->UsesMouseChargeControls())) ? m_fControls_Fire2 : fTrig2;
+#else
+	const f32 fPrimarySecondary = fTrig2;
+#endif
 
 	if( m_pRoboBuddy ) {
-		nFireBitsPrimary = m_apWeapon[0]->TriggerWork( fTrig1, fTrig2, &m_TargetedPoint_WS, m_pRoboBuddy->GetFirePos() );
+		nFireBitsPrimary = m_apWeapon[0]->TriggerWork( fTrig1, fPrimarySecondary, &m_TargetedPoint_WS, m_pRoboBuddy->GetFirePos() );
 	} else {
-		nFireBitsPrimary = m_apWeapon[0]->TriggerWork( fTrig1, fTrig2, &m_TargetedPoint_WS );
+		nFireBitsPrimary = m_apWeapon[0]->TriggerWork( fTrig1, fPrimarySecondary, &m_TargetedPoint_WS );
 	}
+#if FANG_WINGC
+	if( pChargeLaser && pChargeLaser->UsesMouseChargeControls() ) fTrig2 = m_bFingerOnTrigger2 && pChargeLaser->PlayerSecondaryTap() ? 1.0f : 0.0f;
+	if( pChargeRivet && pChargeRivet->UsesMouseChargeControls() ) fTrig2 = m_bFingerOnTrigger2 && pChargeRivet->PlayerSecondaryTap() ? 1.0f : 0.0f;
+#endif
 
 	if( nFireBitsPrimary ) {
 		// We fired the primary weapon...

@@ -3,8 +3,11 @@
 #include "player.h"
 #include "bot.h"
 #include "botglitch.h"
+#include "botminer.h"
 #include "botfx.h"
 #include "weapon.h"
+#include "weapon_laser.h"
+#include "gcoll.h"
 #include "entity.h"
 #include "collectable.h"
 #include "ItemInst.h"
@@ -75,6 +78,16 @@ static BOOL AllHaveAmmo(const char *pszTag, int count) {
 static void Check(BOOL bOK, const char *pszCheck) {
     DEVPRINTF("COOP-TEST %s: %s\n", bOK ? "PASS" : "FAIL", pszCheck);
 }
+
+#include "laser_retail_regression.inl"
+#include "booth_fallback_regression.inl"
+#include "slope_doorway_regression.inl"
+#include "miner_death_regression.inl"
+#include "console_possession_regression.inl"
+#include "coop_batch_regression.inl"
+#include "exavolt_regression.inl"
+#include "exavolt_adapter_regression.inl"
+#include "rivet_mouse_regression.inl"
 
 static void VendorUpgradeWork(CBot *buyer, CBot *partner, int owner, u32 now, int &step, u32 &stamp) {
     static int caption=0, purchase=0, funds=0, partnerFunds=0;
@@ -170,6 +183,119 @@ static void VendorUpgradeWork(CBot *buyer, CBot *partner, int owner, u32 now, in
 
 #include "reddit_regression.inl"
 
+
+static void LaserChargeReport(CBot *actor, int &step) {
+    static CWeaponLaser *laser=NULL;
+    static f32 elapsed=0;
+    static u32 shots=0;
+    static u32 bursts=0;
+    CFVec3A target=actor->MtxToWorld()->m_vPos;target.y+=60;
+    if(!step) {
+        actor->SetInvincible(TRUE);
+        laser=fnew CWeaponLaser;
+        Check(laser && laser->Create("port_laser_charge_probe",actor->MtxToWorld()),"native charge probe creates real Mining Laser");
+        if(!laser || !laser->IsCreated()){step=99;return;}
+        laser->SetOwner(actor);laser->SetUpgradeLevel(1);laser->AddToWorld();laser->EnableAutoWork(FALSE);
+        laser->ResetToState(CWeapon::STATE_DEPLOYED,TRUE);laser->SetClipAmmo(100,TRUE);
+        Check(laser->SupportsPlayerCharge(),"native L2 charge damage profiles loaded");
+        laser->TriggerWork(0,0,&target);step=1;elapsed=0;
+    }
+    elapsed+=FLoop_fPreviousLoopSecs;
+    if(step==1) {
+        shots+=laser->TriggerWork(laser->UsesMouseChargeControls()?0:.5f,laser->UsesMouseChargeControls()?1:0,&target);laser->Work();
+        if(elapsed>=3.9f) {
+            Check(shots==0 && laser->GetClipAmmo()==100,"native hold charges without firing or spending ammo");
+            Check(laser->TriggerWork(0,0,&target)==1,"native release fires the charged shot");laser->Work();
+            Check(laser->GetClipAmmo()==75,"native charged burst spends the selected quarter bar");
+            DEVPRINTF("LASER-REPORT burst owner=P%d energy=%u hold=%.3f\n",actor->m_nPossessionPlayerIndex+1,laser->GetClipAmmo(),elapsed);
+            bursts=1;step=2;elapsed=0;
+        }
+    } else if(step==2) {
+        Check(laser->TriggerWork(0,0,&target)==0,"native idle cannot repeat charged release");laser->Work();
+        if(elapsed>=.9f) {step=7;elapsed=0;shots=0;}
+    } else if(step==7) {
+        shots+=laser->TriggerWork(laser->UsesMouseChargeControls()?0:.5f,laser->UsesMouseChargeControls()?1:0,&target);laser->Work();
+        if(elapsed>=3.9f) {
+            const u16 before=laser->GetClipAmmo();
+            Check(shots==0 && before>=25 && before<100,"native second charge starts and completes below full energy");
+            Check(laser->TriggerWork(0,0,&target)==1,"native second release fires without refilling the bar");laser->Work();
+            Check(laser->GetClipAmmo()==before-25,"native repeat burst spends the same quarter-bar cost");
+            DEVPRINTF("LASER-REPORT repeat owner=P%d before=%u after=%u\n",actor->m_nPossessionPlayerIndex+1,before,laser->GetClipAmmo());
+            ++bursts;
+            Check(bursts<=4,"native four charged bursts run without a manual refill");
+            step=8;elapsed=0;
+        }
+    } else if(step==8) {
+        laser->TriggerWork(0,0,&target);laser->Work();
+        if(elapsed>=.9f) {
+            if(bursts<4){step=7;elapsed=0;shots=0;return;}
+            Check(bursts==4,"native four bursts each spent 25 energy; normal idle recharge remains active");
+            DEVPRINTF("LASER-REPORT budget bursts=%u totalCost=%u energyWithIdleRecharge=%u\n",bursts,25*bursts,laser->GetClipAmmo());
+            laser->SetClipAmmo(100,TRUE);Check(laser->TriggerWork(1,0,&target)==1,"native primary press fires immediately");laser->Work();
+            Check(laser->GetClipAmmo()==99,"native normal shot spends one energy");
+            step=3;elapsed=0;
+        }
+    } else if(step==3) {
+        Check(laser->TriggerWork(0,0,&target)==0,"native primary release adds no shot");laser->Work();step=4;elapsed=0;
+    } else if(step==4) {
+        laser->TriggerWork(0,0,&target);laser->Work();
+        if(elapsed>=.9f){laser->SetClipAmmo(100,TRUE);laser->TriggerWork(laser->UsesMouseChargeControls()?0:.5f,laser->UsesMouseChargeControls()?1:0,&target);laser->Work();step=9;elapsed=0;}
+    } else if(step==9) {
+        Check(laser->TriggerWork(0,0,&target)==0 && (laser->UsesMouseChargeControls() ? laser->PlayerSecondaryTap() : !laser->PlayerSecondaryTap()),"native mouse tap delegates item; controller primary tap never becomes a grenade");laser->Work();
+        Check(laser->GetClipAmmo()==100,"native secondary tap spends no laser energy");step=5;elapsed=0;
+    } else if(step==5) {
+        laser->TriggerWork(laser->UsesMouseChargeControls()?0:.5f,laser->UsesMouseChargeControls()?1:0,&target);laser->Work();
+        if(elapsed>=1.8f) {
+            laser->ResetToState(CWeapon::STATE_STOWED,TRUE);laser->ResetToState(CWeapon::STATE_DEPLOYED,TRUE);
+            Check(laser->TriggerWork(0,0,&target)==0,"native stow cancels charge without firing");laser->Work();
+            Check(laser->GetClipAmmo()==100,"native canceled charge preserves energy");
+            laser->RemoveFromWorld(TRUE);fdelete(laser);laser=NULL;
+            DEVPRINTF("LASER-REPORT COMPLETE owner=P%d\n",actor->m_nPossessionPlayerIndex+1);step=99;
+        }
+    }
+}
+
+static void LaserInputReport(CBot *actor,u32 now,int &step,u32 &stamp) {
+    static CWeapon *laser=NULL,*grenade=NULL;
+    static u16 previousEnergy=100;
+    static u32 primarySpent=0;
+    if(!step) {
+        laser=actor->GetPrimaryWeapon();
+        Check(laser && laser->Type()==CWeapon::WEAPON_TYPE_LASER && (laser->GetUpgradeLevel()==1 || laser->GetUpgradeLevel()==2 || (laser->GetUpgradeLevel()==0 && pcmods_Feature("super_mining_lasers"))),"native mouse test has charge-capable L2/L3 laser equipped");
+        Check(CCollectable::GiveWeaponToPlayer(actor,"Coring Charge",3),"native mouse test has grenades");
+        CItemInst *item=actor->m_pInventory->IsWeaponInInventory("Coring Charge");
+        if(!laser || !item || !item->m_pWeapon){step=99;return;}
+        actor->m_pInventory->SetCurWeapon(INV_INDEX_SECONDARY,item,FALSE,TRUE);
+        grenade=item->m_pWeapon;grenade->SetClipAmmo(3,TRUE);laser->SetClipAmmo(100,TRUE);
+        actor->SetInvincible(TRUE);step=1;stamp=now;
+    } else if(step==1 && grenade->GetClipAmmo()==2) {
+        Check(laser->GetClipAmmo()==100,"native right tap throws one grenade without laser fire");
+        DEVPRINTF("LASER-INPUT tap grenades=%u energy=%u\n",grenade->GetClipAmmo(),laser->GetClipAmmo());step=2;stamp=now;
+    } else if(step==2) {
+        Check(grenade->GetClipAmmo()==2,"native right hold never starts another grenade throw");
+        if(laser->GetClipAmmo()<90) {
+            Check(laser->GetClipAmmo()==75,"native right hold releases a charged burst and spends 25 energy");
+            DEVPRINTF("LASER-INPUT charge grenades=%u energy=%u\n",grenade->GetClipAmmo(),laser->GetClipAmmo());
+            previousEnergy=laser->GetClipAmmo();step=3;stamp=now;
+        }
+    } else if(step==3) {
+        const u16 energy=laser->GetClipAmmo();
+        if(Player_aPlayer[0].m_HumanControl.m_fFire1>.25f && energy<previousEnergy)primarySpent+=previousEnergy-energy;
+        previousEnergy=energy;
+        if(primarySpent>=3) {
+            Check(grenade->GetClipAmmo()==2,"native left hold repeats normal shots without a grenade");
+            DEVPRINTF("LASER-INPUT primary-repeat spent=%u\n",primarySpent);step=4;stamp=now;
+        }
+    } else if(step==4 && Player_aPlayer[0].m_HumanControl.m_fFire2>.25f) {
+        laser->SetClipAmmo(0,TRUE);step=5;stamp=now;
+    } else if(step==5 && now-stamp>750 && Player_aPlayer[0].m_HumanControl.m_fFire2==0) {
+        Check(grenade->GetClipAmmo()==2,"native low-energy charge release cannot accidentally throw a grenade");
+        Check(laser->GetClipAmmo()<50,"native low-energy hold cannot fire a free burst");
+        DEVPRINTF("LASER-INPUT COMPLETE grenades=%u energy=%u\n",grenade->GetClipAmmo(),laser->GetClipAmmo());step=99;
+    }
+    if(step && step!=99 && now-stamp>20000){Check(FALSE,"native laser mouse input progresses within timeout");step=99;}
+}
+
 void port_CoopRegressionWork() {
     static char mode[32];
     static BOOL bRead = FALSE;
@@ -194,18 +320,97 @@ void port_CoopRegressionWork() {
     const BOOL corrosiveFixture = !strcmp(mode,"corrosive36");
     const BOOL movementCheats = !strcmp(mode,"movement-cheats");
     const BOOL domeFixture = !strncmp(mode,"corrosive-dome",14);
-    const BOOL soloFixture = !strncmp(mode,"report-",7) || domeFixture || !strncmp(mode,"washer-report",13) || !strncmp(mode,"pickup-",7) || !strcmp(mode,"swarmer-report") || !strncmp(mode,"shop-upgrades",13) || !strncmp(mode,"shop-ammo",9) || !strcmp(mode,"hangar-magnet") || !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
+    const BOOL soloFixture = !strncmp(mode,"booth-",6) || !strncmp(mode,"report-",7) || domeFixture || !strncmp(mode,"washer-report",13) || !strncmp(mode,"pickup-",7) || !strcmp(mode,"swarmer-report") || !strncmp(mode,"shop-upgrades",13) || !strncmp(mode,"shop-ammo",9) || !strcmp(mode,"hangar-magnet") || !strncmp(mode,"fabricator",10) || !strncmp(mode,"rendezvous",10) || !strcmp(mode,"goff-parts") || !strcmp(mode,"spy-packing") || !strncmp(mode, "audio-", 6) || !strncmp(mode, "city-", 5) || spyFixture;
     if (!mode[0] || CPlayer::m_nPlayerCount < 1 || (CPlayer::m_nPlayerCount < 2 && !soloFixture && !coliseumGates && !invasionFixture && !movementCheats) || step == 99) return;
     CBot *p0 = (CBot *)Player_aPlayer[0].m_pEntityOrig;
     CBot *p1 = CPlayer::m_nPlayerCount > 1 ? (CBot *)Player_aPlayer[1].m_pEntityOrig : p0;
-    if (!p0 || !p1 || (!step && (!p0->IsInWorld() || !p1->IsInWorld()))) return;
+    if (!p0 || !p1 || (!step && strcmp(mode,"report-miner-death") && (!p0->IsInWorld() || !p1->IsInWorld()))) return;
     const u32 now = GetTickCount();
     if (!nStart) nStart = now;
-    if (now - nStart < 1500 && strncmp(mode,"fabricator",10)) return;
+    if (now - nStart < 1500 && strncmp(mode,"fabricator",10) && strncmp(mode,"report-batch-gifts",18)) return;
+    if(!strncmp(mode,"booth-",6)) {PortBoothFallbackRegression(p0,!strcmp(mode,"booth-blocked"),now,step,nStepTime);return;}
+    if(!strcmp(mode,"report-miner-death")) {PortMinerDeathRegression(p0,p1,now,step,nStepTime);return;}
+    if(!strcmp(mode,"report-mod-adapter")) {if(CBot::m_bCutscenePlaying || !Player_aPlayer[0].HasEntityControl()) return; PortExavoltAdapterRegression(p0,now,step,nStepTime);return;}
+    if(!strncmp(mode,"report-exavolt",14)) {if(CBot::m_bCutscenePlaying || !Player_aPlayer[0].HasEntityControl()) return; PortExavoltRegression(p0,!strcmp(mode,"report-exavolt-vanilla"),step,!strcmp(mode,"report-exavolt-extended"));return;}
+    if(!strncmp(mode,"report-batch-",13)) {
+        if(CBot::m_bCutscenePlaying || ((!strstr(mode,"gifts") && !strstr(mode,"washer") && !strstr(mode,"tether")) && !Player_aPlayer[0].HasEntityControl())) return;
+        PortBatchRegression(mode,now,step,nStepTime);return;
+    }
+    if(!strncmp(mode,"report-console",14)) {
+        const int owner=mode[strlen(mode)-1]=='2' && CPlayer::m_nPlayerCount>1 ? 1 : 0;
+        if(CBot::m_bCutscenePlaying || (!step && !Player_aPlayer[owner].HasEntityControl())) return;
+        PortConsolePossessionRegression((CBot*)Player_aPlayer[owner].m_pEntityOrig,
+            CPlayer::m_nPlayerCount>1 ? (CBot*)Player_aPlayer[1-owner].m_pEntityOrig : p0,
+            owner,mode,now,step,nStepTime);return;
+    }
+    if(!strncmp(mode,"report-laser-retail",19)) {
+        const int owner=mode[strlen(mode)-1]=='2' && CPlayer::m_nPlayerCount>1 ? 1 : 0;
+        port_LaserRetailRegression((CBot*)Player_aPlayer[owner].m_pEntityOrig,step,nStepTime,now);return;
+    }
+    if(!strncmp(mode,"report-laser",12) && strcmp(mode,"report-laser-input")) {
+        game_EndCutScene(TRUE);
+        const int owner=mode[strlen(mode)-1]=='2' && CPlayer::m_nPlayerCount>1 ? 1 : 0;
+        const s32 previous=CPlayer::m_nCurrent;CPlayer::SetCurrent(owner);
+        LaserChargeReport((CBot*)Player_aPlayer[owner].m_pEntityOrig,step);
+        CPlayer::SetCurrent(previous);return;
+    }
     if (!step && strncmp(mode,"report-arena",12) && !spyFixture && !coliseumGates && !invasionFixture && !corrosiveFixture && !domeFixture && strncmp(mode,"fabricator",10)) {
         if (!Player_aPlayer[0].HasEntityControl()) { nControlReadyTime = 0; return; }
         if (!nControlReadyTime) nControlReadyTime = now;
         if (now - nControlReadyTime < 3000) return;
+    }
+    if(!strcmp(mode,"report-laser-input")) {LaserInputReport(p0,now,step,nStepTime);return;}
+    if(!strcmp(mode,"report-rivet-input")) {RivetMouseInputReport(p0,now,step,nStepTime);return;}
+    if(!strncmp(mode,"report-slope",12)) {
+        PortSlopeDoorwayRegression(mode[strlen(mode)-1]=='2'?p1:p0,now,step,nStepTime);return;
+    }
+    if (!strncmp(mode,"report-slosh",12)) {
+        const int requested=mode[strlen(mode)-1]-'1';
+        const int owner=requested>=0 && requested<CPlayer::m_nPlayerCount ? requested : 0;
+        CBot *actor=(CBot*)Player_aPlayer[owner].m_pEntityCurrent;
+        CWeapon *weapon=actor ? actor->GetPrimaryWeapon() : NULL;
+        if(!step)Check(actor && (actor->TypeBits()&ENTITY_BIT_BOTCHEMBOT) && weapon && weapon->Type()==CWeapon::WEAPON_TYPE_FLAMER,"native Slosh owns the real flamer");
+        if(!actor || !weapon || !(actor->TypeBits()&ENTITY_BIT_BOTCHEMBOT) || weapon->Type()!=CWeapon::WEAPON_TYPE_FLAMER){step=99;return;}
+        if(step==1) {
+            if(now-nStepTime<8500)return;
+            DEVPRINTF("SLOSH-AIM COMPLETE owner=P%d\n",owner+1);step=99;return;
+        }
+        CFVec3A muzzle;weapon->ComputeMuzzlePoint_WS(&muzzle);
+        CFCamera *camera=fcamera_GetCameraByIndex(owner);
+        const CFMtx43A &view=camera->GetFinalXfm()->m_MtxF;
+        const CFMtx43A &world=camera->GetFinalXfm()->m_MtxR;
+        CFVec3A targetCS,muzzleCS;
+        view.MulPoint(targetCS,actor->m_TargetedPoint_WS);
+        view.MulPoint(muzzleCS,muzzle);
+        const CFVec3 *camPos=camera->GetPos();
+        DEVPRINTF("SLOSH-AIM camera pos=(%.3f,%.3f,%.3f) final=(%.3f,%.3f,%.3f) front=(%.3f,%.3f,%.3f) reticle=(%.3f,%.3f)\n",camPos->x,camPos->y,camPos->z,world.m_vPos.x,world.m_vPos.y,world.m_vPos.z,world.m_vFront.x,world.m_vFront.y,world.m_vFront.z,Player_aPlayer[owner].m_Reticle.GetNormOriginX(),Player_aPlayer[owner].m_Reticle.GetNormOriginY());
+        DEVPRINTF("SLOSH-AIM cameraSpace target=(%.3f,%.3f,%.3f) muzzle=(%.3f,%.3f,%.3f) weapon tier=%u axis=(%.3f,%.3f,%.3f)\n",targetCS.x,targetCS.y,targetCS.z,muzzleCS.x,muzzleCS.y,muzzleCS.z,weapon->GetUpgradeLevel(),weapon->MtxToWorld()->m_vFront.x,weapon->MtxToWorld()->m_vFront.y,weapon->MtxToWorld()->m_vFront.z);
+        CFVec3A targetSS;
+        fviewport_ComputeUnitOrtho3DScreenPoint_WS(camera->GetViewport(),&view,&actor->m_TargetedPoint_WS,&targetSS);
+        const f32 errorX=targetSS.x*camera->GetViewport()->HalfRes.x-Player_aPlayer[owner].m_Reticle.GetNormOriginX()*camera->GetViewport()->HalfRes.y;
+        const f32 errorY=(targetSS.y-Player_aPlayer[owner].m_Reticle.GetNormOriginY())*camera->GetViewport()->HalfRes.y;
+        DEVPRINTF("SLOSH-AIM projected target error pixels=(%.3f,%.3f) viewport=%ux%u\n",errorX,errorY,camera->GetViewport()->nWidth,camera->GetViewport()->nHeight);
+        if(strncmp(mode,"report-slosh-baseline",21))Check(fmath_Abs(errorX)<1.0f && fmath_Abs(errorY)<1.0f,"native Slosh camera target projects inside displayed reticle center");
+        for(int sample=0;sample<3;++sample) {
+            CFVec3A target=actor->m_TargetedPoint_WS;
+            if(sample) {
+                CFVec3A direction=actor->MtxToWorld()->m_vFront;
+                if(sample==2){direction.y+=1;direction.Unitize();}
+                direction.Mul(50);target=muzzle;target.Add(direction);
+            }
+            CFVec3A wanted,actual,error;
+            wanted.Sub(target,muzzle);wanted.Unitize();
+            weapon->ComputeFireUnitDir(&actual,&muzzle,&weapon->MtxToWorld()->m_vFront,&target,FALSE);
+            error.Sub(actual,wanted);
+            DEVPRINTF("SLOSH-AIM owner=P%d sample=%d desiredDotWeapon=%.6f actualDotDesired=%.6f muzzle=(%.2f,%.2f,%.2f) target=(%.2f,%.2f,%.2f)\n",owner+1,sample,wanted.Dot(weapon->MtxToWorld()->m_vFront),actual.Dot(wanted),muzzle.x,muzzle.y,muzzle.z,target.x,target.y,target.z);
+            // The restored shared muzzle clamp is measured here, not asserted away.
+
+        }
+        const u16 before=weapon->GetClipAmmo();
+        weapon->TriggerWork(1,0,&actor->m_TargetedPoint_WS);weapon->Work();
+        Check(weapon->GetClipAmmo()<before,"native Slosh flamer emits and spends fuel");
+        weapon->TriggerWork(0,0,&actor->m_TargetedPoint_WS);weapon->Work();
+        step=1;nStepTime=now;return;
     }
     if (movementCheats) {
         if (pausescreen_IsActive()) return;

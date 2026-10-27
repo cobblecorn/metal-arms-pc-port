@@ -273,6 +273,9 @@ protected:
 private:
 
 	static BOOL _OperatorBoxAction( CEntity *pActionerEntity, CEntity *pOperatorBoxEntity );
+#if FANG_WINGC
+	void _RecoverInterruptedPossession( void );
+#endif
 	void _ClearDataMembers( void );
 	BOOL _LocateSlotPositions( cchar *pszNamePrefix );
 

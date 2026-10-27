@@ -31,6 +31,9 @@
 #include "fmesh.h"
 #include "eproj.h"
 #include "explosion.h"
+#if FANG_WINGC
+#include "pc_laser_charge.h"
+#endif
 
 
 class CBot;
@@ -185,6 +188,10 @@ private:
 	CFVec3A m_TargetPos_WS;							// Target position
 	const CFVec3A *m_pBuddyFirePos_WS;				// Position the projectile is to emit from the fire buddy (NULL=none)
 
+#if FANG_WINGC
+	PCLaserCharge m_MouseCharge;
+	BOOL m_bSecondaryTapThisFrame;
+#endif
 	u16 m_nChargingTracerID;						// ID of the tracer being charged (0=none)
 
 	CEProj *m_pChargingArrowProj1;					// Points to the arrow projectile being charged (NULL=none)
@@ -217,6 +224,13 @@ public:
 	virtual void ComputeMuzzlePoint_WS( CFVec3A *pMuzzlePoint_WS ) const;
 	virtual u32 TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, const CFVec3A *pTargetPos_WS, const CFVec3A *pBuddyFirePos_WS = NULL );
 	BOOL IsArrowSuspendedByTriggerDown( CEProj *pProj );
+#if FANG_WINGC
+	CEProj *PortTestChargingArrow() const { return m_pChargingArrowProj1; }
+	BOOL SupportsPlayerCharge() const;
+	BOOL UsesMouseChargeControls() const;
+	void CancelPlayerCharge();
+	FINLINE BOOL PlayerSecondaryTap() const { return m_bSecondaryTapThisFrame; }
+#endif
 
 
 	// Rumble:

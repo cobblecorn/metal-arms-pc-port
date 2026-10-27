@@ -895,8 +895,8 @@ void CVehicleLoader::ClassHierarchyWork( void ) {
 
 
 
-#if SAS_ACTIVE_USER == SAS_USER_ELLIOTT
-	//temp...
+#if SAS_ACTIVE_USER == SAS_USER_ELLIOTT && !FANG_WINGC
+	// Developer-only Loader hop; excluded from PC gameplay.
 	CFVec3A vForce;
 
 	if( m_bControls_Jump ) {
@@ -2848,7 +2848,11 @@ void CVehicleLoader::_CauseCrushDamage( CBot* pBot ) {
 		pDamageForm->m_pDamageeEntity	= pBot;
 		pDamageForm->m_nDamageLocale	= CDamageForm::DAMAGE_LOCALE_AMBIENT;
 		pDamageForm->m_nDamageDelivery	= CDamageForm::DAMAGE_DELIVERY_ONE_SPECIFIC_ENTITY;
+#if FANG_WINGC
+		pDamageForm->m_pDamageProfile	= GetWeaponDamageProfile( TRUE, m_nPossessionPlayerIndex );
+#else
 		pDamageForm->m_pDamageProfile	= m_pBotInfo_Vehicle->pSecondaryWeaponDamageProfile;
+#endif
 		pDamageForm->m_Damager.pBot		= this;
 		pDamageForm->m_Damager.nDamagerPlayerIndex = m_nPossessionPlayerIndex;
 
@@ -3550,7 +3554,11 @@ void CVehicleLoader::_WeaponWork( void ) {
 					if( pDamageForm ) {
 						pDamageForm->m_nDamageLocale	= CDamageForm::DAMAGE_LOCALE_IMPACT;
 						pDamageForm->m_nDamageDelivery	= CDamageForm::DAMAGE_DELIVERY_ONE_SPECIFIC_ENTITY;
+#if FANG_WINGC
+						pDamageForm->m_pDamageProfile	= GetWeaponDamageProfile( FALSE, m_nPossessionPlayerIndex );
+#else
 						pDamageForm->m_pDamageProfile	= m_pBotInfo_Vehicle->pPrimaryWeaponDamageProfile;
+#endif
 						pDamageForm->m_Damager.pWeapon	= NULL;
 						pDamageForm->m_Damager.pBot		= this;
 						pDamageForm->m_Damager.nDamagerPlayerIndex = m_nPossessionPlayerIndex;

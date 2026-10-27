@@ -304,6 +304,9 @@ public:
 class CMAST_CamWrapper
 {
 public:
+#if FANG_WINGC
+	static void PortBoothFallbackWork();
+#endif
 	static BOOL InitSystem();
 	static void UninitSystem();
 	static BOOL InitLevel();

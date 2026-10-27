@@ -46,6 +46,9 @@
 #include "fsound.h"
 #include "eproj_arrow.h"
 #include "eparticlepool.h"
+#if defined(MA_PC_INPUT)
+#include "pc_input.h"
+#endif
 
 
 #define _USER_PROP_FILENAME		"w_rivet.csv"
@@ -695,6 +698,10 @@ void CWeaponRivet::_ClearDataMembers( void ) {
 	m_nChargingTracerID = 0;
 	m_pChargingArrowProj1 = NULL;
 	m_pChargingArrowProj2 = NULL;
+#if FANG_WINGC
+	m_MouseCharge.Cancel(false);
+	m_bSecondaryTapThisFrame=FALSE;
+#endif
 
 	fforce_NullHandle( &m_hForce );
 }
@@ -745,6 +752,9 @@ void CWeaponRivet::ClassHierarchyAddToWorld( void ) {
 
 
 void CWeaponRivet::ClassHierarchyRemoveFromWorld( void ) {
+#if FANG_WINGC
+	CancelPlayerCharge();
+#endif
 	FASSERT( IsCreated() );
 	FASSERT( IsInWorld() );
 
@@ -834,6 +844,9 @@ void CWeaponRivet::AppendTrackerSkipList(u32& nTrackerSkipListCount, CFWorldTrac
 
 
 void CWeaponRivet::ClassHierarchySetUpgradeLevel( u32 nPreviousUpgradeLevel ) {
+#if FANG_WINGC
+	CancelPlayerCharge();
+#endif
 	FASSERT( !IsTransitionState( CurrentState() ) );
 
 	_ResourceData_t *pOldResourceData = &m_aResourceData[nPreviousUpgradeLevel];
@@ -874,10 +887,45 @@ void CWeaponRivet::ComputeMuzzlePoint_WS( CFVec3A *pMuzzlePoint_WS ) const {
 }
 
 
+#if FANG_WINGC
+BOOL CWeaponRivet::SupportsPlayerCharge() const {
+	return IsOwnedByPlayer() && GetOwner() && (GetOwner()->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
+		m_pUserProps && m_pUserProps->ArrowProjStaticParams.nType==EPROJ_ARROW_TYPE_REMOTE_BOOM;
+}
+BOOL CWeaponRivet::UsesMouseChargeControls() const {
+#if defined(MA_PC_INPUT)
+	const s32 player=GetSafeOwnerPlayerIndex();
+	return SupportsPlayerCharge() && player>=0 && player<MAX_PLAYERS &&
+		pcinput_UsesMouseWeaponControls(Player_aPlayer[player].m_nControllerIndex);
+#else
+	return FALSE;
+#endif
+}
+void CWeaponRivet::CancelPlayerCharge() {
+	m_MouseCharge.Cancel();
+	m_bSecondaryTapThisFrame=FALSE;
+}
+#endif
+
 u32 CWeaponRivet::TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, const CFVec3A *pTargetPos_WS, const CFVec3A *pBuddyFirePos_WS ) {
 	FASSERT( IsCreated() );
 
 	m_bFireThisFrame = FALSE;
+#if FANG_WINGC
+	m_bSecondaryTapThisFrame=FALSE;
+	if( UsesMouseChargeControls() ) {
+		const BOOL wasCharging=m_MouseCharge.IsCharging();
+		const BOOL controlled=CurrentState()==STATE_DEPLOYED && !GetOwner()->IsDeadOrDying();
+		// Same 0.75-second mouse tap/hold boundary as the Mining Laser.
+		// Holding drives the existing primary trigger: the L3 rivet fires,
+		// heats after impact, and detonates on release with native damage.
+		const PCLaserCharge::Result gesture=m_MouseCharge.Sample(fUnitTriggerVal2,controlled!=FALSE,TRUE,
+			FLoop_fPreviousLoopSecs,0.75f,3.0f);
+		m_bSecondaryTapThisFrame=gesture.shot==PCLaserCharge::SECONDARY_TAP;
+		if( m_MouseCharge.IsCharging() ) fUnitTriggerVal1=1.0f;
+		else if( wasCharging ) fUnitTriggerVal1=0.0f;
+	} else m_MouseCharge.Cancel(false);
+#endif
 
 	if( m_nWeaponFlags & WEAPONFLAG_WAIT_FOR_TRIGGER_UP ) {
 		// We're waiting for the trigger to be released...
@@ -1055,6 +1103,9 @@ void CWeaponRivet::_FireRound( const CFVec3A *pPos_WS, const CFVec3A *pUnitDir_W
 
 // Switches immediately to state CWeapon::CurrentState().
 void CWeaponRivet::ClassHierarchyResetToState( void ) {
+#if FANG_WINGC
+	CancelPlayerCharge();
+#endif
 	CWeapon::ClassHierarchyResetToState();
 
 	m_bFireThisFrame = FALSE;

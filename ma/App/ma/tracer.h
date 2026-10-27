@@ -59,6 +59,7 @@ enum
 	TRACERFLAG_USE_ALPHA_FADES			= 0x01,
 	TRACERFLAG_USE_GLOBAL_MOVEMENTCB	= 0x02,
 	TRACERFLAG_DRAW_ADDITIVE			= 0x04,
+	TRACERFLAG_DEFER_FIRST_WORK          = 0x10, // Callback-created continuation starts next frame
 	TRACERFLAG_THICK_PROJECTILE			= 0x08,		// Set to TRUE to collide with materials flagged for thick projectile collision
 };
 

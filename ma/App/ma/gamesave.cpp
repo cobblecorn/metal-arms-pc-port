@@ -176,6 +176,13 @@ static void _RestorePlayerPossession( s32 nCheckpoint )
 			if( pPlayerEntityCurrent[ nIndex ]->TypeBits() & ENTITY_BIT_BOT )
 			{
 				pBot = (CBot*) pPlayerEntityCurrent[ nIndex ];
+#if FANG_WINGC
+				// Alarm cleanup removes pooled bots after entity restore. Reinsert only
+				// the saved possession target before handing its player back to it.
+				if( !pBot->IsInWorld() || pBot->IsMarkedForWorldRemove() ) {
+					pBot->AddToWorld();
+				}
+#endif
 				pBot->Possess( nIndex, fPossessedArmorModifier[ nIndex ] );
 				pBot->Power_SetState( TRUE /*bPowerUp*/ );
 				Player_aPlayer[ nIndex ].EnableEntityControl();

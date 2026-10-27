@@ -17,6 +17,10 @@
 // 04/30/02 MacKellar   Created.
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
+#if FANG_WINGC
+#include "pc_randomizer.h"
+#include "pc_mods.h"
+#endif
 #include "fclib.h"
 #include "AIBuilder.h"
 #include "AIBrain.h"
@@ -935,9 +939,19 @@ _XOutOfMemory:
 BOOL CAIBrain::InitFromBuilder(CEntityBuilder* pBuilder)
 {
 	CAIBuilder* pAIBuilder = pBuilder->m_pAIBuilder;
+#if FANG_WINGC
+	CAIBuilder nativeAI;
+	if(pcrandom_AI(pBuilder,&nativeAI)) pAIBuilder=&nativeAI;
+#endif
 
 
-	switch (((CBotBuilder*) pBuilder)->m_anNPCWeaponType[0])
+	switch (
+#if FANG_WINGC
+		(CBotBuilder::NPCWeapon_e)pcrandom_Primary((CBotBuilder*)pBuilder,(pBuilder->m_nEC_TypeBits & ENTITY_BIT_BOTMINER)!=0)
+#else
+		((CBotBuilder*) pBuilder)->m_anNPCWeaponType[0]
+#endif
+	)
 	{
 	case CBotBuilder::_NPC_WEAPON_LASER:
 		BuilderHelp_SetSafeDefaultU32(&(pAIBuilder->m_uTimedBursts), FALSE);

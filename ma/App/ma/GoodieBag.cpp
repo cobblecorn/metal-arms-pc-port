@@ -17,6 +17,11 @@
 // 05/16/02	Link		Created.
 //////////////////////////////////////////////////////////////////////////////////////
 
+#include "fang.h"
+#if FANG_WINGC
+#include "pc_randomizer.h"
+#include "pc_mods.h"
+#endif
 #include "GoodieBag.h"
 #include "fclib.h"
 #include "meshentity.h"
@@ -410,7 +415,13 @@ void CGoodieBag::ReleaseIntoWorld(CEntity *pOwner)
 				vecDir.Mul(fmath_RandomFloatRange(20.0f, 30.0f));
 //				pGoodie->Relocate_WS(&CFMtx43A::m_Xlat);
 		
-				CCollectable::PlaceIntoWorld( (CollectableType_e) pCurGI->GetGoodieType(), &CFMtx43A::m_Xlat, &vecDir, m_fGoodieScale, -1, pOwner );
+				CCollectable::PlaceIntoWorld( (CollectableType_e)
+#if FANG_WINGC
+					pcrandom_Drop((u32)pCurGI->GetGoodieType(),pOwner,uCurGoodieInstIdx),
+#else
+					pCurGI->GetGoodieType(),
+#endif
+                    &CFMtx43A::m_Xlat, &vecDir, m_fGoodieScale, -1, pOwner );
 
 				//
 				/////////////////////////////////////////////////////////////////////

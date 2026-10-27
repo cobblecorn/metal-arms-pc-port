@@ -274,7 +274,8 @@ private:
 	s32 m_nPortWasherPlayer;
 	f32 m_fPortWasherTime;
 	CFVec3A m_PortWasherStart;
-	BOOL _IsPersonalWeapon() const;
+	BOOL _IsPersonalPickup() const;
+	BOOL _CoopOwnsNumberedBattery( const CBot *pBot ) const;
 	BOOL _WorkWasherAttraction();
 	static BOOL _CoopDrawFilter( CFMeshInst *pMesh, void *pData );
 #endif
@@ -373,6 +374,17 @@ public:
 #endif
 	static BOOL GiveToPlayer( CBot *pBot, cchar *pszCollectableName, f32 fScale );
 	static BOOL GiveWeaponToPlayer( CBot *pBot, cchar *pszWeaponName, s32 nAmmoCount = -1 );
+#if FANG_WINGC
+	// Shop ammo: whether pBot's inventory holds the weapon of this type, and adding its ammo straight to
+	// that weapon (primaries' reserve, secondaries' clip; -1 = the type's default count) without changing
+	// its upgrade level. FALSE when it isn't owned or has no room.
+	static BOOL OwnsWeaponForAmmo( CBot *pBot, CollectableType_e eType );
+	static BOOL GiveOwnedWeaponAmmo( CBot *pBot, CollectableType_e eType, s32 nAmmoCount );
+	// Shop items: placed for this player and collected for them at once by the normal pickup code.
+	// FALSE (and nothing left in the world) when it could not be placed or the player can't take it.
+	static BOOL GiveToPlayerAndCollect( CBot *pBot, CollectableType_e eType, f32 fScale );
+	static BOOL GiveStoryToPlayer( CBot *pBot, cchar *pszName, f32 fScale );
+#endif
 
 	static void Work( void );
 	static BOOL PlaceIntoWorld( CollectableType_e eType, const CFMtx43A *pMtx, const CFVec3A *pVelWS = NULL, f32 fScale = 1.0f, s32 nAmmoCount = -1, CEntity *pSpawnIgnoreEntity = NULL );
@@ -437,7 +449,7 @@ private:
 	static BOOL _GiveWeaponUpgradeToPlayer( CBot *pBot, CCollectableType *pType );
 #endif
 
-	static BOOL _PlaceIntoWorld( CCollectableType *pType, const CFMtx43A *pMtx, const CFVec3A *pVelWS = NULL, f32 fScale = 1.0f, f32 fSpawnTime = 0.0f, s32 nAmmoCount = -1, CEntity *pSpawnIgnoreEntity = NULL, s32 nRecipientPlayer = -1 );
+	static BOOL _PlaceIntoWorld( CCollectableType *pType, const CFMtx43A *pMtx, const CFVec3A *pVelWS = NULL, f32 fScale = 1.0f, f32 fSpawnTime = 0.0f, s32 nAmmoCount = -1, CEntity *pSpawnIgnoreEntity = NULL, s32 nRecipientPlayer = -1, CCollectable **ppPlaced = NULL );
 
 	static void _PickupSpecialItem( CCollectableType *pCollectType );
 	static void _ForceSpecialMeshesToNull( CCollectableType *pCollectType );

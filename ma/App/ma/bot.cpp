@@ -17,10 +17,18 @@
 // 02/18/02 Ranck       Created.
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
+#if FANG_WINGC
+#include "pc_randomizer.h"
+#include "pc_mods.h"
+#endif
 #if defined(MA_PC_INPUT)
 #include "pc_input.h"
 #endif
 #include "bot.h"
+#if FANG_WINGC
+#include "level.h"
+#include "pc_city_slope.h"
+#endif
 
 #include "fanim.h"
 #include "FScriptSystem.h"
@@ -526,6 +534,11 @@ CWeapon* CBotBuilder::AllocNPCWeaponOfType( NPCWeapon_e nNPCWeaponType ) {
 	case _NPC_WEAPON_GRENADE:
 		pWeap = fnew CWeaponGren();
 		break;
+	#if FANG_WINGC
+	case _NPC_WEAPON_RIPPER:
+		pWeap = fnew CWeaponRipper();
+		break;
+	#endif
 	case _NPC_WEAPON_BLASTER:
 		pWeap = fnew CWeaponBlaster();
 		break;
@@ -577,6 +590,11 @@ BOOL CBotBuilder::CreateNPCWeaponOfType( CWeapon* pWeap, NPCWeapon_e nNPCWeaponT
 	case _NPC_WEAPON_GRENADE:
 		bDidIt = ((CWeaponGren*) pWeap)->Create();
 		break;
+	#if FANG_WINGC
+	case _NPC_WEAPON_RIPPER:
+		bDidIt = ((CWeaponRipper*)pWeap)->Create();
+		break;
+	#endif
 	case _NPC_WEAPON_BLASTER:
 		bDidIt = ((CWeaponBlaster*) pWeap)->Create();
 		break;
@@ -816,6 +834,11 @@ void CBot::ClassHierarchyAddToWorld( void ) {
 	FASSERT( !IsInWorld() );
 
 	CEntity::ClassHierarchyAddToWorld();
+#if FANG_WINGC
+	if (m_pShield && (TypeBits() & (ENTITY_BIT_BOTGLITCH|ENTITY_BIT_BOTMINER|ENTITY_BIT_BOTSCOUT|ENTITY_BIT_BOTZOM)) && !m_pShield->IsInWorld()) {
+		m_pShield->AddToWorld(); m_pShield->EnableShield(TRUE);
+	}
+#endif
 
 	// set mesh transform to be at mount position
 	m_pWorldMesh->m_Xfm.BuildFromMtx( m_MtxToWorld );
@@ -856,6 +879,9 @@ void CBot::ClassHierarchyAddToWorld( void ) {
 
 
 void CBot::ClassHierarchyRemoveFromWorld( void ) {
+#if FANG_WINGC
+	if (m_pShield && (TypeBits() & (ENTITY_BIT_BOTGLITCH|ENTITY_BIT_BOTMINER|ENTITY_BIT_BOTSCOUT|ENTITY_BIT_BOTZOM)) && m_pShield->IsInWorld()) m_pShield->RemoveFromWorld();
+#endif
 	FASSERT( IsCreated() );
 	FASSERT( IsInWorld() );
 
@@ -1161,6 +1187,9 @@ void CBot::InflictDamageResult( const CDamageResult *pDamageResult ) {
 			fDeltaHitpoints = pDamageResult->m_fDeltaHitpoints;
 		}
 
+		#if FANG_WINGC
+		if (fDeltaHitpoints>0 && IsSleeping() && pcmods_Option("grunt_sleep")) WakeUp();
+		#endif
 		fNormHealth -= fDeltaHitpoints;
 
 		// Handle scope resetting for player bots only...
@@ -1716,6 +1745,9 @@ BOOL CBot::Create( const CBotDef *pBotDef, s32 nPlayerIndex, BOOL bInstallDataPo
 // Called from the leaf down to CEntity.
 // Returns FALSE if the object could not be built.
 BOOL CBot::ClassHierarchyBuild( void ) {
+#if FANG_WINGC
+	PcModActorScope RandomizerScope((CBotBuilder *)GetLeafClassBuilder());
+#endif
 	CBotBuilder *pBuilder;
 	f32 fStartHeading;
 
@@ -1915,6 +1947,9 @@ _DataPortResourcesNotLoaded:
 
 BOOL CBot::ClassHierarchyBuilt( void ) {
 	CBotBuilder *pBuilder;
+#if FANG_WINGC
+	s32 portState;
+#endif
 
 	if( !CEntity::ClassHierarchyBuilt() ) {
 		goto _ExitWithError;
@@ -1927,6 +1962,13 @@ BOOL CBot::ClassHierarchyBuilt( void ) {
 	pBuilder = (CBotBuilder *)GetLeafClassBuilder();
 
 	// Load data port resources...
+#if FANG_WINGC
+	portState=pcrandom_Dataport(pBuilder);
+	if (portState>=0 && m_pBotInfo_Gen && m_pBotInfo_Gen->pszDataPortBoneName &&
+		m_pWorldMesh->FindBone(m_pBotInfo_Gen->pszDataPortBoneName)>=0) {
+		m_bDataPortInstalled=portState!=0; m_bDataPortOpen=portState==2;
+	}
+#endif
 	_LoadDataPortResources();
 
 	if( m_pBotInfo_Gen ) {
@@ -2036,6 +2078,10 @@ BOOL CBot::ClassHierarchyBuilt( void ) {
 	//	DisableOurWorkBit();
 	//}
 
+#if FANG_WINGC
+	if (!m_pShield) m_pShield=pcrandom_CreateShield(this,pBuilder);
+#endif
+
 	// Success...
 
 	return TRUE;
@@ -2046,6 +2092,10 @@ _ExitWithError:
 
 
 void CBot::ClassHierarchyDestroy( void ) {
+#if FANG_WINGC
+	// These native randomizer shields are owned by the base bot. Other classes delete their own.
+	if (TypeBits() & (ENTITY_BIT_BOTGLITCH|ENTITY_BIT_BOTMINER|ENTITY_BIT_BOTSCOUT|ENTITY_BIT_BOTZOM)) { fdelete(m_pShield); m_pShield=NULL; }
+#endif
 	fdelete( m_pNoLegsDebrisPileWorldMesh );
 	fdelete( m_pPartMgr );
 	fdelete( m_pDataPortMeshEntity );
@@ -2649,6 +2699,12 @@ void CBot::ClassHierarchyRelocated( void *pIdentifier ) {
 
 void CBot::ClassHierarchyWork( void ) {
 	CEntity::ClassHierarchyWork();
+#if FANG_WINGC
+	if (m_pShield && (TypeBits() & (ENTITY_BIT_BOTGLITCH|ENTITY_BIT_BOTMINER|ENTITY_BIT_BOTSCOUT|ENTITY_BIT_BOTZOM))) {
+		if (IsDeadOrDying()) m_pShield->EnableShield(FALSE);
+		m_pShield->Work();
+	}
+#endif
 
 	if( !IsOurWorkBitSet() ) {
 		return;
@@ -3929,6 +3985,11 @@ void CBot::ComputeXlatStickInfo( void ) {
 //   m_LastStickyEntityPos
 void CBot::HandleCollision( void ) {
 	BOOL bIsOnGround = (m_nState == STATE_GROUND);
+#if FANG_WINGC
+	const BOOL bMilCitySlope = m_nPossessionPlayerIndex >= 0 &&
+		!(TypeBits() & ENTITY_BIT_VEHICLE) && Level_nLoadedIndex >= 0 &&
+		!fclib_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WEMCcity_03");
+#endif
 	m_nState = STATE_AIR;
 	m_uCollisionStatus = COLLSTATE_NO_COLLISION;
 	m_pActionableEntityNearby = NULL;
@@ -4130,6 +4191,9 @@ void CBot::HandleCollision( void ) {
 		for ( j = 0; j < FColl_nImpactCount; j++ ) {
 
 			pImpact = &FColl_aImpactBuf[j];
+#if FANG_WINGC
+			if (bMilCitySlope && PortMilCityBuriedDoorwayWall(*pImpact,m_CollSphere)) continue;
+#endif
 
 			#if _SHOW_DEBUG_GRAPHICS
 				if ( bShowDebugGraphics ) {
@@ -4228,6 +4292,9 @@ void CBot::HandleCollision( void ) {
 		for ( j = 0; j < FColl_nImpactCount; j++ ) {
 
 			pImpact = &FColl_aImpactBuf[j];
+#if FANG_WINGC
+			if (bMilCitySlope && PortMilCityBuriedDoorwayWall(*pImpact,m_CollSphere)) continue;
+#endif
 
 			if ( pImpact->nSourceBoneIndex == 0xfe ) {
 				// This is a walkable impact and should therefore not be used for non-walkable collision
@@ -6795,6 +6862,9 @@ void CBot::_AdjustAimVectorToCompensateForCamLookatDeviation( const CFVec3A *pCa
 
 
 void CBot::HandleSleeping( void ) {
+#if FANG_WINGC
+	if (IsSleeping() && m_nPossessionPlayerIndex>=0 && m_bControls_Jump && pcmods_Option("grunt_sleep")) WakeUp();
+#endif
 	if( m_nSleepState != BOTSLEEPSTATE_NONE) {
 		FASSERT(CanSleep());		//shouldn't be in sleep state if this bot doesn't have these anims
 		switch (m_nSleepState) {
@@ -9501,6 +9571,12 @@ BOOL CBot::Sleep( void ) {
 
 
 BOOL CBot::WakeUp( void ) {
+#if FANG_WINGC
+	if (m_nSleepState==BOTSLEEPSTATE_INIT && CanSleep() && pcmods_Option("grunt_sleep")) {
+		UpdateTime(ASI_WAKE,0); SetControlValue(ASI_DOZE_LOOP,1.0f); SetControlValue(ASI_WAKE,0);
+		m_fUnitWake=0; m_nSleepState=BOTSLEEPSTATE_WAKE; return TRUE;
+	}
+#endif
 	if( (m_nSleepState == BOTSLEEPSTATE_DOZE_LOOP) || (m_nSleepState == BOTSLEEPSTATE_NAPJERK) ) {
 		m_nSleepState = BOTSLEEPSTATE_WAKE;
 		return TRUE;
@@ -9557,6 +9633,9 @@ BOOL CBot::CheckpointSave( void )
 	CFCheckPoint::SaveData( (u32&) m_pInventory );
 	CFCheckPoint::SaveData( (u32&) m_eSpotLightState );
 	CFCheckPoint::SaveData( (u32&) m_nSleepState );
+#if FANG_WINGC
+	if (m_pShield && (TypeBits() & (ENTITY_BIT_BOTGLITCH|ENTITY_BIT_BOTMINER|ENTITY_BIT_BOTSCOUT|ENTITY_BIT_BOTZOM))) CFCheckPoint::SaveData(m_pShield->NormHealth());
+#endif
 
 	if( m_pInventory ) {
 		CFCheckPoint::SaveData( (void*) m_pInventory, sizeof( CInventory ) );
@@ -9617,6 +9696,11 @@ void CBot::CheckpointRestore( void )
 	CFCheckPoint::LoadData( (u32&) pInventory );
 	CFCheckPoint::LoadData( (u32&) m_eSpotLightState );
 	CFCheckPoint::LoadData( (u32&) m_nSleepState );
+#if FANG_WINGC
+	if (m_pShield && (TypeBits() & (ENTITY_BIT_BOTGLITCH|ENTITY_BIT_BOTMINER|ENTITY_BIT_BOTSCOUT|ENTITY_BIT_BOTZOM))) {
+		f32 shieldHealth; CFCheckPoint::LoadData(shieldHealth); m_pShield->SetNormHealth(shieldHealth);
+	}
+#endif
 
 	FMATH_CLEARBITMASK( m_nBotFlags, BOTFLAG_PLAY_FIRE1_ANIM );
 	FMATH_CLEARBITMASK( m_nBotFlags2, BOTFLAG2_CAN_DOUBLE_JUMP );
@@ -9701,6 +9785,9 @@ void CBot::CheckpointRestore( void )
 	}
 
 	CWeaponRecruiter::BotCheckpointRestored( this );
+#if FANG_WINGC
+	if (m_pShield && (TypeBits() & (ENTITY_BIT_BOTGLITCH|ENTITY_BIT_BOTMINER|ENTITY_BIT_BOTSCOUT|ENTITY_BIT_BOTZOM))) m_pShield->EnableShield(IsInWorld() && !IsDeadOrDying());
+#endif
 
 	DataPort_Reserve( FALSE );
 
@@ -10788,6 +10875,11 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 
 	fReticleX = pReticle->GetNormOriginX();
 	fReticleY = pReticle->GetNormOriginY();
+#if FANG_WINGC
+	// Reticles draw both offsets in units of half the viewport height. The
+	// perspective ray and visibility queries use half-width units for X.
+	fReticleX *= pViewport->fAspectHOW;
+#endif
 
 	fEndPointReticleAdjust = (fMaxLiveRange * fReticleX) * pViewport->fTanHalfFOVX;
 	ReticleAdjustX.Mul( pCamera->GetFinalXfm()->m_MtxR.m_vRight, fEndPointReticleAdjust );
@@ -10812,7 +10904,7 @@ void CBot::ComputeHumanTargetPoint_WS( CFVec3A *pTargetPt, CWeapon *pWeapon, f32
 	}
 
 	// Set up the screen space info
-	CFVec2 vScreenXY( pReticle->GetNormOriginX(), pReticle->GetNormOriginY() );
+	CFVec2 vScreenXY( fReticleX, fReticleY );
 	f32 fReticleActiveRadius = pReticle->GetScreenSpaceRadius() * PLAYER_TARGET_ASSIST_RETICLE_MULTIPLIER;
 
 	// These vars will get filled out if the relevant meshes are detected

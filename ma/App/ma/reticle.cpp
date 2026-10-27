@@ -376,10 +376,21 @@ void CReticle::Destroy( void ) {
 }
 
 
+// Simulation can evaluate one player's weapon while another camera is active.
+static const CFMtx43A *_ReticleTargetView(u32 player) {
+#if FANG_WINGC
+	if(MultiplayerMgr.IsLocalCoop() && player<(u32)CPlayer::m_nPlayerCount) {
+		CFCamera *camera=fcamera_GetCameraByIndex(player);
+		if(camera)return &camera->GetFinalXfm()->m_MtxF;
+	}
+#endif
+	return &FXfm_pView->m_MtxF;
+}
+
 void CReticle::TargetSys_UpdateTargetedPoint( const FViewport_t *pViewport, const CFVec3A *pTargetedPoint_WS ) {
 	FASSERT( IsCreated() );
 
-	m_TargetedPoint_SS.z = fviewport_ComputeUnitOrtho3DScreenPoint_WS( pViewport, &FXfm_pView->m_MtxF, pTargetedPoint_WS, &m_TargetedPoint_SS );
+	m_TargetedPoint_SS.z = fviewport_ComputeUnitOrtho3DScreenPoint_WS( pViewport, _ReticleTargetView(m_nPlayerIndex), pTargetedPoint_WS, &m_TargetedPoint_SS );
 }
 
 
@@ -455,7 +466,7 @@ BOOL CReticle::IsPointWithinReticle( const FViewport_t *pViewport, const CFVec3A
 	CFVec3A Point_SS;
 	f32 fPointDistFromReticleCenter2, fReticleRadius;
 
-	fviewport_ComputeUnitOrtho3DScreenPoint_WS( pViewport, &FXfm_pView->m_MtxF, pPoint_WS, &Point_SS );
+	fviewport_ComputeUnitOrtho3DScreenPoint_WS( pViewport, _ReticleTargetView(m_nPlayerIndex), pPoint_WS, &Point_SS );
 
 	Point_SS.x -= m_fNormOriginX;
 	Point_SS.y -= m_fNormOriginY;
@@ -474,7 +485,7 @@ f32 CReticle::ComputeUnitWithinReticle( const FViewport_t *pViewport, const CFVe
 	CFVec3A Point_SS;
 	f32 fPointDistFromReticleCenter, fReticleRadius, fUnitInaccuracy;
 
-	fviewport_ComputeUnitOrtho3DScreenPoint_WS( pViewport, &FXfm_pView->m_MtxF, pPoint_WS, &Point_SS );
+	fviewport_ComputeUnitOrtho3DScreenPoint_WS( pViewport, _ReticleTargetView(m_nPlayerIndex), pPoint_WS, &Point_SS );
 
 	Point_SS.x -= m_fNormOriginX;
 	Point_SS.y -= m_fNormOriginY;
@@ -622,16 +633,29 @@ void CReticle::DrawAll( void ) {
 
 				switch( pReticle->m_nType ) {
 				case TYPE_DROID_STANDARD:
+#if !FANG_WINGC
 				case TYPE_FLAMER:
+#endif
 				case TYPE_FLOORSENTRY:
 				case TYPE_TANK_CANNON:
 				case TYPE_BLASTER:
 					pReticle->_Draw_DroidStandard( pReticle->m_nType );
 					break;
 
+#if FANG_WINGC
+				case TYPE_FLAMER:
+					// tfh_cross02 is one corner of the reticle; retail mirrors it four ways (801cc478).
+					pReticle->_Draw_MirrorXY( pReticle->m_nType, 0.05f, 0.05f );
+					break;
+
+				case TYPE_QUADLASER:
+					pReticle->_Draw_MirrorXY( pReticle->m_nType, 0.0f, 0.0f );
+					break;
+#else
 				case TYPE_QUADLASER:
 					pReticle->_Draw_MirrorXY( pReticle->m_nType );
 					break;
+#endif
 
 				case TYPE_TETHER:
 					pReticle->_Draw_Tether();
@@ -1870,7 +1894,13 @@ void CReticle::SetType( Type_e nType ) {
 }
 
 
+#if FANG_WINGC
+// Retail (main.dol 801cfa70) draws the four mirrored corners with their inner points pushed out from
+// the origin by fNormOffsetX/Y: the flamer's tfh_cross02 corners sit 0.05 out, Quad Laser's touch.
+void CReticle::_Draw_MirrorXY( Type_e nType, f32 fNormOffsetX, f32 fNormOffsetY ) {
+#else
 void CReticle::_Draw_MirrorXY( Type_e nType ) {
+#endif
 	f32 fNormScale, fNormScaleY;
 	s32 nTexIndex;
 
@@ -1915,14 +1945,22 @@ void CReticle::_Draw_MirrorXY( Type_e nType ) {
 	fNormScale	*= 0.5f;
 	fNormScaleY *= 0.5f;
 
+#if FANG_WINGC
+	const f32 fLeftX = m_fNormOriginX - fNormOffsetX, fRightX = m_fNormOriginX + fNormOffsetX;
+	const f32 fTopY = m_fNormOriginY + fNormOffsetY, fBottomY = m_fNormOriginY - fNormOffsetY;
+#else
+	const f32 fLeftX = m_fNormOriginX, fRightX = m_fNormOriginX;
+	const f32 fTopY = m_fNormOriginY, fBottomY = m_fNormOriginY;
+#endif
+
 	//upper left
-	m_aFDrawVtx[0].Pos_MS.x = pViewport->HalfRes.y * (m_fNormOriginX - fNormScale );
-	m_aFDrawVtx[0].Pos_MS.y = pViewport->HalfRes.y * (m_fNormOriginY + fNormScaleY);
+	m_aFDrawVtx[0].Pos_MS.x = pViewport->HalfRes.y * (fLeftX - fNormScale );
+	m_aFDrawVtx[0].Pos_MS.y = pViewport->HalfRes.y * (fTopY + fNormScaleY);
 
 	m_aFDrawVtx[1].Pos_MS.x = m_aFDrawVtx[0].Pos_MS.x;
-	m_aFDrawVtx[1].Pos_MS.y = pViewport->HalfRes.y * (m_fNormOriginY);
+	m_aFDrawVtx[1].Pos_MS.y = pViewport->HalfRes.y * (fTopY);
 
-	m_aFDrawVtx[2].Pos_MS.x = pViewport->HalfRes.y * (m_fNormOriginX);
+	m_aFDrawVtx[2].Pos_MS.x = pViewport->HalfRes.y * (fLeftX);
 	m_aFDrawVtx[2].Pos_MS.y = m_aFDrawVtx[0].Pos_MS.y;
 
 	m_aFDrawVtx[3].Pos_MS.x = m_aFDrawVtx[2].Pos_MS.x;
@@ -1931,13 +1969,13 @@ void CReticle::_Draw_MirrorXY( Type_e nType ) {
 	fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, m_aFDrawVtx, 4 );
 
 	// upper right
-	m_aFDrawVtx[0].Pos_MS.x = pViewport->HalfRes.y * (m_fNormOriginX + fNormScale );
-	m_aFDrawVtx[0].Pos_MS.y = pViewport->HalfRes.y * (m_fNormOriginY + fNormScaleY);
+	m_aFDrawVtx[0].Pos_MS.x = pViewport->HalfRes.y * (fRightX + fNormScale );
+	m_aFDrawVtx[0].Pos_MS.y = pViewport->HalfRes.y * (fTopY + fNormScaleY);
 
 	m_aFDrawVtx[1].Pos_MS.x = m_aFDrawVtx[0].Pos_MS.x;
-	m_aFDrawVtx[1].Pos_MS.y = pViewport->HalfRes.y * (m_fNormOriginY);
+	m_aFDrawVtx[1].Pos_MS.y = pViewport->HalfRes.y * (fTopY);
 
-	m_aFDrawVtx[2].Pos_MS.x = pViewport->HalfRes.y * (m_fNormOriginX);
+	m_aFDrawVtx[2].Pos_MS.x = pViewport->HalfRes.y * (fRightX);
 	m_aFDrawVtx[2].Pos_MS.y = m_aFDrawVtx[0].Pos_MS.y;
 	
 	m_aFDrawVtx[3].Pos_MS.x = m_aFDrawVtx[2].Pos_MS.x;
@@ -1946,13 +1984,13 @@ void CReticle::_Draw_MirrorXY( Type_e nType ) {
 	fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, m_aFDrawVtx, 4 );
 
 	// bottom left
-	m_aFDrawVtx[0].Pos_MS.x = pViewport->HalfRes.y * (m_fNormOriginX - fNormScale );
-	m_aFDrawVtx[0].Pos_MS.y = pViewport->HalfRes.y * (m_fNormOriginY - fNormScaleY);
+	m_aFDrawVtx[0].Pos_MS.x = pViewport->HalfRes.y * (fLeftX - fNormScale );
+	m_aFDrawVtx[0].Pos_MS.y = pViewport->HalfRes.y * (fBottomY - fNormScaleY);
 
 	m_aFDrawVtx[1].Pos_MS.x = m_aFDrawVtx[0].Pos_MS.x;
-	m_aFDrawVtx[1].Pos_MS.y = pViewport->HalfRes.y * (m_fNormOriginY);
+	m_aFDrawVtx[1].Pos_MS.y = pViewport->HalfRes.y * (fBottomY);
 
-	m_aFDrawVtx[2].Pos_MS.x = pViewport->HalfRes.y * (m_fNormOriginX);
+	m_aFDrawVtx[2].Pos_MS.x = pViewport->HalfRes.y * (fLeftX);
 	m_aFDrawVtx[2].Pos_MS.y = m_aFDrawVtx[0].Pos_MS.y;
 	
 	m_aFDrawVtx[3].Pos_MS.x = m_aFDrawVtx[2].Pos_MS.x;
@@ -1961,13 +1999,13 @@ void CReticle::_Draw_MirrorXY( Type_e nType ) {
 	fdraw_PrimList( FDRAW_PRIMTYPE_TRISTRIP, m_aFDrawVtx, 4 );
 
 	//bottom right
-	m_aFDrawVtx[0].Pos_MS.x = pViewport->HalfRes.y * (m_fNormOriginX + fNormScale );
-	m_aFDrawVtx[0].Pos_MS.y = pViewport->HalfRes.y * (m_fNormOriginY - fNormScaleY);
+	m_aFDrawVtx[0].Pos_MS.x = pViewport->HalfRes.y * (fRightX + fNormScale );
+	m_aFDrawVtx[0].Pos_MS.y = pViewport->HalfRes.y * (fBottomY - fNormScaleY);
 
 	m_aFDrawVtx[1].Pos_MS.x = m_aFDrawVtx[0].Pos_MS.x;
-	m_aFDrawVtx[1].Pos_MS.y = pViewport->HalfRes.y * (m_fNormOriginY);
+	m_aFDrawVtx[1].Pos_MS.y = pViewport->HalfRes.y * (fBottomY);
 
-	m_aFDrawVtx[2].Pos_MS.x = pViewport->HalfRes.y * (m_fNormOriginX);
+	m_aFDrawVtx[2].Pos_MS.x = pViewport->HalfRes.y * (fRightX);
 	m_aFDrawVtx[2].Pos_MS.y = m_aFDrawVtx[0].Pos_MS.y;
 	
 	m_aFDrawVtx[3].Pos_MS.x = m_aFDrawVtx[2].Pos_MS.x;

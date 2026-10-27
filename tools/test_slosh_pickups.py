@@ -23,6 +23,7 @@ using u16=unsigned short;using u32=unsigned;using s32=int;using f32=float;using 
 constexpr int ENTITY_BIT_BOTGLITCH=1,ENTITY_BIT_BOTCHEMBOT=2,ENTITY_BIT_BOTMOZER=4,ENTITY_BIT_KRUNK=8;
 constexpr int INV_INDEX_PRIMARY=0,INV_INDEX_SECONDARY=1;
 constexpr float FMATH_MAX_FLOAT=FLT_MAX,_PICKUP_RADIUS_MULTIPLY=.75f;
+constexpr u32 _MAX_BATTERIES=6;
 int checks=0;
 void require(bool ok,const char* why){++checks;if(!ok){std::fprintf(stderr,"FAIL: %s\n",why);std::exit(1);}}
 struct CFVec3A{float x=0,y=0,z=0;static CFVec3A m_UnitAxisY;
@@ -46,9 +47,9 @@ void CWeapon::_AmmoMayHaveChanged(BOOL){if(item)item->NotifyAmmoMightHaveChanged
 struct CItem {bool secondary=true;u32 m_uCurLevel=1;bool IsSecondaryOnly(){return secondary;}};
 struct CItemRepository {static CItem mag,laser;static CItem* RetrieveEntry(const char* name,void*){return !_stricmp(name,"Magma Bomb")?&mag:&laser;}};
 CItem CItemRepository::mag;CItem CItemRepository::laser{false,1};
-struct CInventory {CItemInst* item=nullptr;CItemInst* IsWeaponInInventory(const char*){return item;}void SetCurWeapon(u32,CItemInst*,BOOL,BOOL){}};
+struct CInventory {CItemInst* item=nullptr;u32 m_uNumBatteries=1;CItemInst* IsWeaponInInventory(const char*){return item;}void SetCurWeapon(u32,CItemInst*,BOOL,BOOL){}};
 struct CEntity {int bits=0;int TypeBits(){return bits;}};
-struct CBot:CEntity {CInventory* m_pInventory=nullptr;float m_fCollCylinderRadius_WS=1,m_fCollCylinderHeight_WS=2;
+struct CBot:CEntity {CInventory* m_pInventory=nullptr;float m_fCollCylinderRadius_WS=1,m_fCollCylinderHeight_WS=2,unitHealth=1;float ComputeUnitHealth(){return unitHealth;}
  struct {CFVec3A m_vPos;}matrix;bool CanPickupItems(){return true;}bool IsDeadOrDying(){return false;}void* GetCurMech(){return nullptr;}auto MtxToWorld(){return &matrix;}};
 struct CBotGlitch:CBot {struct {int m_nWeaponInvCount=1;CWeapon* m_apWeapon[1]{};}m_WeaponInv[2];};
 struct CPlayer {static s32 m_nPlayerCount;CEntity* m_pEntityCurrent=nullptr;};
@@ -56,7 +57,7 @@ s32 CPlayer::m_nPlayerCount=1;CPlayer Player_aPlayer[4];
 struct CHud2 {static CHud2 hud;static CHud2* GetHudForPlayer(int){return &hud;}};CHud2 CHud2::hud;
 struct Multiplayer {bool IsSinglePlayer(){return true;}}MultiplayerMgr;
 struct CCollectableType {CollectableType_e m_eType;const char* m_pszName;};
-CCollectableType magma{COLLECTABLE_WEAPON_MAGMA_BOMB,"Magma Bomb"},flamer{COLLECTABLE_WEAPON_FLAMER_L1,"Flamer L1"};
+CCollectableType magma{COLLECTABLE_WEAPON_MAGMA_BOMB,"Magma Bomb"},flamer{COLLECTABLE_WEAPON_FLAMER_L1,"Flamer L1"},battery{COLLECTABLE_BATTERY,"Battery"};
 struct CFWorldMesh {struct{float m_fRadius=1;}m_BoundSphere_MS;};
 struct CCollectable {
 #if FANG_WINGC
@@ -64,13 +65,13 @@ struct CCollectable {
 #endif
  static CBot* m_pCollectBot;static CPlayer* m_pPlayer;static CHud2* m_pCollectHud;
  CCollectableType* m_pCollectableType=&magma;CFWorldMesh* m_pWorldMesh=nullptr;float m_fScale=1;struct{CFVec3A m_vPos{0,1,0};}m_MtxToWorld;
- int m_nRecipientPlayer=-1,m_nPortWasherPlayer=-1;u32 m_nCoopCollectedMask=0;
+ int m_nRecipientPlayer=-1,m_nPortWasherPlayer=-1;u32 m_nCoopCollectedMask=0;s32 m_nCurAmmoCount=-1;
  static CCollectableType* _FindCollectableType(const char* name){return !_stricmp(name,"Magma Bomb")?&magma:&flamer;}
  static bool PlayerNeeds(CBotGlitch*,CollectableType_e,BOOL){return true;}
  static CWeapon* _FindWeaponUpgrade(CBot*,CCollectableType*,u32&){return nullptr;}
  static BOOL _IsFirstScopePickup(CBot*,CCollectableType*){return false;}
  static BOOL _GiveWeaponAmmoToPlayer(CBot*,CItemInst*,CInventory*,cchar*,s32);
- BOOL _IsPickupAllowed();s32 _CanPickup();bool _IsPersonalWeapon()const{return CPlayer::m_nPlayerCount>1;}
+ BOOL _IsPickupAllowed();s32 _CanPickup();bool _IsPersonalPickup()const{return CPlayer::m_nPlayerCount>1;}BOOL _CoopOwnsNumberedBattery(const CBot*)const;
 };
 CBot* CCollectable::m_pCollectBot=nullptr;CPlayer* CCollectable::m_pPlayer=nullptr;CHud2* CCollectable::m_pCollectHud=nullptr;
 '''
@@ -106,6 +107,22 @@ int main(){
  glitchItem.m_pWeapon=&glitchGun;glitchGun.item=&glitchItem;glitchInv.item=&glitchItem;glitch.m_pInventory=&glitchInv;glitch.m_WeaponInv[0].m_apWeapon[0]=&glitchGun;glitch.m_WeaponInv[1].m_apWeapon[0]=&glitchGun;
  require(CCollectable::_GiveWeaponAmmoToPlayer(&glitch,&glitchItem,&glitchInv,"Magma Bomb",1),"Glitch secondary ammo still works");require(glitchGun.GetClipAmmo()==1,"Glitch grenade goes to clip");
  require(CCollectable::_GiveWeaponAmmoToPlayer(&glitch,&glitchItem,&glitchInv,"Laser L1",5),"Glitch primary ammo still works");require(glitchGun.GetReserveAmmo()==5,"Glitch primary goes to reserve");
+
+ // Co-op batteries: each player judged on their own inventory (collectable.cpp _CanPickup).
+ CBotGlitch g1,g2;CInventory i1,i2;g1.bits=g2.bits=ENTITY_BIT_BOTGLITCH;g1.m_pInventory=&i1;g2.m_pInventory=&i2;g2.matrix.m_vPos.x=1;
+ Player_aPlayer[0].m_pEntityCurrent=&g1;Player_aPlayer[1].m_pEntityCurrent=&g2;CPlayer::m_nPlayerCount=2;
+ CCollectable cell;cell.m_pWorldMesh=&mesh;cell.m_pCollectableType=&battery;cell.m_nCurAmmoCount=2;
+ i1.m_uNumBatteries=2;i2.m_uNumBatteries=1;
+ require(cell._CoopOwnsNumberedBattery(&g1)&&!cell._CoopOwnsNumberedBattery(&g2),"numbered battery ownership is per player");
+ require(cell._CanPickup()==1,"full-health owner of battery 2 does not block a partner without it");
+ g1.unitHealth=.5f;require(cell._CanPickup()==0,"damaged owner may take the energy refill");g1.unitHealth=1;
+ cell.m_nCoopCollectedMask=2;require(cell._CanPickup()==-1,"partner who took it cannot collect twice; owner at full health waits");cell.m_nCoopCollectedMask=0;
+ i1.m_uNumBatteries=1;require(cell._CanPickup()==0,"nearest player without the battery takes it");
+ i2.m_uNumBatteries=2;require(cell._CanPickup()==0,"P2 owning it leaves it for P1");
+ cell.m_nCurAmmoCount=-1;require(!cell._CoopOwnsNumberedBattery(&g1),"unnumbered battery is never already owned");
+ i1.m_uNumBatteries=_MAX_BATTERIES;require(cell._CanPickup()==1,"full battery set at full health does not block partner");
+ g1.unitHealth=.5f;require(cell._CanPickup()==0,"full set may still refill energy");g1.unitHealth=1;
+ cell.m_pCollectableType=&magma;
 #endif
  std::printf("PASS: %d Slosh pickup checks (PC=%d); game not launched.\n",checks,FANG_WINGC);
 }
@@ -123,6 +140,7 @@ def main():
         ("ma/App/ma/collectable.cpp", "BOOL CCollectable::_IsPickupAllowed("),
         ("ma/App/ma/collectable.cpp", "BOOL CCollectable::_GiveWeaponAmmoToPlayer("),
         ("ma/App/ma/collectable.cpp", "s32 CCollectable::_CanPickup("),
+        ("ma/App/ma/collectable.cpp", "BOOL CCollectable::_CoopOwnsNumberedBattery("),
     ):
         code += method((ROOT / path).read_text(), signature)
     OUT.mkdir(parents=True, exist_ok=True)

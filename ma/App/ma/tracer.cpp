@@ -404,7 +404,11 @@ BOOL tracer_NewTracer( TracerGroupHandle_t hGroup, const TracerDef_t *pTracerDef
 	}
 	pTracer->nTracerIndex = pGroup->nActiveCount;
 	pTracer->bAbsorbMode = bImmediateAbsorb;
+#if FANG_WINGC
+	pTracer->nAddedFrame = (pTracerDef->uFlags & TRACERFLAG_DEFER_FIRST_WORK) ? (u32)FLoop_nTotalLoopTicks : FVid_nFrameCounter;
+#else
 	pTracer->nAddedFrame = FVid_nFrameCounter;
+#endif
 	pTracer->bUseFadeTail = bUseFadeTail;
 
 	pTracer->AbsorbPoint_WS.Set( pTracer->vHeadPos_WS );
@@ -623,6 +627,10 @@ static void _GroupWork( _Group_t *pGroup )
 			// This tracer was added this frame. Don't move it...
 //			continue;
 //		}
+
+#if FANG_WINGC
+		if( (pTracer->TracerDef.uFlags & TRACERFLAG_DEFER_FIRST_WORK) && pTracer->nAddedFrame == (u32)FLoop_nTotalLoopTicks ) continue;
+#endif
 
 		// Compute the distance to move the tracer...
 		fDeltaDistToMove_WS = pTracer->TracerDef.fSpeed_WS * FLoop_fPreviousLoopSecs;

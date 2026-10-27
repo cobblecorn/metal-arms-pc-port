@@ -1173,6 +1173,17 @@ void CEConsole::_Work_FadeOutWithLogo( void ) {
 	if( m_fUnitCamAnim >= 1.0f ) {
 		// camera animation complete
 
+#if FANG_WINGC
+		// A queued fabrication is not under construction yet. A target lost
+		// during the fade must not become an off-world player's current bot.
+		if( !m_pControlBot || !m_pControlBot->IsInWorld() ||
+			m_pControlBot->IsMarkedForWorldRemove() || m_pControlBot->IsDeadOrDying() ) {
+			if( !m_pBotDispenser || !m_pBotDispenserNet || !m_pBotDispenserNet->IsOn() ) {
+				_RecoverInterruptedPossession();
+			}
+			return;
+		}
+#endif
 		// If we are possessing a dispensed bot, make sure that the bot construction is done
 		if( m_pBotDispenser ) {
 			if( m_pControlBot->IsUnderConstruction() ) {
@@ -1254,6 +1265,15 @@ void CEConsole::_Work_FadeOutWithLogo( void ) {
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void CEConsole::_Work_FadeInBehindBot( void ) {
+#if FANG_WINGC
+	const s32 owner=m_pGlitchBot->m_nOwnerPlayerIndex;
+	if( owner<0 || owner>=CPlayer::m_nPlayerCount || !m_pControlBot ||
+		m_pControlBot->m_nPossessionPlayerIndex!=owner ||
+		Player_aPlayer[owner].m_pEntityCurrent!=m_pControlBot ) {
+		_RecoverInterruptedPossession();
+		return;
+	}
+#endif
 	CPlayer *pPlayer = &Player_aPlayer[ m_pControlBot->m_nPossessionPlayerIndex ];
 
 	m_pShield->Work();
@@ -1320,13 +1340,19 @@ void CEConsole::_Work_ControllingBot( void ) {
 	_AnimateJoystick();
 
 	// animate Glitch moving console joystick in proportion to movement speed of controlled bot
-	f32 fDelta = fmath_RandomFloatRange( 0.0f, 0.2f ) + 3.0f * m_pControlBot->m_fClampedNormSpeedXZ_WS;
+	f32 fDelta = fmath_RandomFloatRange( 0.0f, 0.2f ) + 3.0f * (m_pControlBot ? m_pControlBot->m_fClampedNormSpeedXZ_WS : 0.0f);
 	FMATH_CLAMPMAX( fDelta, 1.0f );
 	m_pGlitchBot->DeltaUseConsoleTap( fDelta * FLoop_fPreviousLoopSecs );
 
 	aibrainman_SetLODOverrideForOneWork( m_pGlitchBot->AIBrain() );	// ensure Glitch work runs for one frame to update animation
 
-	if( m_pControlBot && m_pControlBot->m_nPossessionPlayerIndex < 0 ) {
+	if(
+#if FANG_WINGC
+		!m_pControlBot || m_pControlBot->m_nPossessionPlayerIndex!=m_pGlitchBot->m_nOwnerPlayerIndex
+#else
+		m_pControlBot && m_pControlBot->m_nPossessionPlayerIndex < 0
+#endif
+		) {
 		// Player has been sent back to his original bot...
 		m_pShield->DropShield( 0.0f );
 		m_pShield->EnableShield( FALSE );
@@ -1348,6 +1374,28 @@ void CEConsole::_Work_ControllingBot( void ) {
 		m_nConsoleState = CONSOLE_STATE_IDLE;
 	}
 }
+
+#if FANG_WINGC
+void CEConsole::_RecoverInterruptedPossession( void ) {
+	// Glitch's permanent owner remains valid after the borrowed bot loses its
+	// possession index. Only undo this console's presentation for that player.
+	const s32 owner=m_pGlitchBot->m_nOwnerPlayerIndex;
+	if( owner>=0 && owner<CPlayer::m_nPlayerCount ) {
+		CPlayer *player=&Player_aPlayer[owner];
+		if( player->GetDrawOverlayFunction()==_DrawMilLogoOverlay ) player->SetDrawOverlayFunction(NULL);
+		player->StopViewFade();
+		if( !CBot::m_bCutscenePlaying ) {
+			fcamera_GetCameraByIndex(owner)->SetFOV(m_fStartHalfFOV);
+			CPauseScreen::SetEnabled(TRUE);
+			CHud2::GetHudForPlayer(owner)->SetWSEnable(TRUE);
+			if( player->m_pEntityCurrent==m_pGlitchBot ) player->EnableEntityControl();
+		}
+	}
+	FMATH_CLEARBITMASK(m_nConsoleFlags,_CONSOLE_FLAG_DRAWING_MIL_LOGO | _CONSOLE_FLAG_WHITESAT_VIEW);
+	m_nConsoleState=CONSOLE_STATE_CONTROLLING_BOT;
+	_Work_ControllingBot();
+}
+#endif
 
 
 //-----------------------------------------------------------------------------

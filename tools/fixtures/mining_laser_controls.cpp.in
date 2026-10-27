@@ -1,0 +1,91 @@
+CFVec3A target{10,20,30},buddy{4,5,6};
+void hold(CWeaponLaser& w,float seconds,float strength=1){
+ for(int n=0;n<(int)std::ceil(seconds/FLoop_fPreviousLoopSecs);++n)
+  check(w.TriggerWork(0,strength,&target,&buddy)==0,"secondary hold does not fire early");
+}
+int main(){
+ CDamageProfile profiles[5][3];
+ for(int level=0;level<5;++level)for(int tier=0;tier<3;++tier)if(level==1||level==2||level==4)
+  CWeaponLaser::m_aRetailCharge[level].apDamage[tier]=&profiles[level][tier];
+ for(int fps:{15,30,60,144,240})for(int player=0;player<4;++player){
+  FLoop_fPreviousLoopSecs=1.f/fps;
+  for(int level:{1,2,4}){
+   CWeaponLaser w;w.m_nUpgradeLevel=level;w.owner.m_nPossessionPlayerIndex=player;
+   for(int n=0;n<8;++n){w.m_fSecondsCountdownTimer=0;check(w.TriggerWork(1,0,&target)==1&&!w.m_bChargedShotThisFrame,"primary hold fires normal shots immediately");}
+   check(!w.PlayerSecondaryTap(),"primary shots do not trigger secondary");
+   for(int shot=0;shot<4;++shot){
+    hold(w,3.75f+2.f/fps);check(w.m_PlayerCharge.Power()==1,"full charge clamps exactly");
+    check(w.TriggerWork(0,0,&target,&buddy)==1&&w.m_bChargedShotThisFrame,"right release fires charged shot");
+    check(!w.PlayerSecondaryTap()&&w.m_nChargedShotTier==2,"full charge never throws secondary");
+    TracerDef_t tracer;w._ConfigureChargedTracer(&tracer);
+    check(tracer.fSpeed_WS==800&&tracer.fWidth_WS==4&&tracer.fLength_WS==200&&tracer.fMaxTailDist_WS==100,"burst dimensions retained");
+    check(CWeaponLaser::_ChargedDamageProfile(tracer.nUser)==&profiles[level][2],"charged damage profile retained");
+    check(w.m_pvecBuddyFirePos_WS==&buddy,"buddy aim retained");w.m_nClipAmmo-=w._PlayerChargeCost();
+   }
+   check(w.m_nClipAmmo==0,"four full bursts use one bar");hold(w,3.8f);
+   check(w.TriggerWork(0,0,&target)==0&&!w.PlayerSecondaryTap(),"empty long hold cannot shoot or throw a grenade");
+  }
+ }
+ FLoop_fPreviousLoopSecs=1.f/120;
+ for(int energy:{0,1,24,25,26,49,50,51,75,99,100}){
+  CWeaponLaser w;w.m_nClipAmmo=energy;hold(w,.1f);
+  check(w.TriggerWork(0,0,&target)==0&&w.PlayerSecondaryTap(),"quick right tap delegates secondary even with an empty laser");
+  check(w.m_nClipAmmo==energy&&!w.m_bChargedShotThisFrame,"secondary tap spends no laser energy");
+  check(w.TriggerWork(0,0,&target)==0&&!w.PlayerSecondaryTap(),"tap is forwarded once");
+  hold(w,3.8f);check((w.TriggerWork(0,0,&target)==1)==(energy>=25),"charge requires exactly its energy cost");
+  check(!w.PlayerSecondaryTap(),"long hold never becomes a secondary throw");
+ }
+ for(float strength:{.3f,.6f,1.f}){CWeaponLaser w;hold(w,.1f,strength);check(w.TriggerWork(0,0,&target)==0&&w.PlayerSecondaryTap(),"tap/hold works with digital and analog secondary input");}
+ for(int level:{0,3}){CWeaponLaser w;w.m_nUpgradeLevel=level;
+  check(!w.SupportsPlayerCharge()&&w.TriggerWork(1,0,&target)==1,"L1 and unpossessed AI firing preserved");}
+ {CWeaponLaser w;w.player=false;check(w.TriggerWork(1,1,&target)==1&&!w.PlayerSecondaryTap(),"NPC ignores player charge routing");}
+ {CWeaponLaser w;hold(w,1.5f);CFAudioEmitter sound;w.m_pChargeSoundEmitter=&sound;w.CancelPlayerCharge();
+  check(sound.destroys==1&&!w.m_pChargeSoundEmitter,"cancel stops charge sound");hold(w,4);
+  check(w.TriggerWork(0,0,&target)==0&&!w.PlayerSecondaryTap(),"canceled hold cannot fire or throw on release");
+  hold(w,.1f);check(w.TriggerWork(0,0,&target)==0&&w.PlayerSecondaryTap(),"fresh tap works after canceled hold releases");}
+ {CWeaponLaser w;hold(w,1.5f);w.state=CWeaponLaser::STATE_STOWED;
+  check(w.TriggerWork(0,0,&target)==0&&!w.PlayerSecondaryTap(),"stow suppresses release");}
+ {CWeaponLaser w;hold(w,1.5f);w.owner.dead=true;check(w.TriggerWork(0,0,&target)==0&&!w.PlayerSecondaryTap(),"death suppresses release");}
+ {CWeaponLaser w;w.m_fSecondsCountdownTimer=1;hold(w,3.8f);
+  check(w.TriggerWork(0,0,&target)==0&&!w.PlayerSecondaryTap(),"cooldown cannot turn a hold into a grenade");}
+ {CWeaponLaser w;for(int n=0;n<500;++n)check(w.TriggerWork(1,1,&target)==0,"charge hold takes priority over primary rapid fire");
+  check(w.TriggerWork(1,0,&target)==1&&w.m_bChargedShotThisFrame&&!w.PlayerSecondaryTap(),"simultaneous buttons fire only one charged burst");}
+ {CWeaponLaser a,b;hold(a,3.8f);hold(b,.1f);
+  check(a.TriggerWork(0,0,&target)==1&&!a.PlayerSecondaryTap(),"P1 charge is independent");
+  check(b.TriggerWork(0,0,&target)==0&&b.PlayerSecondaryTap(),"P2 tap is independent");}
+ for(int level:{1,2,4})for(float power:{0.f,.499f,.5f,.949f,.95f,1.f}){
+  CWeaponLaser w;w.m_nUpgradeLevel=level;
+  FLoop_fPreviousLoopSecs=.75f+3*power;
+  check(w.TriggerWork(0,1,&target)==0,"retail charge sample stays held");
+  check(w.TriggerWork(0,0,&target)==1,"partial and full charge release");
+  const unsigned tier=power>=.95f?2:power>=.5f?1:0;
+  check(w.m_nChargedShotTier==tier,"retail .5 and .95 damage thresholds");
+  TracerDef_t shot;w._ConfigureChargedTracer(&shot);
+  check(shot.uFlags&TRACERFLAG_THICK_PROJECTILE,"charged shots use thick projectile collision");
+  w.m_nUpgradeLevel=0;
+  check(CWeaponLaser::_ChargedDamageProfile(shot.nUser)==&profiles[level][tier],"in-flight charge keeps launch upgrade and damage tier");
+ }
+ FLoop_fPreviousLoopSecs=1.f/120;
+ {CWeaponLaser w;w.m_nClipAmmo=24;hold(w,1.5f);w.m_nClipAmmo=25;hold(w,3.8f);
+  check(w.TriggerWork(0,0,&target)==1&&!w.PlayerSecondaryTap(),"holding through energy recovery charges without a full refill");}
+ for(int fps:{30,60,144})for(int player=0;player<4;++player)for(int level:{1,2,4}){
+  FLoop_fPreviousLoopSecs=1.f/fps;CWeaponLaser w;w.mouse=false;w.owner.m_nPossessionPlayerIndex=player;w.m_nUpgradeLevel=level;
+  for(int i=0;i<8;++i){w.m_fSecondsCountdownTimer=0;check(w.TriggerWork(1,0,&target)==1&&!w.m_bChargedShotThisFrame,"controller full primary pull repeats ordinary shots");}
+  check(w.TriggerWork(0,1,&target)==0&&!w.PlayerSecondaryTap(),"controller secondary is untouched by charge gesture");
+  for(int shot=0;shot<4;++shot){
+   for(int i=0;i<(int)std::ceil(3.8f*fps);++i)check(w.TriggerWork(.5f,0,&target)==0,"controller partial primary pull charges without rapid shots");
+   check(w.TriggerWork(1,0,&target)==0,"retail active charge survives squeezing fully");
+   check(w.TriggerWork(0,0,&target)==1&&w.m_bChargedShotThisFrame&&!w.PlayerSecondaryTap(),"controller release fires charged burst without secondary item");
+   w.m_nClipAmmo-=w._PlayerChargeCost();
+  }
+  check(w.m_nClipAmmo==0,"controller four bursts also spend exactly one bar");
+  for(int i=0;i<fps*4;++i)check(w.TriggerWork(.5f,0,&target)==0,"empty analog hold cannot fire free shots");
+  check(w.TriggerWork(0,0,&target)==0&&!w.PlayerSecondaryTap(),"empty analog release cannot throw secondary");
+ }
+ {CWeaponLaser w;w.mouse=false;FLoop_fPreviousLoopSecs=1.f/60;
+  check(w.TriggerWork(.4f,0,&target)==0,"controller transient half pull does not shoot");
+  check(w.TriggerWork(1,0,&target)==1&&!w.m_bChargedShotThisFrame,"quick full squeeze selects ordinary shot before charge delay");
+  check(w.TriggerWork(0,0,&target)==0&&!w.PlayerSecondaryTap(),"quick analog release is never a grenade tap");}
+ check(!CWeaponLaser::_ChargedDamageProfile(0xffff)&&!CWeaponLaser::_ChargedDamageProfile(0),"invalid snapshots rejected");
+ std::printf("PASS: %d production Mining Laser tap/hold checks; no game launched.\n",checks);
+}

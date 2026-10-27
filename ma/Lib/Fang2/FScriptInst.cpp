@@ -187,6 +187,7 @@ BOOL CFScriptInst::OnEvent(u32 uWhichEvent, u32 uEventData1, u32 uEventData2, u3
 	cell oRetVal;
 	#if FANG_PLATFORM_WIN
 	uEventData2 = PortCoopScriptKillActor( m_pScript->m_szScriptFileName, uWhichEvent, uEventData2 );
+	uEventData3 = PortCoopScriptPlayerActor(this,uWhichEvent,uEventData2,uEventData3);
 	#endif
 
 	m_pScript->SetDataArea(m_pDataArea);

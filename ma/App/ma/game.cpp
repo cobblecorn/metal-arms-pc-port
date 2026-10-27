@@ -2918,7 +2918,7 @@ static u32 _PortsOnline( void ) {
 		GetEnvironmentVariableA( "MA_PORT_TEST_COOP_POLISH", szTest, sizeof(szTest) );
 		bPickupFixture = !strcmp( szTest, "pickups" ) || !strcmp( szTest, "weapons" ) ||
 			!strcmp( szTest, "rat-chase" ) || !strncmp( szTest, "floor-pads", 10 ) ||
-			!strcmp( szTest, "movement-cheats" );
+			!strcmp( szTest, "movement-cheats" ) || !strncmp( szTest, "report-batch-", 13 );
 		bTestRead = TRUE;
 	}
 	if( bPickupFixture && CPlayer::m_nPlayerCount > 2 ) return (1u << GAMEPAD_MAX_PORT_COUNT) - 1u;

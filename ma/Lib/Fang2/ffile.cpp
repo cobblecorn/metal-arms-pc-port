@@ -26,6 +26,9 @@
 #include "fdata.h"
 #include "fclib.h"
 #include "fres.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#endif
 
 #if FANG_PLATFORM_WIN
 	#include <time.h>
@@ -464,6 +467,18 @@ FFileHandle ffile_Open( cchar *pszFName, FFileOpenType_e nOpenMode, BOOL bBypass
 
 	ffile_AddToLogFile( pszFName );
 
+#if FANG_WINGC
+	// A modded launch overlays read-only resources. Save files and explicit OS
+	// accesses bypass this branch, and the original master archive stays intact.
+	if (!bBypassMasterFile && (nOpenMode == FFILE_OPEN_RONLY ||
+		nOpenMode == FFILE_OPEN_RONLY_SEQUENTIAL || nOpenMode == FFILE_OPEN_RONLY_RANDOM)) {
+		char overridePath[1200];
+		if (pcmods_ResolveFile(pszFName, overridePath, sizeof(overridePath))) {
+			DEVPRINTF("PORT-MODS resource override %s\n", overridePath);
+			return ffile_OSDir_Open(overridePath, nOpenMode);
+		}
+	}
+#endif
 	// If we found a master file and the caller hasn't requested bypass, look in the master file
 	if ( _bMasterMode && !bBypassMasterFile ) 
 	{
@@ -702,6 +717,10 @@ const FFileMasterEntry_t* ffile_MF_OpenStream( cchar *pszFName, u32 *pFileSizeOu
 
 	ffile_AddToLogFile( pszFName );
 
+#if FANG_WINGC
+	const FFileMasterEntry_t *overrideEntry = pcmods_OpenStream(pszFName, pFileSizeOut);
+	if (overrideEntry) return overrideEntry;
+#endif
 	// If we found a master file and the caller hasn't requested bypass, look in the master file
 	if ( !_bMasterMode )
 	{
@@ -747,6 +766,12 @@ s32 ffile_MF_ReadStream( const FFileMasterEntry_t *pDirEntry, u32 uReadStart, u3
 	CFFileTimer FFileTimer;
 #endif
 
+#if FANG_WINGC
+	s32 overrideResult;
+	if (pcmods_ReadStream(pDirEntry, uReadStart, uReadAmt, pDestData, pCallback, pUser, &overrideResult)) {
+		return overrideResult;
+	}
+#endif
 	// Seek to the appropriate spot in the master file
 	if ( ffile_OSDir_Seek( &FFile_paFileCookie[FFile_hAsyncMasterFile], pDirEntry->nStartOffset + uReadStart, FFILE_SEEK_SET ) < 0 ) 
 	{

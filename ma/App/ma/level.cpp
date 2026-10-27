@@ -26,6 +26,10 @@
 #endif
 
 #include "level.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#include "MultiplayerMgr.h"
+#endif
 #include "fclib.h"
 #include "fres.h"
 #include "fresload.h"
@@ -241,7 +245,11 @@ f32 Level_fSecsInLevel;
 f32 Level_fStartingFadeSecs;
 f32 Level_fEndingFadeSecs;
 
+#if FANG_WINGC
+Level_t Level_aInfo[256] = {
+#else
 Level_t Level_aInfo[] = {
+#endif
 /////////////////////////////////////////////////////////////////////////////////////
 // DEVELOPMENT LEVELS
 /////////////////////////////////////////////////////////////////////////////////////
@@ -1434,6 +1442,19 @@ BOOL level_InitSystem( void ) {
 
 	// Count the number of levels in the table...
 	for( Level_nCount=0; Level_aInfo[Level_nCount].pszTitle; Level_nCount++ ) {}
+#if FANG_WINGC
+	for(unsigned index=0;index<pcmods_CustomLevelCount();++index) {
+		const PcModLevel *mod=pcmods_CustomLevel(index);
+		if(!mod || Level_nCount>=255) return FALSE;
+		BOOL exists=FALSE;
+		for(s32 i=0;i<Level_nCount;++i) if(Level_aInfo[i].nLevel==56+(s32)index) exists=TRUE;
+		if(exists) continue;
+		Level_t &entry=Level_aInfo[Level_nCount++];
+		entry.pszTitle=mod->title; entry.pszWorldResName=mod->world;
+		entry.nLevel=(Level_e)(56+index); entry.pszCSVFile=mod->csv; entry.pszMaterialCSVFile=mod->materials;
+		DEVPRINTF("PORT-MODS map id=%u title=%s world=%s data=%s materials=%s\n",56+index,mod->title,mod->world,mod->csv,mod->materials);
+	}
+#endif
 
 	Level_nLoadedIndex = -1;
 	_bSystemInitialized = TRUE;
@@ -1645,7 +1666,12 @@ BOOL level_Load( cchar *pszLevelTitle, BOOL bShowLoadingScreen, cwchar *pwszLoad
 				}
 			#else
 				// The retail GameCube data renamed this movie: main.dol's level_Load plays gc_loading.bik.
-				if( !loadingscreen_Init( FANG_WINGC ? "gc_loading.bik" : "load620x340.bik", pwszLoadScreenHeading ) ) {
+#if FANG_WINGC
+                cchar *loadingMovie=(pcmods_Feature("sunrise_loading_mp") && MultiplayerMgr.IsMultiplayer()) ? "gc_sunrise_Loading.bik" : "gc_loading.bik";
+#else
+                cchar *loadingMovie="load620x340.bik";
+#endif
+                if( !loadingscreen_Init( loadingMovie, pwszLoadScreenHeading ) ) {
 					goto _LevelLoadError;
 				}
 			#endif

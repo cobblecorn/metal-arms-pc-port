@@ -2499,6 +2499,9 @@ public:
 		_NPC_WEAPON_ROCKET,
 		_NPC_WEAPON_RECRUITER,
 
+		#if FANG_WINGC
+		_NPC_WEAPON_RIPPER, // appended native randomizer type; existing IDs stay fixed
+		#endif
 		_NPC_WEAPON_COUNT,
 	} NPCWeapon_e;
 

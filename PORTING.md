@@ -1,3 +1,8 @@
+Current source: **1.0.11**. See [README.md](README.md) and the
+[release changes](docs/release-1.0.11.md) for charge-shot controls, gameplay/co-op
+fixes, native mod support and verification limits. Older entries below retain
+their original build identities and validation scope.
+
 Movement toggles (2026-10-07): independent per-player Speed Boost/High Jump On/Off.
 Release build and 547 offline checks pass; native startup/menu verification pending.
 Current-source build staged only, preserving newer effect fixes and existing live EXEs.
@@ -86,9 +91,9 @@ unverified. See `docs/spy-factory-escort-leeway-20261005.md`.
 Work in progress: a native 32-bit Windows build of Swingin' Ape's engine (Fang2) and
 game, targeting the retail **GameCube** data set.
 
-The original source lives under `ma/` and is kept as close to untouched as possible.
-`main` is the verbatim source drop; all porting work is on the `x86-port` branch, so
-`git diff main..x86-port` is exactly what was changed.
+The original engine/game source lives under `ma/`; PC compatibility code also
+lives under `port/`. Current port updates are published on `main` and `x86-port`.
+Use commit history to compare the port with the earlier source baseline.
 
 Spy Factory's instructor now supports the co-op team with separate training
 lanes, each player's own command/jump checks, matching unarmed/HUD state and

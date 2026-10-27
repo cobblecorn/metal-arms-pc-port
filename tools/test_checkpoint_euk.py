@@ -178,7 +178,7 @@ def main():
     assert "CheckpointSaveSecretChips" in method(save, "static void _SaveGlobalData(")
     assert "CheckpointRestoreSecretChips" in method(save, "static void _RestoreGlobalData(")
     assert "m_bPortHaveGoodState = FALSE" in method(physics, "void CFPhysicsObject::_SetDefaults(")
-    assert "IsWeaponUpgrade" in method(collect, "BOOL CCollectable::_IsPersonalWeapon(")
+    assert "IsWeaponUpgrade" in method(collect, "BOOL CCollectable::_IsPersonalPickup(")
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "regression.cpp").write_text(code)
     (OUT / "CMakeLists.txt").write_text(

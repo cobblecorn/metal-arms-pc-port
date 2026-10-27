@@ -7,6 +7,8 @@
 // Campaign-only compatibility implemented by the game. The original event
 // remains unchanged for stats and for every other script/listener.
 unsigned PortCoopScriptKillActor( const char *pszScriptName, unsigned nEvent, unsigned nActor );
+class CFScriptInst;
+unsigned PortCoopScriptPlayerActor(CFScriptInst *pInst, unsigned nEvent, unsigned nEntity, unsigned nActor);
 
 // During a native callback, cip points immediately after SYSREQ_C. Only accept
 // the compiler's direct zero-argument return-to-global sequence; local variables

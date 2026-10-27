@@ -93,6 +93,9 @@ bool pcinput_ParseAimAssistMode(const char *text, PcAimAssistMode *mode);
 bool pcinput_AimAssistAllowed(u32 controller);
 // True while the controller's port is aiming with captured mouse look (the mouse moved last).
 bool pcinput_IsMouseAiming(u32 controller);
+// Weapon gestures follow the actual firing device, independently of prompt/aim settings.
+bool pcinput_UsesMouseWeaponControls(u32 controller);
+bool pcinput_NextMouseWeaponControls(const PcInputState &state, bool keyboard, bool previous);
 // True when the active prompt theme uses controller buttons rather than keyboard keys.
 bool pcinput_PromptsForPad();
 

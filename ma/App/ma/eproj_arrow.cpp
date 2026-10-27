@@ -54,6 +54,11 @@ void CEProj_Arrow::SetArrowParams( CEProj *pProj, const CEProj_Arrow_Params_t *p
 
 
 void CEProj_Arrow::Launched( CEProj *pProj ) {
+#if FANG_WINGC
+	// A rivet can embed in a temporary mesh. Its parent going away must
+	// detach it, not leave an active projectile frozen outside the world.
+	pProj->SetRemovedOnParentsDetach(FALSE);
+#endif
 	// Init arrow parameters...
 	m_fVibePolarity = 1.0f;
 	m_fLifeSecs = m_SetupParams.pArrowStaticParams->fArrowLifeSecs;
@@ -98,7 +103,7 @@ void CEProj_Arrow::Launched( CEProj *pProj ) {
 
 BOOL CEProj_Arrow::Detonated( CEProj *pProj, BOOL bMakeEffect, u32 nEvent, FCollImpact_t *pCollImpact ) {
 	if( m_SetupParams.pArrowStaticParams->nType == EPROJ_ARROW_TYPE_REMOTE_BOOM ) {
-		_SetBotPanicSecs( 0.0f );
+		_SetBotPanicSecs( pProj, 0.0f );
 	}
 
 	_KillSteamSound( pProj );
@@ -166,11 +171,18 @@ BOOL CEProj_Arrow::Detonated( CEProj *pProj, BOOL bMakeEffect, u32 nEvent, FColl
 }
 
 
-void CEProj_Arrow::_SetBotPanicSecs( f32 fPanicSecs ) {
-	if( m_SetupParams.pArrowIsStuckToEntity && (m_SetupParams.pArrowIsStuckToEntity->TypeBits() & ENTITY_BIT_BOT) ) {
+void CEProj_Arrow::_SetBotPanicSecs( CEProj *pProj, f32 fPanicSecs ) {
+#if FANG_WINGC
+	// The original cached hit entity can have been removed or deleted.
+	// Attachment cleanup updates GetParent() before that happens.
+	CEntity *pStuckTo=pProj->GetParent();
+#else
+	CEntity *pStuckTo=m_SetupParams.pArrowIsStuckToEntity;
+#endif
+	if( pStuckTo && (pStuckTo->TypeBits() & ENTITY_BIT_BOT) ) {
 		// We're stuck to a bot. Make him panic...
 
-		((CBot *)m_SetupParams.pArrowIsStuckToEntity)->SetPanicSecs( fPanicSecs );
+		((CBot *)pStuckTo)->SetPanicSecs( fPanicSecs );
 	}
 }
 
@@ -256,7 +268,7 @@ BOOL CEProj_Arrow::Work( CEProj *pProj ) {
 			FMATH_CLAMPMAX( m_fUnitSteamIntensity, 1.0f );
 
 			if( (fOldUnitSteamIntensity < (2.0f/3.0f)) && (m_fUnitSteamIntensity >= (2.0f/3.0f)) ) {
-				_SetBotPanicSecs( 60.0f );
+				_SetBotPanicSecs( pProj, 60.0f );
 			}
 		}
 	}

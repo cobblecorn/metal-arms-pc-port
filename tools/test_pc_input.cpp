@@ -71,6 +71,15 @@ static void CheckMouseSettings() {
 }
 
 int main() {
+    { PcInputState fire={};fire.focused=true;fire.connected=true;fire.pad.bRightTrigger=128;
+      Check(!pcinput_NextMouseWeaponControls(fire,true,true),"half controller trigger selects retail weapon controls");
+      fire.pad.bRightTrigger=0;Check(!pcinput_NextMouseWeaponControls(fire,true,false),"controller release retains controller mode");
+      fire.keys[VK_RBUTTON]=true;Check(pcinput_NextMouseWeaponControls(fire,true,false),"mouse right click selects mouse tap/hold even with a connected controller");
+      Check(!pcinput_NextMouseWeaponControls(fire,false,false),"another player cannot inherit keyboard-port mouse source");
+      fire.keys[VK_RBUTTON]=false;fire.keys['W']=true;Check(!pcinput_NextMouseWeaponControls(fire,true,false),"keyboard movement does not change the firing source");
+      fire.focused=false;fire.keys[VK_LBUTTON]=true;Check(!pcinput_NextMouseWeaponControls(fire,true,false),"background mouse input cannot change firing source");
+    }
+
 	const FPadio_InputEmulationPlatform_e gc = FPADIO_INPUT_EMULATION_PLATFORM_GC;
 	FPadio_Sample_t out;
 	PcInputState state = {};

@@ -4,8 +4,8 @@
 1 ICON "../res/ma_port.ico"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,9,0
- PRODUCTVERSION 1,0,9,0
+ FILEVERSION 1,0,11,0
+ PRODUCTVERSION 1,0,11,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -14,11 +14,11 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "FileDescription", "Metal Arms PC port setup (extracts game files from your own disc)"
-            VALUE "FileVersion", "1.0.9.0"
+            VALUE "FileVersion", "1.0.11.0"
             VALUE "InternalName", "ma_setup"
             VALUE "OriginalFilename", "ma_setup.exe"
             VALUE "ProductName", "Metal Arms PC port"
-            VALUE "ProductVersion", "1.0.9.0"
+            VALUE "ProductVersion", "1.0.11.0"
         END
     END
     BLOCK "VarFileInfo"

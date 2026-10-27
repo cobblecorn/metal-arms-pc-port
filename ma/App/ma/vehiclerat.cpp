@@ -2933,7 +2933,7 @@ void CVehicleRat::MoveVehicle( void )
 			m_eRatState = VEHICLERAT_STATE_START_UPSIDE_DOWN;
 		}
 	}
-#if !FANG_PRODUCTION_BUILD
+#if !FANG_PRODUCTION_BUILD && !FANG_WINGC
 	else
 	{
 #if 0

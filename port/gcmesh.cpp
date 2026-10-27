@@ -92,6 +92,9 @@ static BOOL _IsWorldMeshExportTarget(cchar *pszResName)
 	const char *pszWorld = getenv("MA_WORLD_EXPORT");
 	if (!pszWorld || !*pszWorld || !pszResName)
 		return FALSE;
+	// Also allow one explicitly named placed mesh for collision/asset inspection.
+	if (!_stricmp(pszWorld, pszResName))
+		return TRUE;
 
 	const size_t nWorldLength = strlen(pszWorld);
 	if (nWorldLength == 0 || strlen(pszResName) != nWorldLength + 3)

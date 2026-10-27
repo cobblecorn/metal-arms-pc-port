@@ -23,6 +23,9 @@
 #include "fdx8.h"
 #include "floop.h"
 #include "faudio.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#endif
 #include "fresload.h"
 #include "fclib.h"
 #include "ffile.h"
@@ -2932,6 +2935,28 @@ void CFAudioEmitter::Destroy( void )
 
 	if( poVirtualEmitter->poRealEmitter )
 	{
+#if FANG_WINGC
+		if( FAUDIO_EMITTER_STATE_PLAYING == poVirtualEmitter->oeState )
+		{
+			if( poVirtualEmitter->pEndOfPlayCallback )
+			{
+				poVirtualEmitter->pEndOfPlayCallback( poVirtualEmitter->poAudioEmitter );
+			}
+		}
+
+		// A real emitter owns its DirectSound buffer and counts as playing until the audio update
+		// gives it back, whatever the logical state says: Stop() and Pause() change the state at once
+		// but the buffer only on the next update, and a paused emitter keeps its buffer. Releasing it
+		// only when PLAYING left a destroyed emitter's buffer running (a loop could play on forever)
+		// and its voice counted.
+		if( poVirtualEmitter->poRealEmitter->poDSBuffer )
+		{
+			poVirtualEmitter->poRealEmitter->poDSBuffer->Stop();
+		}
+		FDX8_SAFE_RELEASE( poVirtualEmitter->poRealEmitter->poDS3DBuffer );
+		FDX8_SAFE_RELEASE( poVirtualEmitter->poRealEmitter->poDSBuffer );
+		--( _paoRealEmittersLimits[ poVirtualEmitter->uPriority ].uPlaying );
+#else
 		if( FAUDIO_EMITTER_STATE_PLAYING == poVirtualEmitter->oeState )
 		{
 			if( poVirtualEmitter->pEndOfPlayCallback )
@@ -2944,6 +2969,7 @@ void CFAudioEmitter::Destroy( void )
 			FDX8_SAFE_RELEASE( poVirtualEmitter->poRealEmitter->poDSBuffer );
 			--( _paoRealEmittersLimits[ poVirtualEmitter->uPriority ].uPlaying );
 		}
+#endif
 
 		if( poVirtualEmitter->uProperties & _EMITTER_PROPERTIES_3D )
 		{
@@ -4646,6 +4672,14 @@ CFAudioStream *CFAudioStream::Create( cchar *pszName, BOOL bWillBeUsedForMusic/*
 	fang_MemZero( pJob, sizeof( *pJob ) );
 	_snprintf( pJob->szPath, sizeof( pJob->szPath ), "%s%s.wvs", Fang_ConfigDefs.pszFile_GameRootPathName ? Fang_ConfigDefs.pszFile_GameRootPathName : "", pszName );
 	pJob->szPath[ sizeof( pJob->szPath ) - 1 ] = 0;
+#if FANG_WINGC
+	char modStream[MAX_PATH];
+	if(pcmods_ResolveMedia(pJob->szPath,modStream,sizeof(modStream))) {
+		strncpy(pJob->szPath,modStream,sizeof(pJob->szPath)-1);
+		pJob->szPath[sizeof(pJob->szPath)-1]=0;
+		DEVPRINTF("PORT-MODS stream media=%s\n",modStream);
+	}
+#endif
 	_snprintf( pJob->szName, sizeof( pJob->szName ) - 1, "%s", pszName );
 	if( INVALID_FILE_ATTRIBUTES == GetFileAttributesA( pJob->szPath ) )
 	{

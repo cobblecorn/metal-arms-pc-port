@@ -1886,11 +1886,30 @@ void CWasherDisplay::Draw3D()
 	CFMtx43A::m_Temp.Identity();
 	CFMtx43A::m_Temp.RotateY(m_fThetaY);
 	CFMtx43A::m_Temp.m_vPos.Set(0.0f, 0.0f, 10.0f);
-	CFMtx43A::m_Temp.m_vX.Mul( 4.0f );
-	CFMtx43A::m_Temp.m_vY.Mul( 4.0f );
-	CFMtx43A::m_Temp.m_vZ.Mul( 4.0f );
-
+	f32 meshScale=4.0f;
+#if FANG_WINGC
+	if(MultiplayerMgr.IsLocalCoop() && m_pMesh->BoundSphere_MS.m_fRadius>0.0f)
+		meshScale=12.0f*m_pView->fTanHalfFOVY/m_pMesh->BoundSphere_MS.m_fRadius;
+#endif
+	CFMtx43A::m_Temp.m_vX.Mul(meshScale);
+	CFMtx43A::m_Temp.m_vY.Mul(meshScale);
+	CFMtx43A::m_Temp.m_vZ.Mul(meshScale);
+#if FANG_WINGC
+	if(MultiplayerMgr.IsLocalCoop()) {
+		// Rotate around the mesh center and fit the whole washer inside its UI view.
+		CFVec3A center;
+		CFMtx43A::m_Temp.MulDir(center,m_pMesh->BoundSphere_MS.m_Pos);
+		CFMtx43A::m_Temp.m_vPos.Sub(center);
+	}
+#endif
 	fviewport_SetActive(m_pView);
+#if FANG_WINGC
+	if(MultiplayerMgr.IsLocalCoop()) {
+		// World geometry must not occlude a HUD mesh in a later split-screen view.
+		fviewport_Clear(FVIEWPORT_CLEARFLAG_DEPTH,0.0f,0.0f,0.0f,1.0f,0);
+		CFXfm::InitStack();
+	}
+#endif
 
 //	flight_InitDirLight(&m_oLight, -1.0f, 0.0f, 0.0f);
 
@@ -1926,11 +1945,32 @@ void CWasherDisplay::SetUL(CFVec3 *vecUL, FViewport_t* pRefVP)
 	u32 uWidth = fmath_FloatToU32(fWasherWidth * pRefVP->HalfRes.x);
 	u32 uHeight = fmath_FloatToU32(fWasherHeight * pRefVP->HalfRes.x);	// Make it more or less square, regardless of viewport proportions
 
+#if FANG_WINGC
+	if(MultiplayerMgr.IsLocalCoop()) {
+		// The count is a text row in this player's safe viewport. Fit its spinning
+		// icon beside that row rather than scaling a square by the entire width.
+		const f32 textX=(JCXToFTextX(vecUL->x+fWasherWidth)+(CPlayer::m_nPlayerCount>2?0.1f:0.0f))*pRefVP->Res.x;
+		const f32 line=(fWasherHeight*0.30f/0.75f)*pRefVP->Res.y;
+		const f32 side=1.75f*line;
+		uWidth=uHeight=FMATH_MAX(1u,fmath_FloatToU32(side));
+		uX1=pRefVP->nScreenLeftX+fmath_FloatToU32(FMATH_MAX(0.0f,textX-side-0.15f*line));
+		uY1=pRefVP->nScreenTopY+fmath_FloatToU32(FMATH_MAX(0.0f,fWasherTextY*pRefVP->Res.y/0.75f+0.5f*(line-side)));
+		// An explicit square projection keeps a UI mesh out of world-FOV widening.
+		fviewport_InitPersp(m_pView,FMATH_PI/6.0f,FMATH_PI/6.0f,0.1f,1000.0f,uX1,uY1,uWidth,uHeight);
+	} else
+#endif
 	fviewport_InitPersp(m_pView, /*FMATH_QUARTER_PI*/ FMATH_PI * (1.0f / 6.0f), 0.1f, 1000.0f, uX1, uY1, uWidth, uHeight);
 	if(vecUL->x < 1.0f)
 	{
 		ftext_GetAttributes(m_hText)->fUpperLeftX = JCXToFTextX(vecUL->x + fWasherWidth);
 		ftext_GetAttributes(m_hText)->fLowerRightX = JCXToFTextX(vecUL->x + fWasherWidth) + 0.3f;
+#if FANG_WINGC
+		if (MultiplayerMgr.IsLocalCoop() && CPlayer::m_nPlayerCount > 2) {
+			// Leave room for the health bar in the narrower four-player view.
+			ftext_GetAttributes(m_hText)->fUpperLeftX += 0.1f;
+			ftext_GetAttributes(m_hText)->fLowerRightX += 0.1f;
+		}
+#endif
 	}
 }
 
@@ -7547,3 +7587,21 @@ static void _XFormPrintfLocal( f32 fX, f32 fY, cchar *pszFormat, ... )
 	va_end( pArgs	);
 }
 
+
+#if FANG_WINGC
+BOOL CHud2::PortTestWasherLayout() {
+	FViewport_t *live=Player_aPlayer[m_nPlayerIdx].m_pViewportSafeOrtho3D;
+	FViewport_t *icon=m_oWasherDisplay.m_pView;
+	FTextArea_t *text=ftext_GetAttributes(m_oWasherDisplay.m_hText);
+	f32 edge=live->nScreenLeftX+text->fUpperLeftX*live->Res.x;
+	f32 gap=edge-icon->nScreenRightX;
+	DEVPRINTF("BATCH-WASHER player=%u cached=%u,%u,%u,%u live=%u,%u,%u,%u icon=%u,%u,%u,%u textX=%.2f gap=%.2f\n",m_nPlayerIdx,
+		m_pviewOrtho3d->nScreenLeftX,m_pviewOrtho3d->nScreenTopY,m_pviewOrtho3d->nWidth,m_pviewOrtho3d->nHeight,
+		live->nScreenLeftX,live->nScreenTopY,live->nWidth,live->nHeight,
+		icon->nScreenLeftX,icon->nScreenTopY,icon->nWidth,icon->nHeight,edge,gap);
+	f32 rowCenter=live->nScreenTopY+(text->fUpperLeftY+text->fLowerRightY)*live->Res.y/1.5f;
+	f32 iconCenter=icon->nScreenTopY+0.5f*icon->nHeight;
+	DEVPRINTF("BATCH-WASHER rowCenter=%.2f iconCenter=%.2f\n",rowCenter,iconCenter);
+	return gap>=0 && gap<0.3f*icon->nWidth+2 && fmath_Abs(rowCenter-iconCenter)<2.0f;
+}
+#endif

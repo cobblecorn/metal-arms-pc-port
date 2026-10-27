@@ -338,9 +338,10 @@ static void VendorAmmoWork(CBot *buyer, CBot *partner, int owner, u32 now, int &
     static int purchase=0, funds=0, partnerFunds=0;
     static CWeapon *weapon=NULL;
     static BOOL pressed=FALSE;
-    const char *names[]={"Rivet Gun L1","Spew L1"};
+    const char *names[]={"Rivet Gun L1","Spew L1","Blaster L1","RLauncher L1"};
+    const int count=sizeof(names)/sizeof(names[0]);
     if(!step) {
-        for(int n=0;n<2;n++) {
+        for(int n=0;n<count;n++) {
             CItemInst *item=buyer->m_pInventory->IsWeaponInInventory(names[n]);
             if(!item) {CCollectable::GiveWeaponToPlayer(buyer,names[n],1);item=buyer->m_pInventory->IsWeaponInInventory(names[n]);}
             Check(item && item->m_pWeapon,"native ammo buyer owns weapon");
@@ -363,7 +364,7 @@ static void VendorAmmoWork(CBot *buyer, CBot *partner, int owner, u32 now, int &
         if(bartersystem_PortReadyForInput()){step=2;stamp=now;}
         else if(now-stamp>25000){Check(FALSE,"native ammo vendor opens");step=99;}
     } else if(step==2 && bartersystem_PortReadyForInput()) {
-        if(purchase==2){Gamepad_aapSample[Player_aPlayer[owner].m_nControllerIndex][GAMEPAD_MAIN_SELECT_PRIMARY]->uLatches|=GAMEPAD_BUTTON_1ST_PRESS_MASK;step=4;stamp=now;return;}
+        if(purchase==count){Gamepad_aapSample[Player_aPlayer[owner].m_nControllerIndex][GAMEPAD_MAIN_SELECT_PRIMARY]->uLatches|=GAMEPAD_BUTTON_1ST_PRESS_MASK;step=4;stamp=now;return;}
         CBarterItem *catalog=CBarterItem::FindBarterItem(1,names[purchase]);
         CBarterItemInst *offer=CBarterLevel::GetCurrentItemInst();
         Check(catalog && offer,"native ammo catalog/offer exists");
@@ -391,6 +392,21 @@ static void VendorAmmoWork(CBot *buyer, CBot *partner, int owner, u32 now, int &
         } else if(now-stamp>15000){Check(FALSE,"native ammo purchase resolves");step=99;}
     } else if(step==4 && !bartersystem_IsActive()) {
         Check(buyer->IsDrawEnabled() && Player_aPlayer[owner].HasEntityControl(),"native ammo shop exit restores player");
-        DEVPRINTF("VENDOR-AMMO COMPLETE shopper=P%d purchased=%d\n",owner+1,purchase);step=99;
+        step=5;purchase=0;stamp=now;
     } else if(step==4 && now-stamp>15000){Check(FALSE,"native ammo shop closes");step=99;}
+    else if(step==5 && now-stamp>700) {
+        weapon=buyer->m_pInventory->IsWeaponInInventory(names[purchase])->m_pWeapon;
+        weapon->SetReserveAmmo(0,TRUE);
+        const CollectableType_e type=CCollectable::GetCollectableTypeFromString(names[purchase]);
+        Check(CCollectable::GiveToPlayer(buyer,type,1.0f),"native physical ammo pickup spawned for buyer");
+        step=6;stamp=now;
+    } else if(step==6 && now-stamp>1700) {
+        const s32 expected=CCollectable::GetCollectableTypeObjectFromString(names[purchase])->m_nAmmoCount;
+        DEVPRINTF("VENDOR-AMMO pickup shopper=P%d item='%s' reserve=%d expected=%d savedReserve=%d\n",owner+1,names[purchase],weapon->GetReserveAmmo(),expected,weapon->GetItemInst()->m_nReserveAmmo);
+        Check(weapon->GetReserveAmmo()==expected && weapon->GetItemInst()->m_nReserveAmmo==expected,"native physical ammo pickup fills live and saved reserve");
+        Check(weapon->GetUpgradeLevel()==2,"native physical ammo pickup preserves upgrade");
+        purchase++;stamp=now;
+        if(purchase<count){step=5;return;}
+        DEVPRINTF("VENDOR-AMMO COMPLETE shopper=P%d purchased=%d physical=%d\n",owner+1,purchase,purchase);step=99;
+    }
 }

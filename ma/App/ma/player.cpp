@@ -1303,6 +1303,14 @@ void CPlayer::Work( void ) {
 			if ( m_Hud.IsWSActive() ) {
 				m_HumanControl.m_fFire1 = 0.0f;
 				m_HumanControl.m_fFire2 = 0.0f;
+#if FANG_WINGC
+				// The full weapon select scrolls with the movement axis (W/S, the left stick). Solo pauses
+				// the world while it is open, but co-op and versus can't, so the selecting player would
+				// walk while choosing. Hold this player still everywhere; the HUD still reads the raw
+				// axis to scroll, and other players keep moving. Quick taps never open the select.
+				m_HumanControl.m_fForward = 0.0f;
+				m_HumanControl.m_fStrafeRight = 0.0f;
+#endif
 			}
 			else {
 				m_HumanControl.m_fFire1 = Gamepad_aapSample[m_nControllerIndex][GAMEPAD_MAIN_FIRE_PRIMARY]->fCurrentState;

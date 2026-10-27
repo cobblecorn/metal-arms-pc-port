@@ -17,6 +17,11 @@
 // 04/22/02	Link		Created.
 //////////////////////////////////////////////////////////////////////////////////////
 
+#include "fang.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#include "level.h"
+#endif
 #include "Door.h"
 #include "floop.h"
 #include "bot.h"
@@ -979,6 +984,12 @@ void CDoorEntity::ClassHierarchyResolveEntityPointerFixups()
 BOOL bDoorWorkEnabled = TRUE;
 void CDoorEntity::ClassHierarchyWork()
 {
+#if FANG_WINGC
+	// Original Randomizer support: a different starting gun must not lock the tutorial doors.
+	if (pcmods_Option("enabled") && pcmods_Option("glitch_start_weapon") &&
+		Level_nLoadedIndex>=0 && Level_aInfo[Level_nLoadedIndex].nLevel==LEVEL_SEAL_THE_MINES_1 && Name() &&
+		(!fclib_stricmp(Name(),"bridgedoor") || !fclib_stricmp(Name(),"lowerdoor")) && m_bLocked) SetLockState(FALSE);
+#endif
 	// Note: don't check the vis flags if drawing is not enabled, because we
 	// may be skipping through a cut scene that requires a door to operate
 	CFWorldMesh *pWM = GetMeshInst();

@@ -38,7 +38,12 @@ BOOL		CSloshTank::m_bSystemActive			= FALSE;
 CSloshTank* CSloshTank::m_aTanks				= NULL;
 CSloshTank::_SloshTankProps_t CSloshTank::m_aSloshTankDefaultProps[1];
 
+#if FANG_WINGC
+// One backpack per local Slosh, plus room for the authored NPC instance.
+#define _MAX_SLOSHTANKS (MAX_PLAYERS + 1)
+#else
 #define _MAX_SLOSHTANKS 2
+#endif
 
 struct _TriFace_t
 {

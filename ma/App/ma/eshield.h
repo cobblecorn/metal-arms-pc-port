@@ -72,6 +72,10 @@ private:
 private:
 	static BOOL m_bSystemInitialized;
 	static BOOL m_bEffectsLoaded;
+#if FANG_WINGC
+	static u32 m_nEffectPoolUsers;
+	BOOL m_bOwnsEffectPool;
+#endif
 
 	CFWorldMesh *m_pWorldMesh;
 	static _ShieldSplash_t *m_aSplashes;

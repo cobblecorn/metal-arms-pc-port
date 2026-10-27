@@ -18,6 +18,10 @@
 //////////////////////////////////////////////////////////////////////////////////////
  
 #include "fang.h"
+#if FANG_WINGC
+#include "pc_randomizer.h"
+#include "pc_mods.h"
+#endif
 #include "botminer.h"
 #include "fanim.h"
 #include "fresload.h"
@@ -223,6 +227,10 @@ CFAnimFrame CBotMiner::m_Rocket1TorsoUntwistQuat;
 
 CFVec3A CBotMiner::m_GroinVecY_WS;
 CBotPartPool *CBotMiner::m_pPartPool;
+#if FANG_WINGC
+// Bone maps are mesh-specific, including the no-legs and alternate miner mesh.
+static CBotPartPool *_apMinerDeathPartPools[3] = {};
+#endif
 CBotMiner*   CBotMiner::m_pCBMiner = NULL;
 
 
@@ -459,6 +467,9 @@ void CBotMiner::ClassHierarchyDestroy( void ) {
 
 
 BOOL CBotMiner::ClassHierarchyBuild( void ) {
+#if FANG_WINGC
+	PcModPrimaryScope RandomizerScope((CBotBuilder *)GetLeafClassBuilder(),TRUE);
+#endif
 	FMesh_t *pMesh;
 	FMeshInit_t MeshInit;
 	u32 i;
@@ -482,6 +493,15 @@ BOOL CBotMiner::ClassHierarchyBuild( void ) {
 	// Load the sound effects bank for this bot...
 	if( !fresload_Load( FSNDFX_RESTYPE, BotMiner_pszSoundEffectBank) ) {
 		DEVPRINTF( "CBotMiner::ClassHierarchyBuild(): Could not load sound effect bank '%s'\n", BotMiner_pszSoundEffectBank);
+	}
+#endif
+
+#if FANG_WINGC
+	// InitSystem reads b_Miner before localized debris/sound resources exist.
+	// Refresh its authored references now, as the other bot classes do while
+	// loading shared resources; otherwise every Miner debris group stays NULL.
+	if( !ReadBotInfoFile( m_aGameDataMap, _BOTINFO_FILENAME ) ) {
+		goto _ExitWithError;
 	}
 #endif
 
@@ -643,6 +663,9 @@ BOOL CBotMiner::ClassHierarchyBuild( void ) {
 				m_apWeapon[i]->SetClipAmmo( CWeapon::INFINITE_AMMO );
 			}
 
+			#if FANG_WINGC
+			if (i==0) pcrandom_ConfigureWeapon(pBuilder,m_apWeapon[i],TRUE);
+			#endif
 			m_apWeapon[i]->EnableAutoWork( FALSE );
 			m_apWeapon[i]->RemoveFromWorld();
 			m_apWeapon[i]->SetOwner(this);
@@ -744,6 +767,21 @@ BOOL CBotMiner::ClassHierarchyBuild( void ) {
 	if( !TagPoint_CreateFromBoneArray( m_anTagPointBoneNameIndexArray, m_apszBoneNameTable ) ) {
 		goto _ExitWithError;
 	}
+
+#if FANG_WINGC
+	// The shipped bp_Miner has one (invulnerable head) limb and complete bone
+	// breakup settings. The old disabled code expected four limbs and never ran.
+	const char *deathMeshes[] = {"GRDMminer00","GRDMminer01","GRDMminernl"};
+	for (u32 n=0;n<3;++n) {
+		if (!fclib_stricmp(pszMeshFilename,deathMeshes[n])) {
+			if (!m_pPartMgr->Create(this,&_apMinerDeathPartPools[n],_BOTPART_FILENAME,
+					PART_INSTANCE_COUNT_PER_TYPE,1)) {
+				DEVPRINTF("CBotMiner: could not initialize death breakup for '%s'.\n",pszMeshFilename);
+			}
+			break;
+		}
+	}
+#endif
 	
 	//if (!fclib_strnicmp(_pszMinerMeshFilenameRoot,  pszMeshFilename, fclib_strlen(_pszMinerMeshFilenameRoot)))
 	//{
@@ -888,6 +926,11 @@ void CBotMiner::ClassHierarchyAddToWorld( void ) {
 	CBot::ClassHierarchyAddToWorld();
 	m_pWorldMesh->UpdateTracker();
 
+#if FANG_WINGC
+	if (m_pPartMgr && m_pPartMgr->IsCreated()) {
+		m_uBotDeathFlags |= BOTDEATHFLAG_COMEAPART;
+	} else
+#endif
 	m_uBotDeathFlags |= BOTDEATHFLAG_PLAYDEATHANIM | BOTDEATHFLAG_COMEAPART | BOTDEATHFLAG_AUTOPERSISTAFTERDEATH;
 	
 	if( m_apWeapon[0] ) {
@@ -911,6 +954,17 @@ void CBotMiner::ClassHierarchyAddToWorld( void ) {
 
 }
 
+
+#if FANG_WINGC
+void CBotMiner::Die( BOOL bSpawnDeathEffects, BOOL bSpawnGoodies ) {
+	if (m_pPartMgr && m_pPartMgr->IsCreated()) {
+		// Also discard stale defaults restored from an earlier checkpoint. The
+		// part manager owns the visible death until its final debris is gone.
+		m_uBotDeathFlags &= ~(BOTDEATHFLAG_PLAYDEATHANIM | BOTDEATHFLAG_AUTOPERSISTAFTERDEATH);
+	}
+	CBot::Die(bSpawnDeathEffects,bSpawnGoodies);
+}
+#endif
 
 void CBotMiner::ClassHierarchyRemoveFromWorld( void ) {
 	u32 i;
@@ -1091,6 +1145,9 @@ BOOL CBotMiner::GrabCable( CEZipLine *pCable ) {
 
 	if( m_pPartMgr && 
 		m_pPartMgr->IsCreated() &&
+#if FANG_WINGC
+		m_pPartMgr->GetLimbTypeCount() > LIMB_TYPE_LEFT_ARM &&
+#endif
 		m_pPartMgr->GetLimbState( LIMB_TYPE_LEFT_ARM ) != CBotPartMgr::LIMB_STATE_INTACT ) {
 		return FALSE;
 	}
@@ -2074,7 +2131,11 @@ void CBotMiner::_HandleWeaponFiring( void ) {
 	}
 
 	u32 uRightArmLimbState = CBotPartMgr::LIMB_STATE_COUNT;
-	if (m_pPartMgr && m_pPartMgr->IsCreated())
+	if (m_pPartMgr && m_pPartMgr->IsCreated()
+#if FANG_WINGC
+		&& m_pPartMgr->GetLimbTypeCount() > LIMB_TYPE_RIGHT_ARM
+#endif
+		)
 	{
 		uRightArmLimbState = m_pPartMgr->GetLimbState( LIMB_TYPE_RIGHT_ARM );
 	}

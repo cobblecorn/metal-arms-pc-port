@@ -18,6 +18,10 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "fang.h"
+#if FANG_WINGC
+#include "pc_randomizer.h"
+#include "pc_mods.h"
+#endif
 #include "fanim.h"
 #include "fclib.h"
 #include "fresload.h"
@@ -1248,7 +1252,7 @@ CCollectable *CCollectable::GetCollectable( BOOL bAllocateNewIfEmpty/* = FALSE*/
 				while( pCollectable ) {	
 					if( !pCollectable->m_bUsedInScript &&
 #if FANG_WINGC
-						!pCollectable->_IsPersonalWeapon() &&
+						!pCollectable->_IsPersonalPickup() &&
 #endif
 						( pCollectable->m_pCollectableType->m_eType != COLLECTABLE_CHIP ) &&
 						( pCollectable->m_pCollectableType->m_eType != COLLECTABLE_SECRET_CHIP ) ) {
@@ -1680,6 +1684,30 @@ BOOL CCollectable::PostPlayerCreationSetup( void ) {
 
 		while( pCurr ) {
 			if( pCurr->m_pCollectableType && pCurr->m_pCollectableType->m_eType == COLLECTABLE_BATTERY ) {
+#if FANG_WINGC
+				// Co-op: one shared pickup, but each player's own inventory. Keep the battery unless
+				// every player already has its number; owners get the Mega Energy refill from it
+				// at pickup (_CoopOwnsNumberedBattery), the others get the battery.
+				if( pCurr->_IsPersonalPickup() && pCurr->m_nCurAmmoCount != -1 ) {
+					const s32 nNumber = pCurr->m_nCurAmmoCount;
+					BOOL bAllOwn = TRUE;
+					for( s32 n = 0; n < CPlayer::m_nPlayerCount && bAllOwn; ++n ) {
+						CEntity *pOrig = Player_aPlayer[ n ].m_pEntityOrig;
+						bAllOwn = pOrig && ( pOrig->TypeBits() & ENTITY_BIT_BOTGLITCH ) && pCurr->_CoopOwnsNumberedBattery( (CBot *) pOrig );
+					}
+					if( bAllOwn ) {
+						CCollectableType *pType = GetCollectableTypeObjectFromType( COLLECTABLE_MEGA_HEALTH );
+
+						if( pType ) {
+							pCurr->_ReturnWorldMesh();
+
+							pCurr->m_pCollectableType = pType;
+							pCurr->_Setup( pCurr->MtxToWorld(), 1.0f );
+						}
+					}
+					DEVPRINTF( "Co-op battery %d: %s.\n", nNumber, bAllOwn ? "every player has it, Mega Energy" : "kept for the players without it" );
+				} else
+#endif
 				if( Player_aPlayer[ 0 ].m_pEntityOrig && ( Player_aPlayer[ 0 ].m_pEntityOrig->TypeBits() & ENTITY_BIT_BOTGLITCH ) ) {
 					CBot *pBot = (CBot *) Player_aPlayer[ 0 ].m_pEntityOrig;
 
@@ -1750,6 +1778,61 @@ BOOL CCollectable::GiveToPlayer( CBot *pBot, CollectableType_e eType, f32 fScale
 	return PlaceIntoWorld( eType, &Mtx, NULL, fScale );
 #endif
 }
+
+#if FANG_WINGC
+BOOL CCollectable::GiveToPlayerAndCollect( CBot *pBot, CollectableType_e eType, f32 fScale ) {
+	const s32 nPlayer = pBot ? _CoopGrantRecipient( pBot ) : -1;
+	if( nPlayer < 0 ) {
+		return FALSE;
+	}
+
+	CFMtx43A Mtx;
+	Mtx.Identity();
+	Mtx.m_vPos = pBot->MtxToWorld()->m_vPos;
+	Mtx.m_vPos.Add( CFVec3A::m_UnitAxisY );
+
+	CCollectable *pPlaced = NULL;
+	if( !_PlaceIntoWorld( _FindCollectableType( eType ), &Mtx, NULL, fScale, 0.0f, -1, NULL, nPlayer, &pPlaced ) || !pPlaced ) {
+		return FALSE;
+	}
+
+	// The same collection Work() does when the player touches it (_CanPickup, then this), for the buyer.
+	CBot *pPreviousBot = m_pCollectBot;
+	CHud2 *pPreviousHud = m_pCollectHud;
+	CPlayer *pPreviousPlayer = m_pPlayer;
+	m_pPlayer = &Player_aPlayer[nPlayer];
+	m_pCollectBot = pBot;
+	m_pCollectHud = CHud2::GetHudForPlayer( nPlayer );
+	const BOOL bCollected = pPlaced->_PlayerPickupCollectable();
+	m_pCollectBot = pPreviousBot;
+	m_pCollectHud = pPreviousHud;
+	m_pPlayer = pPreviousPlayer;
+
+	if( !bCollected ) {
+		// Not taken (no room, full health, nothing to upgrade...): don't leave a paid-for-looking item behind.
+		DEVPRINTF( "Port: '%s' for player %d could not be collected; removed.\n", pPlaced->m_pCollectableType->m_pszName, nPlayer + 1 );
+		ReturnCollectable( pPlaced );
+	}
+	return bCollected;
+}
+#endif
+
+#if FANG_WINGC
+BOOL CCollectable::GiveStoryToPlayer(CBot *pBot, cchar *pszName, f32 fScale) {
+	CCollectableType *pType = _FindCollectableType(pszName);
+	if (MultiplayerMgr.IsLocalCoop() && pType &&
+		(pType->m_eType == COLLECTABLE_BATTERY || IsWeapon(pType->m_eType) || IsWeaponUpgrade(pType->m_eType))) {
+		// A campaign reward belongs to the party. One ordinary world pickup
+		// keeps the existing per-player claims and checkpoint handling.
+		CFMtx43A Mtx;
+		Mtx.Identity();
+		Mtx.m_vPos = pBot->MtxToWorld()->m_vPos;
+		Mtx.m_vPos.Add(CFVec3A::m_UnitAxisY);
+		return _PlaceIntoWorld(pType, &Mtx, NULL, fScale, 0.0f, -1, NULL, -1);
+	}
+	return GiveToPlayer(pBot, pszName, fScale);
+}
+#endif
 
 BOOL CCollectable::GiveToPlayer( CBot *pBot, cchar *pszCollectableName, f32 fScale ) {
 	FASSERT( pBot );
@@ -2069,6 +2152,9 @@ BOOL CCollectable::ClassHierarchyBuild( void ) {
 	FResFrame_t hResFrame = fres_GetFrame();
 
 	CCollectableBuilder *pBuilder = (CCollectableBuilder *)(GetLeafClassBuilder());
+#if FANG_WINGC
+	PcModCollectableScope RandomizerScope(pBuilder);
+#endif
 
 	if( !CEntity::ClassHierarchyBuild() ) {
 		goto _ExitWithError;
@@ -2628,6 +2714,56 @@ void CCollectable::_GiveWeaponToPlayer( CBot *pBot, CInventory *pInv, cchar *psz
 
 // Gives ammo to the player or if the player doesn't have the EUK of the item picked up
 // upgrades the EUK.
+#if FANG_WINGC
+BOOL CCollectable::OwnsWeaponForAmmo( CBot *pBot, CollectableType_e eType ) {
+	CCollectableType *pType = GetCollectableTypeObjectFromType( eType );
+	return pBot && pBot->m_pInventory && pType && IsWeapon( eType ) &&
+		CItemRepository::RetrieveEntry( pType->m_pszName, NULL ) &&
+		pBot->m_pInventory->IsWeaponInInventory( pType->m_pszName ) != NULL;
+}
+
+BOOL CCollectable::GiveOwnedWeaponAmmo( CBot *pBot, CollectableType_e eType, s32 nAmmoCount ) {
+	if( !OwnsWeaponForAmmo( pBot, eType ) || !( pBot->TypeBits() & ENTITY_BIT_BOTGLITCH ) ) {
+		return FALSE;
+	}
+	CCollectableType *pType = GetCollectableTypeObjectFromType( eType );
+	CItemInst *pItemInst = pBot->m_pInventory->IsWeaponInInventory( pType->m_pszName );
+	CItem *pItem = CItemRepository::RetrieveEntry( pType->m_pszName, NULL );
+	const u32 uNdx = pItem->IsSecondaryOnly() ? INV_INDEX_SECONDARY : INV_INDEX_PRIMARY;
+	const s32 nAmmo = ( nAmmoCount < 0 ) ? pType->m_nAmmoCount : nAmmoCount;
+	if( nAmmo <= 0 ) {
+		return FALSE;
+	}
+
+	// The weapon that is already created for this inventory entry (as _GiveWeaponAmmoToPlayer finds it)
+	CBotGlitch *pGlitch = (CBotGlitch *) pBot;
+	CWeapon *pWeap = NULL;
+	for( u32 i = 0; i < pGlitch->m_WeaponInv[ uNdx ].m_nWeaponInvCount; ++i ) {
+		if( pGlitch->m_WeaponInv[ uNdx ].m_apWeapon[ i ] && pGlitch->m_WeaponInv[ uNdx ].m_apWeapon[ i ]->GetItemInst() == pItemInst ) {
+			pWeap = pGlitch->m_WeaponInv[ uNdx ].m_apWeapon[ i ];
+			break;
+		}
+	}
+	if( !pWeap ) {
+		return FALSE;
+	}
+
+	if( uNdx == INV_INDEX_PRIMARY ) {
+		if( pWeap->IsReserveFull() ) {
+			return FALSE;
+		}
+		pWeap->AddToReserve( nAmmo );
+	} else {
+		if( pWeap->IsClipFull() ) {
+			return FALSE;
+		}
+		pWeap->AddToClip( nAmmo );
+	}
+	pItemInst->NotifyAmmoMightHaveChanged( pWeap->GetClipAmmo(), pWeap->GetReserveAmmo() );
+	return TRUE;
+}
+#endif
+
 BOOL CCollectable::_GiveWeaponAmmoToPlayer( CBot *pBot, CItemInst *pItemInst, CInventory *pInv, cchar *pszWeaponName, s32 nAmmoCount ) {
 	FASSERT( pBot );
 	FASSERT( pItemInst );
@@ -2724,7 +2860,10 @@ BOOL CCollectable::_PlaceIntoWorld( CCollectableType *pType,
 									f32 fScale/* = 1.0f*/, 
 									f32 fSpawnTime/* = 0.0f*/, 
 									s32 nAmmoCount/* = -1*/, 
-									CEntity *pSpawnIgnoreEntity/* = NULL*/, s32 nRecipientPlayer/* = -1*/ ) {
+									CEntity *pSpawnIgnoreEntity/* = NULL*/, s32 nRecipientPlayer/* = -1*/, CCollectable **ppPlaced/* = NULL*/ ) {
+	if( ppPlaced ) {
+		*ppPlaced = NULL;
+	}
 	if( pType == NULL ) {
 		return FALSE;
 	}
@@ -2763,6 +2902,11 @@ BOOL CCollectable::_PlaceIntoWorld( CCollectableType *pType,
 		if( pVelWS ) {
 			pCollectable->m_VelocityWS = *pVelWS;
 		}
+#if FANG_WINGC
+		if( ppPlaced ) {
+			*ppPlaced = pCollectable;
+		}
+#endif
 	} else {
 		ReturnCollectable( pCollectable );
 	}
@@ -3575,6 +3719,9 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 
 	BOOL bClassified = TRUE;
 	BOOL bNoSound = FALSE;
+#if FANG_WINGC
+	CCollectableType *pHudType = m_pCollectableType;	// what the pickup sound and HUD show
+#endif
 
 	if( !_IsPickupAllowed() ) {
 		return FALSE;
@@ -3611,6 +3758,19 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 			_PickupWeaponPower();
 		break;
 		case COLLECTABLE_BATTERY:
+#if FANG_WINGC
+			if( _IsPersonalPickup() && _CoopOwnsNumberedBattery( m_pCollectBot ) ) {
+				// Already has this numbered battery: what solo shows as Mega Energy.
+				if( !_PickupMegaHealth() ) {
+					return FALSE;
+				}
+				pHudType = GetCollectableTypeObjectFromType( COLLECTABLE_MEGA_HEALTH );
+				if( !pHudType ) pHudType = m_pCollectableType;
+				DEVPRINTF( "Co-op pickup: player %d already has battery %d; energy refill instead.\n",
+					(s32)(m_pPlayer - Player_aPlayer) + 1, m_nCurAmmoCount );
+				break;
+			}
+#endif
 			if( !_PickupBattery() ) {
 				return FALSE;
 			}
@@ -3653,7 +3813,11 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 	} else {
 		if( !bNoSound ) {
 			// Play a tone for pickup
+#if FANG_WINGC
+			CFSoundGroup::PlaySound( pHudType->m_pPickupSound, TRUE );
+#else
 			CFSoundGroup::PlaySound( m_pCollectableType->m_pPickupSound, TRUE );
+#endif
 		}
 	}
 
@@ -3693,7 +3857,7 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 
 #if FANG_WINGC
 	BOOL bCollectedByAll = TRUE;
-	if( _IsPersonalWeapon() ) {
+	if( _IsPersonalPickup() ) {
 		const s32 nPlayer = (s32)(m_pPlayer - Player_aPlayer);
 		m_nCoopCollectedMask |= 1u << nPlayer;
 		bCollectedByAll = m_nCoopCollectedMask == ((1u << CPlayer::m_nPlayerCount) - 1u);
@@ -3716,8 +3880,13 @@ BOOL CCollectable::_PlayerPickupCollectable( void ) {
 		( m_pCollectableType->m_eType != COLLECTABLE_MEGA_WASHER ) &&
 #endif
 		( m_pCollectableType->m_eType != COLLECTABLE_PUP_WEAPON ) ) {
+#if FANG_WINGC
+		m_pCollectHud->PickupItemGeneric( pHudType, ITEMTYPE_POWERUP,
+			pHudType->m_bSpecialEUK ? pHudType->m_fHUDScaleSpecialEUK : pHudType->m_fHUDScale );
+#else
 		m_pCollectHud->PickupItemGeneric( m_pCollectableType, ITEMTYPE_POWERUP,
 			m_pCollectableType->m_bSpecialEUK ? m_pCollectableType->m_fHUDScaleSpecialEUK : m_pCollectableType->m_fHUDScale );
+#endif
 	}
 
 	// If we pickup something with a special EUK mesh, we need to swap the meshes since at 
@@ -4220,15 +4389,27 @@ void CCollectable::_RespawnItem( CCollectableSpawnPoint *pPoint ) {
 }
 
 #if FANG_WINGC
-BOOL CCollectable::_IsPersonalWeapon() const {
+// Campaign co-op: world weapons, weapon upgrades and batteries are collected once by each player
+// (each player's view hides it once they have it). A pickup meant for one player (a purchase or a
+// scripted gift, m_nRecipientPlayer) is that player's alone.
+BOOL CCollectable::_IsPersonalPickup() const {
 	return MultiplayerMgr.IsSinglePlayer() && CPlayer::m_nPlayerCount > 1 &&
 		m_nRecipientPlayer < 0 && m_pCollectableType &&
-		(IsWeapon( m_pCollectableType->m_eType ) || IsWeaponUpgrade( m_pCollectableType->m_eType ));
+		(IsWeapon( m_pCollectableType->m_eType ) || IsWeaponUpgrade( m_pCollectableType->m_eType ) ||
+		 m_pCollectableType->m_eType == COLLECTABLE_BATTERY);
+}
+// A numbered battery (m_nCurAmmoCount holds its number) this bot already has: solo turns these into
+// Mega Energy for the level (PostPlayerCreationSetup). In co-op each player is judged on their own,
+// and an owner gets the Mega Energy refill instead of another battery.
+BOOL CCollectable::_CoopOwnsNumberedBattery( const CBot *pBot ) const {
+	return m_pCollectableType && m_pCollectableType->m_eType == COLLECTABLE_BATTERY &&
+		m_nCurAmmoCount != -1 && pBot && pBot->m_pInventory &&
+		m_nCurAmmoCount <= (s32)pBot->m_pInventory->m_uNumBatteries;
 }
 BOOL CCollectable::_CoopDrawFilter( CFMeshInst *pMesh, void *pData ) {
 	CCollectable *pPickup = (CCollectable *)pData;
 	if( pPickup->m_nRecipientPlayer >= 0 && pPickup->m_nRecipientPlayer != CPlayer::m_nCurrent ) return FALSE;
-	return !pPickup->_IsPersonalWeapon() || !(pPickup->m_nCoopCollectedMask & (1u << CPlayer::m_nCurrent));
+	return !pPickup->_IsPersonalPickup() || !(pPickup->m_nCoopCollectedMask & (1u << CPlayer::m_nCurrent));
 }
 #endif
 
@@ -4302,7 +4483,7 @@ s32 CCollectable::_CanPickup( void ) {
 #if FANG_WINGC
 		if( m_nRecipientPlayer >= 0 && m_nRecipientPlayer != i ) continue;
 		if( m_nPortWasherPlayer >= 0 && m_nPortWasherPlayer != i ) continue;
-		if( _IsPersonalWeapon() && (m_nCoopCollectedMask & (1u << i)) ) continue;
+		if( _IsPersonalPickup() && (m_nCoopCollectedMask & (1u << i)) ) continue;
 #endif
 		CEntity *pPlayer = Player_aPlayer[i].m_pEntityCurrent;
 		CBot *pPlayerBot = (CBot *)(pPlayer);
@@ -4330,7 +4511,15 @@ s32 CCollectable::_CanPickup( void ) {
 			u32 nTarget;
 			if( !_IsFirstScopePickup(pPlayerBot, m_pCollectableType) && !_FindWeaponUpgrade( pPlayerBot, m_pCollectableType, nTarget ) ) continue;
 		}
-		if( _IsPersonalWeapon() && (pPlayerBot->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
+		if( _IsPersonalPickup() && m_pCollectableType->m_eType == COLLECTABLE_BATTERY ) {
+			// Each player's own battery: a new one while there is room for it, otherwise (an owned
+			// numbered battery, or a full set) only the energy refill, so a full-health player
+			// does not stand on it in front of a partner.
+			const BOOL bRefillOnly = _CoopOwnsNumberedBattery( pPlayerBot ) ||
+				!pPlayerBot->m_pInventory || pPlayerBot->m_pInventory->m_uNumBatteries >= _MAX_BATTERIES;
+			if( bRefillOnly && pPlayerBot->ComputeUnitHealth() >= 1.0f ) continue;
+		} else
+		if( _IsPersonalPickup() && (pPlayerBot->TypeBits() & ENTITY_BIT_BOTGLITCH) &&
 			!IsWeaponUpgrade( m_pCollectableType->m_eType ) &&
 			!PlayerNeeds( (CBotGlitch *)pPlayerBot, m_pCollectableType->m_eType, FALSE ) &&
 			!PlayerNeeds( (CBotGlitch *)pPlayerBot, m_pCollectableType->m_eType, TRUE ) ) continue;

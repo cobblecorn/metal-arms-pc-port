@@ -21,6 +21,27 @@
 #include "fres.h"
 #include "floop.h"
 
+#if FANG_WINGC
+// Pending parts each hold one destination vector, but starting a part needs
+// four more. Keep that working space free while admitting another fabrication;
+// otherwise several pending bots can fill the pool without any able to move.
+class _BuildStartVectorReserve {
+	void *m_aVectors[4];
+public:
+	_BuildStartVectorReserve() {
+		fang_MemZero(m_aVectors,sizeof(m_aVectors));
+		for(u32 i=0;i<4;++i) {
+			m_aVectors[i]=FAlignedPool_VecPool.GetElement();
+			if(!m_aVectors[i])break;
+		}
+	}
+	~_BuildStartVectorReserve() {
+		for(u32 i=0;i<4;++i)if(m_aVectors[i])FAlignedPool_VecPool.ReturnElement(m_aVectors[i]);
+	}
+	BOOL IsReady() const { return m_aVectors[3]!=NULL; }
+};
+#endif
+
 ////////////////////////////
 // CFXMeshBuildPart methods
 ////////////////////////////
@@ -576,6 +597,15 @@ BOOL CFXMeshBuildPartMgr::Init( const CFVec3A &rFrom, CFWorldMesh *pWorldMesh,
 		return FALSE;
 	}
 
+#if FANG_WINGC
+	_BuildStartVectorReserve startSpace;
+	if(!startSpace.IsReady()) {
+		m_nNumParts=0;
+		m_pWorldMesh=NULL;
+		return FALSE;
+	}
+#endif
+
 	CalculateDropSecs( fSecsToComplete, fUnitOverlap, (f32)m_nNumParts, m_fSecsBetweenStarts, fTemp );
 	m_fOOPartSecsToComplete = fmath_Inv( fTemp );
 	m_fSecsTillNextStart = 0.0f;
@@ -613,7 +643,13 @@ BOOL CFXMeshBuildPartMgr::Init( const CFVec3A &rFrom, CFWorldMesh *pWorldMesh,
 		if( !m_paParts[i].InitPart( rFrom, ppMtxPalette, nBoneIndex, fUnitBoneRadius ) ) {
 			// something went very wrong, clean up and fail
 			for( j=0; j < i; j++ ) {
+#if FANG_WINGC
+				// Roll back each part already initialized. Repeating the failed
+				// index leaked their pooled vectors and stranded later fabrications.
+				m_paParts[j].ForceFinish( ppMtxPalette );
+#else
 				m_paParts[i].ForceFinish( ppMtxPalette );
+#endif
 			}
 			m_nNumParts = 0;
 			m_pWorldMesh = NULL;

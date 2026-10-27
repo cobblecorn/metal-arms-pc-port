@@ -18,6 +18,11 @@
 //////////////////////////////////////////////////////////////////////////////////////
 
 #include "fang.h"
+#if FANG_WINGC
+#include "pc_randomizer.h"
+#include "pc_mods.h"
+#endif
+#include "fang.h"
 #include "eboomer.h"
 #include "entity.h"
 #include "fsound.h"
@@ -370,6 +375,9 @@ BOOL CEBoomer::ClassHierarchyBuild( void ) {
 	m_pSoundGroupDead = CFSoundGroup::RegisterGroup( pBuilder->m_pszSoundGroupDead );
 
 	m_hExplosion = fexplosion_GetExplosionGroup( pBuilder->m_ExplosionBuilder.apszName[0] );
+#if FANG_WINGC
+	m_hExplosion=pcrandom_Explosion(m_hExplosion,this,"destruct_explosions");
+#endif
 	m_nExplosionAliveMeshBoneIndex = GetMeshInst( 0 )->FindBone( pBuilder->m_ExplosionBuilder.apszName[1] );
 
 	if( (GetMeshCount() >= 2) && GetMeshInst( 1 ) ) {

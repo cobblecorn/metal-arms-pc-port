@@ -82,7 +82,7 @@ add_custom_command(
     VERBATIM)
 add_custom_target(ma_shaders DEPENDS ${MA_SHADER_DIR}/shaders.stamp)
 
-add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcaudio.cpp port/gcdata.cpp port/gcmesh.cpp port/pc_input.cpp port/pc_display.cpp port/pc_textures.cpp port/discord_rpc.cpp)
+add_library(fang2 STATIC ${FANG2_SOURCES} port/compat/d3d8_compat.cpp port/gcaudio.cpp port/gcdata.cpp port/gcmesh.cpp port/pc_input.cpp port/pc_display.cpp port/pc_textures.cpp port/pc_mods.cpp port/discord_rpc.cpp)
 target_compile_definitions(fang2 PRIVATE MA_PC_INPUT)
 add_dependencies(fang2 ma_shaders)
 ma_common_settings(fang2)
@@ -94,7 +94,7 @@ target_link_libraries(fang2 PUBLIC smallamx)
 set(MA_GAME_SOURCES ${MA_SOURCES})
 # ma/App/ma/win is the MFC launcher/tools shell; it is replaced rather than ported.
 list(FILTER MA_GAME_SOURCES EXCLUDE REGEX "^ma/App/ma/win/")
-add_library(ma_game STATIC ${MA_GAME_SOURCES} port/coop_regression.cpp port/pc_cheats.cpp)
+add_library(ma_game STATIC ${MA_GAME_SOURCES} port/coop_regression.cpp port/pc_cheats.cpp port/pc_randomizer.cpp)
 target_compile_definitions(ma_game PRIVATE MA_PC_INPUT)
 ma_common_settings(ma_game)
 target_include_directories(ma_game PRIVATE ${MA_ROOT}/App/ma ${MA_ROOT}/App/ma/win)

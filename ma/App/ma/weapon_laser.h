@@ -29,11 +29,16 @@
 #include "fforce.h"
 #include "MuzzleFlash.h"
 #include "fdecal.h"
+#if FANG_WINGC
+#include "pc_laser_charge.h"
+#include "fparticle.h"
+#endif
 
 
 class CBot;
 class CLaserBeam;
 class CDamageProfile;
+class CFSoundGroup;
 
 
 
@@ -176,6 +181,23 @@ private:
 
 #if FANG_WINGC
 	s32 m_anMuzzleBoneIndex[EUK_COUNT_LASER];		// Retail muzzle bone per EUK mesh (-1 = use fDistFromWeaponOrigToMuzzle)
+	struct _RetailCharge_t {
+		f32 fDelay, fChargeSeconds, fReadyEnergy, fEnergyAfterBurst;
+		f32 fSpeed, fLength, fWidth, fRange, afColor[3], fPitchStart, fPitchEnd;
+		FParticle_DefHandle_t hChargeParticle, hBurstParticle, hEndParticle;
+		cchar *apszDamage[3], *pszChargeSound, *pszBurstSound, *pszBurstSound2, *pszReadySound, *pszRicochetSound, *pszImpact, *pszRicochetImpact, *pszDecal;
+		CDamageProfile *apDamage[3];
+		CFSoundGroup *pChargeSound, *pBurstSound, *pBurstSound2, *pReadySound, *pRicochetSound;
+	};
+	static _RetailCharge_t m_aRetailCharge[EUK_COUNT_LASER];
+	PCLaserCharge m_PlayerCharge;
+	CFAudioEmitter *m_pChargeSoundEmitter;
+	BOOL m_bChargedShotThisFrame, m_bChargeReadySoundPlayed;
+	BOOL m_bSecondaryTapThisFrame;
+	u32 m_nChargedShotTier;
+	FParticle_EmitterHandle_t m_hChargeParticle;
+	CFVec3A m_vChargeMuzzle_WS;
+	f32 m_fChargePitchBase;
 #endif
 
 	FForceHandle_t m_hForce;						// Force feedback handle so we can kill it when we need to
@@ -210,6 +232,12 @@ public:
 	// Firing:
 	virtual void ComputeMuzzlePoint_WS( CFVec3A *pMuzzlePoint_WS ) const;
 	virtual u32 TriggerWork( f32 fUnitTriggerVal1, f32 fUnitTriggerVal2, const CFVec3A *pTargetPos_WS, const CFVec3A *pBuddyFirePos_WS = NULL );
+#if FANG_WINGC
+	void CancelPlayerCharge( void );
+	BOOL SupportsPlayerCharge( void ) const;
+	BOOL UsesMouseChargeControls( void ) const;
+	FINLINE BOOL PlayerSecondaryTap( void ) const { return m_bSecondaryTapThisFrame; }
+#endif
 
 
 	// Rumble:
@@ -256,6 +284,17 @@ private:
 	static void _TracerKilledCallback( TracerDef_t *pTracerDef, TracerKillReason_e nKillReason, const FCollImpact_t *pImpact );
 #if FANG_WINGC
 	static BOOL _ReadRetailProperties( void );
+	u32 _PlayerChargeTrigger( f32 fTrigger, const CFVec3A *pTargetPos_WS, const CFVec3A *pBuddyFirePos_WS );
+	u16 _PlayerChargeCost( void ) const;
+	void _StopChargeSound( void );
+	void _ConfigureNormalTracer( TracerDef_t *pTracer ) const;
+	void _ConfigureChargedTracer( TracerDef_t *pTracer ) const;
+	static CDamageProfile *_ChargedDamageProfile( u16 nShot );
+	static void _ChargedTracerCallback( TracerDef_t *pTracer, TracerKillReason_e nReason, const FCollImpact_t *pImpact );
+	static void _ChargedSkipList( void *pWeapon );
+	static void _ChargeParticleKilled( FParticle_EmitterHandle_t hEmitter, void *pUser );
+	void _StopChargeParticle( void );
+	friend void port_LaserRetailRegression( CBot *, int &, u32 &, u32 );
 #endif
 
 	FCLASS_STACKMEM_ALIGN( CWeaponLaser );

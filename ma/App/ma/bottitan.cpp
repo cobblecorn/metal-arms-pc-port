@@ -19,6 +19,9 @@
 
 #include "fang.h"
 #include "bottitan.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#endif
 #include "meshtypes.h"
 #include "player.h"
 #include "ProTrack.h"
@@ -3052,7 +3055,11 @@ void CBotTitan::Possess( s32 nPlayerIndex, f32 fPossessionArmorModifier ) {
 		((CWeaponChaingun*)m_aapDupWeapons[0][0])->RestoreDefaultValues();
 	}
 
-	_EnableLight( TRUE );
+#if FANG_WINGC
+	if(!pcmods_Feature("beta_titan")) _EnableLight(TRUE);
+#else
+	_EnableLight(TRUE);
+#endif
 }
 
 

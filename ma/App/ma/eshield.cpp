@@ -127,6 +127,9 @@ _ShieldSplash_t *CEShield::m_aSplashes		= NULL;
 
 BOOL		CEShield::m_bSystemInitialized	= FALSE;
 BOOL		CEShield::m_bEffectsLoaded		= FALSE;
+#if FANG_WINGC
+u32 CEShield::m_nEffectPoolUsers = 0;
+#endif
 FLinkRoot_t CEShield::m_FreeSplashList;
 CEShield*	CEShield::m_pCollThis			= NULL;
 const CFVec3A*	CEShield::m_pPosToDrawSplash	= NULL;
@@ -239,6 +242,9 @@ BOOL CEShield::_InitEffects( void ) {
 
 	// Error:
 _ExitInitEffectsWithError:
+#if FANG_WINGC
+	_DestroyEffects();
+#endif
 	fres_ReleaseFrame( frame );
 	return FALSE;
 }
@@ -287,6 +293,9 @@ _ShieldSplash_t* CEShield::_GetNextSplash( void ) {
 
 
 CEShield::CEShield() : CEntity() {
+#if FANG_WINGC
+	m_bOwnsEffectPool = FALSE;
+#endif
 	m_pWorldMesh		= NULL;
 	m_hTexLayer			= FMESH_TEXLAYERHANDLE_INVALID;
 	m_pOwnerBot			= NULL;
@@ -358,9 +367,15 @@ BOOL CEShield::ClassHierarchyBuild( void ) {
 		goto _ExitWithError;
 	}
 
+#if FANG_WINGC
+	if( !m_bEffectsLoaded && !_InitEffects() ) goto _ExitWithError;
+	m_bOwnsEffectPool = TRUE;
+	++m_nEffectPoolUsers;
+#else
 	if( !m_bEffectsLoaded ) {
 		_InitEffects();
 	}
+#endif
 
 	m_pWorldMesh = fnew CFWorldMesh;
 	if( m_pWorldMesh == NULL ) {
@@ -409,7 +424,18 @@ void CEShield::ClassHierarchyDestroy( void ) {
 	fdelete( m_pWorldMesh );
 	m_pWorldMesh = NULL;
 
+#if FANG_WINGC
+	// Splashes are shared by every shield. Destroying one temporary or
+	// possessed bot must not free meshes still used by the other shields.
+	if( m_bOwnsEffectPool ) {
+		_KillSplash( 0.0f, TRUE );
+		m_bOwnsEffectPool = FALSE;
+		FASSERT( m_nEffectPoolUsers > 0 );
+		if( --m_nEffectPoolUsers == 0 ) _DestroyEffects();
+	}
+#else
 	_DestroyEffects();
+#endif
 
 	CEntity::ClassHierarchyDestroy();
 }
@@ -537,6 +563,9 @@ void CEShield::AddSplashEffect( const CFVec3A &rvPos, f32 fMagnitude/*=1.0f*/ ) 
 	FASSERT( m_bSystemInitialized );
 
 	_ShieldSplash_t *pSplash = _GetNextSplash();
+#if FANG_WINGC
+	if( !pSplash ) return;
+#endif
 	
 	pSplash->fUnitTime		= 0.0f;
 	pSplash->pShield		= this;

@@ -83,6 +83,9 @@ public:
 	virtual void SetArrowParams( CEProj *pProj, const CEProj_Arrow_Params_t *pParams );
 
 	FINLINE BOOL IsInTerminateMode( void ) const { return m_bTerminateMode; }
+#if FANG_WINGC
+	void PortTestState(f32 &life,f32 &charge,u32 &type) const { life=m_fLifeSecs;charge=m_fUnitSteamIntensity;type=m_SetupParams.pArrowStaticParams->nType; }
+#endif
 
 
 
@@ -92,7 +95,7 @@ public:
 //----------------------------------------------------------------------------------------------------------------------------------
 private:
 
-	void _SetBotPanicSecs( f32 fPanicSecs );
+	void _SetBotPanicSecs( CEProj *pProj, f32 fPanicSecs );
 	void _StartSteamSound( CEProj *pProj );
 	void _KillSteamSound( CEProj *pProj );
 	void _UpdateSteamSound( CEProj *pProj );

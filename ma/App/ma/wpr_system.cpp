@@ -18,6 +18,9 @@
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
 #include "wpr_system.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#endif
 #include "wpr_datatypes.h"
 #include "wpr_drawutils.h"
 #include "CamManual.h"
@@ -61,6 +64,21 @@
 #include "pc_display.h"
 #include "discord_rpc.h"
 #endif
+
+static BOOL _PcIsCustomMPMap(u32 index) {
+#if FANG_WINGC
+    return pcmods_IsCustomMPIndex(index);
+#else
+    return FALSE;
+#endif
+}
+static u32 _PcMPMapCount() {
+#if FANG_WINGC
+    return LEVEL_MULTIPLAYER_COUNT+pcmods_CustomLevelCount();
+#else
+    return LEVEL_MULTIPLAYER_COUNT;
+#endif
+}
 
 #define _DEBUG_NO_SPACE							0
 
@@ -4057,7 +4075,7 @@ BOOL wpr_system_CreateLoadHeading( u8 nLevelNum,
 			pwszTag = _MenuState.PLSelectInfo.papwzNames[nLevelNum];
 			pwszLoc = _MenuState.PLSelectInfo.papwzLocations[nLevelNum];		
 
-		} else if( nLevelNum < (LEVEL_SINGLE_PLAYER_COUNT + LEVEL_MULTIPLAYER_COUNT) ) {
+		} else if( nLevelNum < (LEVEL_SINGLE_PLAYER_COUNT + _PcMPMapCount()) ) {
 			// multiplayer level
 			nLevelNum -= LEVEL_SINGLE_PLAYER_COUNT;
 			FASSERT( nLevelNum < _MenuState.MLLevelSelectInfo.nNumLevels );
@@ -4093,10 +4111,9 @@ BOOL wpr_system_CreateLoadHeading( u8 nLevelNum,
 			FASSERT( pwszLoc );
 			FASSERT( pwszTag );
 
-		} else if( nLevelNum < (LEVEL_SINGLE_PLAYER_COUNT + LEVEL_MULTIPLAYER_COUNT) ) {
+		} else if( nLevelNum < (LEVEL_SINGLE_PLAYER_COUNT + _PcMPMapCount()) ) {
 			// multiplayer level
 			nLevelNum -= LEVEL_SINGLE_PLAYER_COUNT;
-			FASSERT( nLevelNum < _MenuState.MLLevelSelectInfo.nNumLevels );
 
 			hFile = fgamedata_LoadFileToFMem( _pszMPLevelCSV );
 			if( hFile == FGAMEDATA_INVALID_FILE_HANDLE ) {
@@ -4112,6 +4129,7 @@ BOOL wpr_system_CreateLoadHeading( u8 nLevelNum,
 			FASSERT( nNumFields );
 
 			nIndex = nLevelNum * 6;
+            if(nIndex+5>=nNumFields) {fmem_ReleaseFrame(Frame);return FALSE;}
 			pwszTag = (cwchar *)fgamedata_GetPtrToFieldData( hTable, nIndex + 1, nDataType );
 			FASSERT( pwszTag );		
 		}
@@ -11059,7 +11077,7 @@ static Wpr_DataTypes_NavCode_e _MultiLevel_Work( void ) {
 	
 	// check for the A button
 	if( _CheckAcceptButtons( _MenuState.nControllerIndex ) ) {
-		if( _MenuState.nCurItemIndex >= (_MenuState.MLUnLockInfo.nNumFreebies + _MenuState.nMLNumUnlockedLevels) ) {
+		if( (_MenuState.nCurItemIndex >= (_MenuState.MLUnLockInfo.nNumFreebies + _MenuState.nMLNumUnlockedLevels) && !_PcIsCustomMPMap(_MenuState.nCurItemIndex)) ) {
 			fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_NO_CAN_DO] );
 		} else {
 			fsndfx_Play2D( _ahSounds[WPR_DATATYPES_SOUNDS_SUCCESS] );
@@ -11113,7 +11131,7 @@ static void _MultiLevel_DrawOrtho( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHal
 				  0.85f, 
 				  pLevelSelect->papwzNames[_MenuState.nCurItemIndex] );
 	// print the work "locked" over the main screen shot
-	if( _MenuState.nCurItemIndex >= (_MenuState.MLUnLockInfo.nNumFreebies + _MenuState.nMLNumUnlockedLevels) ) {
+	if( (_MenuState.nCurItemIndex >= (_MenuState.MLUnLockInfo.nNumFreebies + _MenuState.nMLNumUnlockedLevels) && !_PcIsCustomMPMap(_MenuState.nCurItemIndex)) ) {
 		// draw the lock warning
 		ftext_Printf( 0.5f, 0.375f,
 				  L"~f1~C%ls~w0%ls~a%lc~s%.2f%ls", 
@@ -11134,7 +11152,7 @@ static void _MultiLevel_DrawFDraw( f32 fScaleMultiplier, f32 fHalfXRes, f32 fHal
 	pLevelSelect = &_MenuState.MLLevelSelectInfo;
 
 	// draw the current screenshot
-	wpr_drawutils_DrawTextureToScreen( (_MenuState.nCurItemIndex < (_MenuState.MLUnLockInfo.nNumFreebies + _MenuState.nMLNumUnlockedLevels)),
+	wpr_drawutils_DrawTextureToScreen( ((_MenuState.nCurItemIndex < (_MenuState.MLUnLockInfo.nNumFreebies + _MenuState.nMLNumUnlockedLevels)) || _PcIsCustomMPMap(_MenuState.nCurItemIndex)),
 					 &pLevelSelect->paTexInsts[_MenuState.nCurItemIndex],
 					 -0.0f, -0.12f,
 					 0.70f,

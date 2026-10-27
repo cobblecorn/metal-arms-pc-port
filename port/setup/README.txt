@@ -1,8 +1,34 @@
-Metal Arms: Glitch in the System - PC port
+Metal Arms: Glitch in the System - PC port 1.0.11
 ==========================================
 
 This download contains only the PC port's program. It has no game data: you need your own copy
 of the USA GameCube release of Metal Arms (disc ID GM5E7D) as a disc image.
+
+Updating an existing installation
+---------------------------------
+Close the game and extract this download over your existing Metal Arms PC Port folder,
+replacing its program files. Keep your gamedata, textures and save/profile folders.
+You do not need to extract the disc again if the game's data is already installed.
+
+Included in 1.0.11
+-----------------
+- Campaign co-op: Secret Rendezvous recognizes the actual security-panel operator;
+  tether targeting uses its owning player's camera; story-gift batteries and weapon
+  upgrades use per-player collection; the spinning washer icon fits its HUD counter.
+- L3 Rivet Gun mouse controls: right-click hold fires/heats its remote-explosive rivet;
+  release detonates it. A quick tap still uses the selected grenade or scope. Existing
+  left-click behavior and controller input remain available.
+- Native Exavolt mod support: converted resource/CSV ZIPs, custom multiplayer maps,
+  loading movies/music, the native randomizer and the optional Super Mining Lasers
+  adapter. Get the separate Exavolt PC mod pack to manage mods. This runtime already
+  includes mod support: skip Exavolt's Install mod support button for this release.
+  No mods or randomizer options are enabled by launching the base game normally.
+- Retains the earlier Mining Laser quarter-bar charge rule, Slosh aim, Level 15 console
+  safeguards, Miner death effects, co-op elevator/checkpoint safeguards and prior fixes.
+
+The reported Level 2 enemy-lift stall was not reproduced in the earlier 2P/4P checks;
+no new level-specific elevator patch is claimed. Focused native checks have passed;
+this is not a completed 42-mission manual test with every co-op/mod combination.
 
 Setup (once)
 ------------

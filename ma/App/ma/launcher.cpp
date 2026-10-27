@@ -18,6 +18,9 @@
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
 #include "launcher.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#endif
 #include "PickLevel.h"
 #include "fversion.h"
 #include "fmath.h"
@@ -668,6 +671,14 @@ static BOOL _ReloadCurrentLevel( void ) {
 	return TRUE;
 }
 
+static BOOL _PcCustomLevel(s32 levelId) {
+#if FANG_WINGC
+    return pcmods_IsCustomLevel(levelId);
+#else
+    return FALSE;
+#endif
+}
+
 static BOOL _StartQuickSkipLevel( BOOL bLoadTestMode ) {
 	u32 i;
 	cchar *pszLevelName;
@@ -685,12 +696,20 @@ static BOOL _StartQuickSkipLevel( BOOL bLoadTestMode ) {
 		for( s32 index=0; index<Level_nCount; ++index ) {
 			const Level_t &mission = Level_aInfo[index];
 			if( mission.pszWorldResName && !fclib_stricmp( mission.pszWorldResName, pszLevelName ) &&
-				mission.nLevel >= 0 && mission.nLevel < LEVEL_SINGLE_PLAYER_COUNT ) {
+				mission.nLevel >= 0 && (mission.nLevel < LEVEL_SINGLE_PLAYER_COUNT || _PcCustomLevel(mission.nLevel)) ) {
 				DEVPRINTF( "Mission launch: %s, world=%s, data=%s, materials=%s.\n",
 					mission.pszTitle, mission.pszWorldResName, mission.pszCSVFile, mission.pszMaterialCSVFile );
 				const u8 nCampaignPlayers = gameloop_GetQuickLaunchCampaignPlayers();
 				const GameInitInfo_t *pGameInit = NULL;
-				if( nCampaignPlayers > 1 ) {
+				if(_PcCustomLevel(mission.nLevel)) {
+					const u32 players=nCampaignPlayers<2 ? 2u : (nCampaignPlayers>4 ? 4u : nCampaignPlayers);
+					pGameInit=wpr_system_CreateSimpleMultiPlayerGameInit(players,(1u<<players)-1,mission.nLevel);
+					for(u32 i=0;i<players;++i) pGameInit->apProfile[i]->m_nControllerIndex=i;
+#if defined(MA_PC_INPUT)
+					pcinput_SetLocalCoopSession(true,PCINPUT_LAYOUT_AUTO,players);
+#endif
+					DEVPRINTF("PORT-MODS custom multiplayer launch players=%u world=%s\n",players,mission.pszWorldResName);
+				} else if( nCampaignPlayers > 1 ) {
 					// Experimental PC path: keep campaign rules and virtual/no-save profiles while the
 					// existing per-player split-screen, HUD, and controller setup initializes each slot.
 					memset( &_CampaignCoopInit, 0, sizeof( _CampaignCoopInit ) );

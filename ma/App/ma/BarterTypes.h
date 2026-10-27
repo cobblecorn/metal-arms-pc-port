@@ -61,7 +61,12 @@ public:
 	BOOL LoadSharedResources(void);
 
 	// Asserts that the player has enough washers to buy the item
+#if FANG_WINGC
+	// Charges only when the shopper actually receives the item; returns FALSE (nothing charged) otherwise.
+	BOOL Purchase( CBot *pPlayerBot, u32 nFinalPrice, BOOL bAmmo ) const;
+#else
 	void Purchase( CBot *pPlayerBot, u32 nFinalPrice ) const;
+#endif
 
 	// DATA:
 	CFVec3 m_vTableOffset;
@@ -167,7 +172,11 @@ public:
 	void Work();
 
 	BOOL CanPurchase( CBot *pPlayerBot ) const;
+#if FANG_WINGC
+	BOOL Purchase( CBot *pPlayerBot );
+#else
 	void Purchase( CBot *pPlayerBot );
+#endif
 	
 
 // DATA:

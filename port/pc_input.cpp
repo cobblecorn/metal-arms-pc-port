@@ -35,6 +35,7 @@ static float s_mouseDegrees = 0.1f;
 static bool s_mouseSensitivityOverride = false;
 static float s_frameYaw, s_framePitch;
 static PcAimAssistMode s_aimAssistMode = PCINPUT_AIM_ASSIST_AUTO;
+static volatile LONG s_weaponMouseControls[FPADIO_MAX_DEVICES]; // 0 unknown, 1 mouse, 2 pad
 static volatile LONG s_mouseAiming;	// the keyboard port's most recent aiming came from the mouse
 static volatile LONG s_promptsForPad;	// most recently active device, for prompts without a port context
 static volatile LONG s_portPromptsForPad[FPADIO_MAX_DEVICES];	// AUTO prompt source, per game port
@@ -82,7 +83,7 @@ static int s_menuFrameWheel, s_menuWheelRemainder;
 // with the gameplay control map and the game not paused), so a test can pause a level at a set point
 // in its play however long it took to load.
 struct TestKey { DWORD at; int key; bool fromGameplay; };
-static TestKey s_testKeys[32];
+static TestKey s_testKeys[128];
 static int s_testKeyCount;
 static DWORD s_installTick;
 static volatile LONG s_gameplayTick;	// GetTickCount() of the first gameplay frame, 0 until then
@@ -504,7 +505,7 @@ bool pcinput_Install(u32 window, FPadio_InputEmulationPlatform_e platform) {
 	s_layout = PCINPUT_LAYOUT_SHARED;
 	length = GetEnvironmentVariableA("MA_PORT_INPUT_LAYOUT", layout, sizeof(layout));
 	if (length && length < sizeof(layout)) pcinput_ParseLayout(layout, &s_layout);
-	char testKeys[512];
+	char testKeys[2048];
 	s_installTick = GetTickCount();
 	InterlockedExchange(&s_gameplayTick, 0);
 	length = GetEnvironmentVariableA("MA_PORT_TEST_KEYS", testKeys, sizeof(testKeys));
@@ -829,6 +830,19 @@ static void MaskRoutingButtons(u32 port, int pad, XINPUT_GAMEPAD *state) {
 	state->wButtons&=~blocked;
 }
 
+bool pcinput_NextMouseWeaponControls(const PcInputState &state, bool keyboard, bool previous) {
+	if (!state.focused || state.menus || state.textInput) return previous;
+	if (keyboard && (state.keys[VK_LBUTTON] || state.keys[VK_RBUTTON])) return true;
+	if (state.connected && (state.pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD || state.pad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD)) return false;
+	return previous; // Retain the firing source through release, focus loss and unrelated movement.
+}
+
+bool pcinput_UsesMouseWeaponControls(u32 controller) {
+	if (controller >= FPADIO_MAX_DEVICES) return false;
+	const LONG source = InterlockedCompareExchange(&s_weaponMouseControls[controller], 0, 0);
+	return source == 1 || (!source && controller == pcinput_KeyboardPort());
+}
+
 void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 	PcInputState state = {};
 	if (index >= FPADIO_MAX_DEVICES) { memset(sample, 0, sizeof(*sample)); return; }
@@ -901,6 +915,8 @@ void pcinput_Sample(u32 index, FPadio_Sample_t *sample) {
 		lastMenus = state.menus;
 		if (escapeHeldOver) state.keys[VK_ESCAPE] = false;
 	}
+	const bool mouseWeapons = pcinput_NextMouseWeaponControls(state, keyboard, pcinput_UsesMouseWeaponControls(index));
+	InterlockedExchange(&s_weaponMouseControls[index], mouseWeapons ? 1 : 2);
 	pcinput_MapSample(state, keyboard, s_platform, sample);
 	if (s_actionLockReady) {
 		EnterCriticalSection(&s_actionLock);

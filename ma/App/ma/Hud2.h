@@ -471,6 +471,9 @@ public:
 
 	void SetWasher(BOOL bVisible);
 	void SetWasherTimed(f32 fTimeOn);
+#if FANG_WINGC
+	BOOL PortTestWasherLayout();
+#endif
 
 	void PickupItemGeneric( CCollectableType *pCollectableType, ItemType_e eItemType, f32 fScale);
 	void PickupItemBattery();

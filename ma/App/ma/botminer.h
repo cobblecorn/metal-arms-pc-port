@@ -464,6 +464,9 @@ public:
 	void ReleaseCable( void );
 
 	virtual void NotifyWeaponUpgraded( CWeapon *pUpgradedWeapon );
+#if FANG_WINGC
+	virtual void Die( BOOL bSpawnDeathEffects=TRUE, BOOL bSpawnGoodies=TRUE );
+#endif
 
 	virtual void UserAnim_BatchUpdateTapBoneMask( UserAnimBoneMask_e nBoneMaskGroup );
 

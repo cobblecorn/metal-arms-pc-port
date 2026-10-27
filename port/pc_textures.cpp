@@ -1,6 +1,9 @@
 // Texture replacement folder (see pc_textures.h).
 #include "pc_textures.h"
 #include "fres.h"
+#if FANG_WINGC
+#include "pc_mods.h"
+#endif
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -244,6 +247,15 @@ static BOOL _AllTransparent( const u32 *pPixels, u32 nCount ) {
 }
 
 BOOL pctextures_Apply( FTexInfo_t *pTexInfo, void **ppPixels, u32 *pnBytes ) {
+#if FANG_WINGC
+	// Explicit raw-texture mods take precedence over a general HD pack.
+	// All other pack replacements retain their existing priority and behavior.
+	if (pTexInfo) {
+		char name[16], path[1200];
+		const int length = snprintf(name, sizeof(name), "%s.tga", pTexInfo->szName);
+		if (length > 0 && length < sizeof(name) && pcmods_ResolveFile(name, path, sizeof(path))) return FALSE;
+	}
+#endif
 	if( !_bScanned ) {
 		_Scan();
 	}

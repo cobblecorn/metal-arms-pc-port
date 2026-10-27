@@ -17,6 +17,11 @@
 // 05/01/02	Link		Created.
 //////////////////////////////////////////////////////////////////////////////////////
 #include "fang.h"
+#if FANG_WINGC
+#include "pc_randomizer.h"
+#include "pc_mods.h"
+#endif
+#include "fang.h"
 #include "MAScriptTypes.h"
 #include "AI/AiApi.h"
 #include "AI\AIBrain.h"
@@ -69,6 +74,7 @@
 #if FANG_WINGC
 #include "FScriptInst.h"
 #include "pc_script_goals.h"
+#include "pc_booth_fallback.h"
 #endif
 
 unsigned PortCoopScriptKillActor( const char *pszScriptName, unsigned nEvent, unsigned nActor ) {
@@ -122,6 +128,43 @@ static void _CoopBindScriptPlayer( AMX *pAMX, CEntity *pPlayer ) {
 	Binding.pInst = pInst;
 	Binding.nOffset = nOffset;
 	Binding.nLastPlayer = (cell)pPlayer;
+}
+
+unsigned PortCoopScriptPlayerActor(CFScriptInst *pInst, unsigned nEvent, unsigned nEntity, unsigned nActor) {
+	if (!MultiplayerMgr.IsLocalCoop() || Level_nLoadedIndex < 0 || !pInst ||
+		!pInst->m_pScript || !pInst->m_pDataArea ||
+		fclib_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName, "WEMCcity_02") ||
+		fclib_stricmp(pInst->m_pScript->m_szScriptFileName, "xemc_hubgt.sma")) {
+		return nActor;
+	}
+
+	const BOOL bPanel = nEvent == (unsigned)CFScriptSystem::GetEventNumFromName("switch");
+	const BOOL bBooth = nEvent == (unsigned)CFScriptSystem::GetEventNumFromName("tripwire");
+	if ((!bPanel && !bBooth) || !nEntity || !nActor) return nActor;
+
+	CEntity *pSource = (CEntity *)nEntity;
+	if (!pSource->Name() || fclib_stricmp(pSource->Name(), bPanel ? "hubgateswitch" : "boothtrigger")) {
+		return nActor;
+	}
+	BOOL bPlayer = FALSE;
+	for (s32 n = 0; n < CPlayer::m_nPlayerCount; ++n) {
+		if ((unsigned)Player_aPlayer[n].m_pEntityCurrent == nActor) bPlayer = TRUE;
+	}
+	if (!bPlayer) return nActor; // NPC entry must still trigger the authored security response.
+
+	for (u32 n = 0; n < _nCoopScriptPlayerBindings; ++n) {
+		const _CoopScriptPlayerBinding &Binding = _aCoopScriptPlayerBindings[n];
+		if (Binding.pInst != pInst) continue;
+		const cell nCachedActor = *(cell *)((u8 *)pInst->m_pDataArea + Binding.nOffset);
+		if (nCachedActor && nCachedActor == Binding.nLastPlayer) {
+			// This listener recognizes just its Bot_GetPlayer handle. Preserve the
+			// actual operator for the switch, all other listeners and possession.
+			DEVPRINTF("Co-op: Rendezvous %s accepts player actor '%s'.\n",
+				bPanel ? "panel" : "booth", ((CEntity *)nActor)->Name());
+			return (unsigned)nCachedActor;
+		}
+	}
+	return nActor;
 }
 
 void CMAScriptTypes::RefreshCoopScriptPlayers() {
@@ -1763,6 +1806,9 @@ void CMAST_BotWrapper::UninitSystem()
 
 void CMAST_BotWrapper::Work()
 {
+#if FANG_WINGC
+	CMAST_CamWrapper::PortBoothFallbackWork();
+#endif
    //stuck this here since it is the only place I could find that was script related and got called every frame and wasn't in fang.
 #if !FANG_PRODUCTION_BUILD
 	u8 uControllerId = Gamepad_nDebugPortIndex;
@@ -3675,6 +3721,10 @@ cell AMX_NATIVE_CALL CMAST_QuatObjWrapper::FQuatSLERP_Init1(AMX *pAMX, cell *aPa
 
 CCamManualInfo *CMAST_CamWrapper::m_pCamInfo = NULL;
 BOOL CMAST_CamWrapper::m_bCamInitted = FALSE;
+#if FANG_WINGC
+static CFScriptInst *_pPortBoothFallbackScript = NULL;
+static f32 _fPortBoothFallbackWait = 0.0f;
+#endif
 
 BOOL CMAST_CamWrapper::InitSystem()
 {
@@ -3701,6 +3751,10 @@ void CMAST_CamWrapper::UninitSystem()
 BOOL CMAST_CamWrapper::InitLevel()
 {
 	m_bCamInitted = FALSE;
+#if FANG_WINGC
+	_pPortBoothFallbackScript = NULL;
+	_fPortBoothFallbackWait = 0.0f;
+#endif
 
 	return(TRUE);
 }
@@ -3733,6 +3787,43 @@ cell AMX_NATIVE_CALL CMAST_CamWrapper::Cam_Init(AMX *pAMX, cell *aParams)
 // partners' cameras follow it (game.cpp). Vehicles, turrets and menus use manual cameras too, so the
 // camera type alone can't tell.
 BOOL MAScript_bPortScriptCameraActive = FALSE;
+#endif
+
+#if FANG_WINGC
+void CMAST_CamWrapper::PortBoothFallbackWork() {
+    if (!MultiplayerMgr.IsSinglePlayer() || !CBot::m_bCutscenePlaying ||
+        Level_nLoadedIndex < 0 ||
+        fclib_stricmp(Level_aInfo[Level_nLoadedIndex].pszWorldResName,"WEWRresrch2")) {
+        _pPortBoothFallbackScript = NULL;
+        _fPortBoothFallbackWait = 0.0f;
+        return;
+    }
+    CFScriptInst *instances = CFScriptSystem::GetScriptInstList();
+    for (u32 i=0; i<CFScriptSystem::NumScriptInsts(); ++i) {
+        CFScriptInst *inst = &instances[i];
+        if (!inst->m_bIsInitialized || !inst->m_pScript || !inst->m_pDataArea ||
+            !PortBoothArrivalLayout(inst->m_pScript->m_szScriptFileName,
+                &inst->m_oAMX,inst->m_pScript->m_uDataAreaSize)) continue;
+        if (_pPortBoothFallbackScript != inst) {
+            _pPortBoothFallbackScript = inst;
+            _fPortBoothFallbackWait = 0.0f;
+        }
+        const cell *g = (const cell *)inst->m_pDataArea;
+        const s32 arrivals = g[92/4];
+        const BOOL cameraDone = MAScript_bPortScriptCameraActive && m_bCamInitted &&
+            m_pCamInfo && m_pCamInfo->m_pPosObj &&
+            g[36/4] == (cell)m_pCamInfo->m_pPosObj && m_pCamInfo->m_pPosObj->IsDone();
+        if (PortBoothArrivalFallback(inst->m_pScript->m_szScriptFileName,
+                &inst->m_oAMX,inst->m_pDataArea,inst->m_pScript->m_uDataAreaSize,
+                FLoop_fPreviousLoopSecs,TRUE,cameraDone && !level_IsStreamingSpeechPlaying(),
+                _fPortBoothFallbackWait)) {
+            DEVPRINTF("Port: booth arrival fallback after 15 seconds (%d/4 arrivals); resuming authored scene ending.\n",arrivals);
+        }
+        return;
+    }
+    _pPortBoothFallbackScript = NULL;
+    _fPortBoothFallbackWait = 0.0f;
+}
 #endif
 
 cell AMX_NATIVE_CALL CMAST_CamWrapper::Cam_Activate(AMX *pAMX, cell *aParams)
@@ -6468,7 +6559,13 @@ cell AMX_NATIVE_CALL CMAST_FXWrapper::FX_Explosion(AMX *pAMX, cell *aParams)
 		SpawnParams.UnitDir.Zero();
 		SpawnParams.uSurfaceType = 0;
 
-		CExplosion2::SpawnExplosion( hSpawner, hExplosionGroup, &SpawnParams );
+		CExplosion2::SpawnExplosion( hSpawner,
+#if FANG_WINGC
+			pcrandom_Explosion(hExplosionGroup,pE,"script_explosions"),
+#else
+			hExplosionGroup,
+#endif
+			&SpawnParams );
 	}
 
 	return((cell)(0));
@@ -6521,7 +6618,11 @@ cell AMX_NATIVE_CALL CMAST_GoodieWrapper::G_GiveToGlitch(AMX *pAMX, cell *aParam
 
 	FillStringFromCell(szGoodieName, 99, pAMX, aParams[1]);
 
+#if FANG_WINGC
+	if( !CCollectable::GiveStoryToPlayer( (CBotGlitch *) pGlitch, pcrandom_ScriptGift(szGoodieName,pGlitch), 1.0f ) ) {
+#else
 	if( !CCollectable::GiveToPlayer( (CBotGlitch *) pGlitch, szGoodieName, 1.0f ) ) {
+#endif
 		SCRIPT_ERROR("G_GiveToGlitch() : Unable to give goodie '%s' to player.", szGoodieName);
 		return ((cell) NULL);
 	}
